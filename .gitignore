@@ -1,0 +1,21 @@
+# task notes
+task.md
+todo.md
+
+# environment / secrets
+.env
+.env.*
+config.json.local
+
+# binaries
+bin/
+*.exe
+panel
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# logs
+*.log
