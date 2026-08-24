@@ -1,21 +1,59 @@
 openapi: 3.0.3
 info:
   title: Lotty AB Platform — Panel API
-  description: Control plane API for the panel service (users management).
-  version: 0.1.0
+  description: Control plane API for the panel service (users management and authentication).
+  version: 0.2.0
 
 servers:
   - url: http://localhost:8080/api/v1
     description: local development
 
-# auth is not implemented yet; endpoints are public
-security: []
+# JWT bearer auth; endpoints marked public below are excluded
+security:
+  - bearerAuth: []
 
 tags:
   - name: users
     description: User accounts and RBAC roles
+  - name: auth
+    description: Authentication
 
 paths:
+  /login:
+    post:
+      tags: [auth]
+      summary: Authenticate and issue a JWT
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authenticated, token issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: UNAUTHORIZED
+                  message: invalid email or password
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /users:
     post:
       tags: [users]
@@ -46,7 +84,7 @@ paths:
       summary: List users
       operationId: listUsers
       parameters:
-        - name: count
+        - name: limit
           in: query
           description: Maximum number of users to return (1-100)
           schema:
@@ -143,6 +181,12 @@ paths:
           $ref: '#/components/responses/InternalError'
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   responses:
     BadRequest:
       description: Invalid request payload or parameters
@@ -193,6 +237,36 @@ components:
               message: internal server error
 
   schemas:
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        hash_password:
+          type: string
+          format: password
+      required: [email, hash_password]
+
+    LoginResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            token:
+              type: string
+              description: Signed JWT (HS256), subject is the user ID
+            expires_at:
+              type: string
+              format: date-time
+              description: Token expiration time
+          required: [token, expires_at]
+      required: [success, data]
+
     Role:
       type: string
       enum: [admin, experimenter, approver, viewer]

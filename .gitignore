@@ -5,12 +5,7 @@ todo.md
 # environment / secrets
 .env
 .env.*
-config.json.local
-
-# binaries
-bin/
-*.exe
-panel
+config.local.json
 
 # IDE / OS
 .idea/

@@ -20,7 +20,7 @@ type Config struct {
 }
 
 type AuthConfig struct {
-	JWTConfig JWTConfig `mapstructure:"jwt"`
+	JWT JWTConfig `mapstructure:"jwt"`
 }
 
 type JWTConfig struct {
@@ -100,6 +100,12 @@ func MustLoad() *Config {
 func defaultConfig() *Config {
 	return &Config{
 		Environment: "prod",
+		Auth: AuthConfig{
+			JWT: JWTConfig{
+				SecretKey: "change-me-in-production",
+				TTL:       24 * time.Hour,
+			},
+		},
 		Database: DatabaseConfig{
 			Postgres: PostgresConfig{
 				DSN:      "postgres://lotty:lottypassword@localhost:5433/labp?sslmode=disable",
