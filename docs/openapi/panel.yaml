@@ -5,7 +5,7 @@ info:
   version: 0.2.0
 
 servers:
-  - url: http://localhost:8080/api/v1
+  - url: http://localhost:8080/api/panel/v1
     description: local development
 
 # JWT bearer auth; endpoints marked public below are excluded
@@ -196,6 +196,8 @@ paths:
                 $ref: '#/components/schemas/UserResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -212,8 +214,12 @@ paths:
           description: User deleted
         '400':
           $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -260,6 +266,18 @@ components:
             error:
               code: CONFLICT
               message: user already exists
+
+    Forbidden:
+      description: Action forbidden (e.g. self-delete, self-role-change, or last-admin protection)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: FORBIDDEN
+              message: cannot delete your own account
 
     InternalError:
       description: Internal server error
@@ -317,7 +335,7 @@ components:
         username:
           type: string
           minLength: 3
-          maxLength: 32
+          maxLength: 64
         email:
           type: string
           format: email
@@ -337,7 +355,7 @@ components:
         username:
           type: string
           minLength: 3
-          maxLength: 32
+          maxLength: 64
         email:
           type: string
           format: email
@@ -392,7 +410,7 @@ components:
           properties:
             code:
               type: string
-              enum: [BAD_REQUEST, NOT_FOUND, PAYLOAD_TOO_LARGE, CONFLICT, INTERNAL_SERVER_ERROR]
+              enum: [BAD_REQUEST, NOT_FOUND, PAYLOAD_TOO_LARGE, CONFLICT, FORBIDDEN, INTERNAL_SERVER_ERROR]
             message:
               type: string
           required: [code, message]

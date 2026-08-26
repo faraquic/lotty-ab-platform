@@ -16,7 +16,9 @@ import (
 const ServiceName = "labp-panel"
 
 // ServiceVersion is the build version, overridable at link time via:
+//
 //	-ldflags "-X github.com/faraquic/lotty-ab-platform/pkg/config.ServiceVersion=v1.12.4+abc1234"
+//
 // When not injected it defaults to a dev marker.
 var ServiceVersion = "v0.0.0_dev"
 
