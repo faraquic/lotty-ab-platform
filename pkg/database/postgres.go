@@ -22,13 +22,10 @@ func NewPostgres(ctx context.Context, dsn string, maxConns int32, minConns int32
 		return nil, fmt.Errorf("parse postgres config: %w", err)
 	}
 
-	pool, err := pgxpool.NewWithConfig(ctx, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("create postgres pool: %w", err)
-	}
+	cfg.MaxConns = maxConns
+	cfg.MinConns = minConns
 
-	pool.Config().MaxConns = maxConns
-	pool.Config().MinConns = minConns
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 
 	pingCtx, cancel := context.WithTimeout(ctx, pingTimeout)
 	defer cancel()

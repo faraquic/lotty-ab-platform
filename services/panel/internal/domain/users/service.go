@@ -9,7 +9,12 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var ErrInvalidRole = errors.New("invalid role")
+var (
+	ErrInvalidRole    = errors.New("invalid role")
+	ErrSelfRoleChange = errors.New("cannot change your own role")
+	ErrSelfDelete     = errors.New("cannot delete your own account")
+	ErrLastAdmin      = errors.New("cannot remove the last admin")
+)
 
 type UserRepo interface {
 	Create(ctx context.Context, u User) (int64, error)
@@ -17,15 +22,24 @@ type UserRepo interface {
 	List(ctx context.Context, limit, offset int) ([]User, error)
 	Update(ctx context.Context, id int64, email *string, role *Role) (User, error)
 	Delete(ctx context.Context, id int64) error
+	Count(ctx context.Context) (int64, error)
+	CountAdmins(ctx context.Context) (int64, error)
+}
+
+// SessionRevoker invalidates a user's auth sessions (implemented by
+// the auth domain). Optional; nil means tokens stay valid until expiry.
+type SessionRevoker interface {
+	RevokeUserSessions(ctx context.Context, userID int64) error
 }
 
 type Service struct {
-	repo UserRepo
-	log  *zap.Logger
+	repo    UserRepo
+	revoker SessionRevoker
+	log     *zap.Logger
 }
 
-func NewService(repo UserRepo, log *zap.Logger) *Service {
-	return &Service{repo: repo, log: log}
+func NewService(repo UserRepo, revoker SessionRevoker, log *zap.Logger) *Service {
+	return &Service{repo: repo, revoker: revoker, log: log}
 }
 
 func (s *Service) Create(ctx context.Context, req CreateUserRequest) (UserResponse, error) {
@@ -86,7 +100,7 @@ func (s *Service) List(ctx context.Context, limit, offset int) ([]UserResponse, 
 	return resp, nil
 }
 
-func (s *Service) Update(ctx context.Context, id int64, req UpdateUserRequest) (UserResponse, error) {
+func (s *Service) Update(ctx context.Context, callerID, id int64, req UpdateUserRequest) (UserResponse, error) {
 	var role *Role
 	if req.Role != nil {
 		r := Role(*req.Role)
@@ -96,14 +110,113 @@ func (s *Service) Update(ctx context.Context, id int64, req UpdateUserRequest) (
 		role = &r
 	}
 
+	current, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return UserResponse{}, err
+	}
+
+	if role != nil {
+		// an admin must not change their own role: self-demotion would
+		// lock them out, self-promotion bypasses separation of duties
+		if callerID == id && current.Role != *role {
+			return UserResponse{}, ErrSelfRoleChange
+		}
+
+		// keep at least one active admin in the system
+		if current.Role == RoleAdmin && *role != RoleAdmin {
+			admins, err := s.repo.CountAdmins(ctx)
+			if err != nil {
+				return UserResponse{}, err
+			}
+			if admins <= 1 {
+				return UserResponse{}, ErrLastAdmin
+			}
+		}
+	}
+
 	u, err := s.repo.Update(ctx, id, req.Email, role)
 	if err != nil {
 		return UserResponse{}, err
 	}
 
+	// role change must invalidate existing sessions: the JWT carries
+	// the old role until expiry, so stale tokens would keep old permissions
+	if role != nil && current.Role != u.Role {
+		s.revokeSessions(ctx, id)
+	}
+
 	return toResponse(u), nil
 }
 
-func (s *Service) Delete(ctx context.Context, id int64) error {
-	return s.repo.Delete(ctx, id)
+func (s *Service) Delete(ctx context.Context, callerID, id int64) error {
+	current, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if callerID == id {
+		return ErrSelfDelete
+	}
+
+	if current.Role == RoleAdmin {
+		admins, err := s.repo.CountAdmins(ctx)
+		if err != nil {
+			return err
+		}
+		if admins <= 1 {
+			return ErrLastAdmin
+		}
+	}
+
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	s.revokeSessions(ctx, id)
+
+	return nil
+}
+
+// EnsureBootstrapAdmin creates the first admin when the users table is empty.
+// Safe to call on every startup; a no-op once any user exists.
+func (s *Service) EnsureBootstrapAdmin(ctx context.Context, username, email, password string) (bool, error) {
+	if len(password) < 8 {
+		return false, errors.New("bootstrap password must be at least 8 characters")
+	}
+
+	n, err := s.repo.Count(ctx)
+	if err != nil {
+		return false, fmt.Errorf("count users: %w", err)
+	}
+	if n > 0 {
+		return false, nil
+	}
+
+	req := CreateUserRequest{
+		Username: username,
+		Email:    email,
+		Password: password,
+		Role:     string(RoleAdmin),
+	}
+
+	resp, err := s.Create(ctx, req)
+	if err != nil {
+		return false, fmt.Errorf("bootstrap admin: %w", err)
+	}
+
+	s.log.Info("bootstrap admin created", zap.Int64("id", resp.ID), zap.String("email", email))
+
+	return true, nil
+}
+
+func (s *Service) revokeSessions(ctx context.Context, userID int64) error {
+	if s.revoker == nil {
+		return nil
+	}
+
+	if err := s.revoker.RevokeUserSessions(ctx, userID); err != nil {
+		s.log.Warn("failed to revoke user sessions", zap.Int64("user_id", userID), zap.Error(err))
+	}
+
+	return nil
 }

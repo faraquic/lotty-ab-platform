@@ -131,3 +131,23 @@ func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
+
+func (r *Repository) Count(ctx context.Context) (int64, error) {
+	const q = `SELECT count(*) FROM users`
+
+	var n int64
+	err := r.db.QueryRow(ctx, q).Scan(&n)
+
+	return n, err
+}
+
+func (r *Repository) CountAdmins(ctx context.Context) (int64, error) {
+	const q = `
+SELECT count(*) FROM users
+WHERE role = 'admin' AND deleted_at IS NULL`
+
+	var n int64
+	err := r.db.QueryRow(ctx, q).Scan(&n)
+
+	return n, err
+}

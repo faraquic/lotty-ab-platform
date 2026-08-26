@@ -8,7 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/faraquic/lotty-ab-platform/pkg/api"
-	libauth "github.com/faraquic/lotty-ab-platform/services/panel/internal/lib/auth"
+	libauth "github.com/faraquic/lotty-ab-platform/pkg/auth"
 )
 
 type Handler struct {
@@ -25,14 +25,12 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 }
 
 func (h *Handler) login(c *gin.Context) {
-	h.log.Debug("handling login request")
-
 	var req LoginRequest
 	if err := api.ValidateRequest(c.Writer, c.Request, &req); err != nil {
 		return
 	}
 
-	token, err := h.svc.Login(c.Request.Context(), req)
+	token, expiry, err := h.svc.Login(c.Request.Context(), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrInvalidCredentials):
@@ -46,5 +44,5 @@ func (h *Handler) login(c *gin.Context) {
 		return
 	}
 
-	api.OK(c.Writer, LoginResponse{Token: token, ExpiresAt: h.svc.ExpiresAt()})
+	api.OK(c.Writer, LoginResponse{Token: token, ExpiresAt: expiry})
 }

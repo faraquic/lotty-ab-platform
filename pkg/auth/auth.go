@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/golang-jwt/jwt/v4"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 var (
@@ -15,7 +15,7 @@ var (
 )
 
 type Tokenizer interface {
-	GenerateToken(userID int64) (string, error)
+	GenerateToken(userID int64, role string) (string, time.Time, error)
 	ParseToken(token string) (int64, error)
 }
 
@@ -28,23 +28,26 @@ func NewJWTManager(secret string, ttl time.Duration) *JWTManager {
 	return &JWTManager{secret: []byte(secret), ttl: ttl}
 }
 
-func (m *JWTManager) GenerateToken(userID int64) (string, error) {
+func (m *JWTManager) GenerateToken(userID int64, role string) (string, time.Time, error) {
 	now := time.Now()
 
-	claims := jwt.RegisteredClaims{
-		Subject:   strconv.FormatInt(userID, 10),
-		IssuedAt:  jwt.NewNumericDate(now),
-		ExpiresAt: jwt.NewNumericDate(now.Add(m.ttl)),
+	expiry := now.Add(m.ttl)
+
+	claims := jwt.MapClaims{
+		"sub":  strconv.FormatInt(userID, 10),
+		"role": role,
+		"iat":  jwt.NewNumericDate(now),
+		"exp":  jwt.NewNumericDate(expiry),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	signed, err := token.SignedString(m.secret)
 	if err != nil {
-		return "", fmt.Errorf("sign token: %w", err)
+		return "", time.Time{}, fmt.Errorf("sign token: %w", err)
 	}
 
-	return signed, nil
+	return signed, expiry, nil
 }
 
 func (m *JWTManager) ParseToken(token string) (int64, error) {

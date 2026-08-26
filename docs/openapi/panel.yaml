@@ -17,6 +17,8 @@ tags:
     description: User accounts and RBAC roles
   - name: auth
     description: Authentication
+  - name: health
+    description: Liveness and readiness probes
 
 paths:
   /login:
@@ -53,6 +55,41 @@ paths:
                   message: invalid email or password
         '500':
           $ref: '#/components/responses/InternalError'
+
+  /api/panel/v1/health:
+    get:
+      tags: [health]
+      summary: Liveness probe
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: OK
+
+  /api/panel/v1/ready:
+    get:
+      tags: [health]
+      summary: Readiness probe
+      operationId: ready
+      security: []
+      responses:
+        '200':
+          description: Service is ready to serve traffic
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
+        '503':
+          description: Service is not ready (e.g. database unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
 
   /users:
     post:
@@ -360,3 +397,42 @@ components:
               type: string
           required: [code, message]
       required: [success, error]
+
+    ComponentStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, unavailable]
+        message:
+          type: string
+          description: Human-readable detail, present when status is not ok
+      required: [status]
+
+    ReadyResponse:
+      type: object
+      properties:
+        service:
+          type: string
+          example: panel
+        version:
+          type: string
+          example: 0.1.0
+        environment:
+          type: string
+          example: local
+        timestamp:
+          type: string
+          format: date-time
+        components:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ComponentStatus'
+          properties:
+            service:
+              $ref: '#/components/schemas/ComponentStatus'
+            database:
+              $ref: '#/components/schemas/ComponentStatus'
+            cache:
+              $ref: '#/components/schemas/ComponentStatus'
+      required: [service, version, environment, timestamp, components]

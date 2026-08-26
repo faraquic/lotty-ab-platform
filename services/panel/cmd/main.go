@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
+	"strings"
 	"syscall"
 	"time"
 
@@ -19,6 +21,8 @@ import (
 func main() {
 	cfg := config.MustLoad()
 	log := logger.SetupLogger(cfg.Environment)
+
+	validateSecurity(cfg, log)
 
 	log.Info("starting Panel Lotty AB Platform", zap.String("environment", cfg.Environment))
 	log.Debug("debug messages are enabled")
@@ -42,33 +46,32 @@ func main() {
 	redis, err := database.NewRedis(
 		connectCtx,
 		cfg.Database.Redis.Address,
-		cfg.Database.Redis.Password,
-		cfg.Database.Redis.DB,
 		log,
 	)
 	if err != nil {
-		log.Warn("redis is unavailable, continuing without it",
+		log.Warn(
+			"redis is unavailable, continuing without it",
 			zap.Error(err),
 		)
 	} else {
-		defer redis.Close()
+		defer (*redis).Close()
 	}
 
 	setGinMode(cfg.Environment, log)
 	r := newRouter(log, cfg, postgres, redis)
 
-	log.Info("starting server", zap.String("address", cfg.Panel.HTTPConfig.Address))
+	log.Info("starting server", zap.String("address", cfg.Panel.HTTP.Address))
 
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 
 	srv := &http.Server{
-		Addr:              cfg.Panel.HTTPConfig.Address,
+		Addr:              cfg.Panel.HTTP.Address,
 		Handler:           r,
-		ReadTimeout:       cfg.Panel.HTTPConfig.Timeout,
-		ReadHeaderTimeout: cfg.Panel.HTTPConfig.Timeout,
-		WriteTimeout:      cfg.Panel.HTTPConfig.Timeout,
-		IdleTimeout:       cfg.Panel.HTTPConfig.IdleTimeout,
+		ReadTimeout:       cfg.Panel.HTTP.Timeout,
+		ReadHeaderTimeout: cfg.Panel.HTTP.Timeout,
+		WriteTimeout:      cfg.Panel.HTTP.Timeout,
+		IdleTimeout:       cfg.Panel.HTTP.IdleTimeout,
 	}
 
 	go func() {
@@ -83,7 +86,7 @@ func main() {
 	<-done
 	log.Info("stopping server")
 
-	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), cfg.Panel.HTTPConfig.ShutdownTimeout)
+	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), cfg.Panel.HTTP.ShutdownTimeout)
 	defer cancelShutdown()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
@@ -97,6 +100,31 @@ func main() {
 
 func connectContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), 5*time.Second)
+}
+
+// validateSecurity fails fast on insecure production settings
+// and warns about risky ones in any environment.
+func validateSecurity(cfg *config.Config, log *zap.Logger) {
+	secret := cfg.Auth.JWT.SecretKey
+
+	if cfg.Environment == "prod" && insecureSecret(secret) {
+		log.Error(
+			"insecure JWT secret: set auth.jwt.secret_key in config or via ENV template before running in prod",
+		)
+		os.Exit(1)
+	}
+
+	if insecureSecret(secret) {
+		log.Warn("insecure JWT secret in use; acceptable only for local development")
+	}
+
+	if slices.Contains(cfg.Panel.HTTP.CORS.AllowedOrigins, "*") {
+		log.Warn("CORS allowed_origins contains '*': any site can call the API; restrict it in production")
+	}
+}
+
+func insecureSecret(secret string) bool {
+	return secret == "" || strings.HasPrefix(secret, "change-me")
 }
 
 func setGinMode(environment string, log *zap.Logger) {

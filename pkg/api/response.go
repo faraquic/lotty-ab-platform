@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"io"
 	"net/http"
 
 	"github.com/goccy/go-json"
@@ -63,14 +64,25 @@ func InternalError(w http.ResponseWriter) {
 	Error(w, http.StatusInternalServerError, InternalServerError, internalServerMessage)
 }
 
-func ValidateRequest(w http.ResponseWriter, r *http.Request, dst any) error {
-	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
-		var maxBytesErr *http.MaxBytesError
-		if errors.As(err, &maxBytesErr) {
-			Error(w, http.StatusRequestEntityTooLarge, PayloadTooLarge, "request body too large")
-			return err
-		}
+// maxBodyBytes caps request bodies to protect against oversized payloads.
+// The limit is enforced explicitly because some JSON decoders (e.g.
+// goccy/go-json) swallow the underlying *http.MaxBytesError, so relying
+// on http.MaxBytesReader alone is not enough to guarantee a 413.
+const maxBodyBytes = 1 << 20 // 1 MiB
 
+func ValidateRequest(w http.ResponseWriter, r *http.Request, dst any) error {
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes+1))
+	if err != nil {
+		Error(w, http.StatusBadRequest, BadRequest, "invalid request body")
+		return err
+	}
+
+	if len(body) > maxBodyBytes {
+		Error(w, http.StatusRequestEntityTooLarge, PayloadTooLarge, "request body too large")
+		return errors.New("request body too large")
+	}
+
+	if err := json.Unmarshal(body, dst); err != nil {
 		Error(w, http.StatusBadRequest, BadRequest, err.Error())
 		return err
 	}

@@ -11,6 +11,10 @@ const (
 	RoleViewer       Role = "viewer"
 )
 
+func AllRoles() []Role {
+	return []Role{RoleAdmin, RoleExperimenter, RoleApprover, RoleViewer}
+}
+
 func (r Role) Valid() bool {
 	switch r {
 	case RoleAdmin, RoleExperimenter, RoleApprover, RoleViewer:

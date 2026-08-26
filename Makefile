@@ -1,5 +1,21 @@
 CONTAINER_ENGINE ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
 
+# Build version: prefer the latest git tag + short commit, e.g. v1.12.4+abc1234.
+# Falls back to a dev marker when not in a git checkout.
+GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null)
+GIT_TAG    := $(shell git describe --tags --abbrev=0 2>/dev/null)
+ifeq ($(GIT_TAG),)
+SERVICE_VERSION := v0.0.0_dev
+else ifeq ($(GIT_COMMIT),)
+SERVICE_VERSION := $(GIT_TAG)
+else
+SERVICE_VERSION := $(GIT_TAG)+$(GIT_COMMIT)
+endif
+
+LDFLAGS := -X github.com/faraquic/lotty-ab-platform/pkg/config.ServiceVersion=$(SERVICE_VERSION)
+
+PANEL_BIN ?= bin/panel
+
 POSTGRES_IMAGE   ?= docker.io/library/postgres:18-alpine
 POSTGRES_NAME    ?= labp-postgres
 POSTGRES_PORT    ?= 5433
@@ -23,6 +39,9 @@ help:
 	@echo "dev-up    - start all dev containers (PostgreSQL + Redis)"
 	@echo "dev-down  - stop and remove all dev containers"
 	@echo "dev-clean - stop all containers and remove their volumes"
+	@echo ""
+	@echo "Build:"
+	@echo "build     - compile the panel service with version ldflags ($(SERVICE_VERSION))"
 	@echo ""
 	@echo "PostgreSQL:"
 	@echo "pg-up      - start PostgreSQL dev container"
@@ -154,3 +173,7 @@ ifndef name
 endif
 pg-migrate-new:
 	go tool goose -dir $(MIGRATIONS_DIR) create $(name) sql
+
+.PHONY: build
+build:
+	go build -ldflags "$(LDFLAGS)" -o $(PANEL_BIN) ./services/panel/cmd

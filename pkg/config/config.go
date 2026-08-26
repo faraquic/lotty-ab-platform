@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"log"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"text/template"
@@ -11,6 +12,13 @@ import (
 
 	"github.com/spf13/viper"
 )
+
+const ServiceName = "labp-panel"
+
+// ServiceVersion is the build version, overridable at link time via:
+//	-ldflags "-X github.com/faraquic/lotty-ab-platform/pkg/config.ServiceVersion=v1.12.4+abc1234"
+// When not injected it defaults to a dev marker.
+var ServiceVersion = "v0.0.0_dev"
 
 type Config struct {
 	Environment string         `mapstructure:"environment"`
@@ -20,13 +28,20 @@ type Config struct {
 }
 
 type AuthConfig struct {
-	JWT JWTConfig `mapstructure:"jwt"`
+	JWT       JWTConfig       `mapstructure:"jwt"`
+	Bootstrap BootstrapConfig `mapstructure:"bootstrap"`
 }
 
 type JWTConfig struct {
 	SecretKey string        `mapstructure:"secret_key"`
 	TTL       time.Duration `mapstructure:"ttl"`
-	RedisTTL  time.Duration `mapstructure:"redis_ttl"`
+}
+
+// BootstrapConfig seeds the first admin when the users table is empty.
+type BootstrapConfig struct {
+	Username string `mapstructure:"username"`
+	Email    string `mapstructure:"email"`
+	Password string `mapstructure:"password"`
 }
 
 type DatabaseConfig struct {
@@ -48,7 +63,7 @@ type RedisConfig struct {
 }
 
 type PanelConfig struct {
-	HTTPConfig HTTPConfig `mapstructure:"http"`
+	HTTP HTTPConfig `mapstructure:"http"`
 }
 
 type HTTPConfig struct {
@@ -69,9 +84,13 @@ type CORSConfig struct {
 }
 
 func MustLoad() *Config {
+	path := findConfigFile()
+	if path == "" {
+		log.Fatalf(`fatal error config file: not found (looked for $CONFIG_NAME, config.local.json, config.json in "." and "/labp")`)
+	}
+
+	viper.SetConfigFile(path)
 	viper.SetConfigType("json")
-	viper.AddConfigPath(".")
-	viper.AddConfigPath("/labp")
 
 	err := viper.ReadInConfig()
 	if err != nil {
@@ -102,8 +121,13 @@ func defaultConfig() *Config {
 		Environment: "prod",
 		Auth: AuthConfig{
 			JWT: JWTConfig{
-				SecretKey: "change-me-in-production",
-				TTL:       24 * time.Hour,
+				SecretKey: "change-me",
+				TTL:       18 * time.Hour,
+			},
+			Bootstrap: BootstrapConfig{
+				Username: "admin",
+				Email:    "admin@lotty.local",
+				Password: "",
 			},
 		},
 		Database: DatabaseConfig{
@@ -119,7 +143,7 @@ func defaultConfig() *Config {
 			},
 		},
 		Panel: PanelConfig{
-			HTTPConfig{
+			HTTP: HTTPConfig{
 				Address: "0.0.0.0:8080",
 				CORS: CORSConfig{
 					AllowedOrigins:   []string{"*"},
@@ -135,6 +159,35 @@ func defaultConfig() *Config {
 			},
 		},
 	}
+}
+
+// findConfigFile resolves the config file path:
+// $CONFIG_NAME (exact filename or base name) in "." then "/labp",
+// otherwise config.local.json, then config.json.
+func findConfigFile() string {
+	var names []string
+
+	if custom := os.Getenv("CONFIG_NAME"); custom != "" {
+		names = append(names, custom)
+	}
+	names = append(names, "config.local.json", "config.json")
+
+	dirs := []string{".", "/labp"}
+
+	for _, name := range names {
+		if !strings.HasSuffix(name, ".json") {
+			name += ".json"
+		}
+
+		for _, dir := range dirs {
+			path := filepath.Join(dir, name)
+			if st, err := os.Stat(path); err == nil && !st.IsDir() {
+				return path
+			}
+		}
+	}
+
+	return ""
 }
 
 func renderEnvTemplate(path string) ([]byte, error) {

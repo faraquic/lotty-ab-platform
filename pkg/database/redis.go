@@ -6,44 +6,48 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/redis/rueidis"
 	"go.uber.org/zap"
 )
 
-func NewRedis(ctx context.Context, addr string, password string, db int, log *zap.Logger) (*redis.Client, error) {
-	if addr == "" {
-		return nil, errors.New("redis addr is empty")
+func NewRedis(ctx context.Context, url string, log *zap.Logger) (*rueidis.Client, error) {
+	if url == "" {
+		return nil, errors.New("redis url is empty")
 	}
 
-	opt, err := parseRedisOptions(addr)
+	opt, err := rueidis.ParseURL(toRedisURL(url))
 	if err != nil {
 		return nil, fmt.Errorf("parse redis config: %w", err)
 	}
-	opt.DB = db
-	opt.Password = password
 
-	client := redis.NewClient(opt)
+	client, err := rueidis.NewClient(opt)
+	if err != nil {
+		return nil, fmt.Errorf("create redis client: %w", err)
+	}
 
 	pingCtx, cancel := context.WithTimeout(ctx, pingTimeout)
 	defer cancel()
 
-	if err := client.Ping(pingCtx).Err(); err != nil {
-		_ = client.Close()
+	if err := client.Do(pingCtx, client.B().Ping().Build()).Error(); err != nil {
+		client.Close()
 		return nil, fmt.Errorf("ping redis: %w", err)
 	}
 
-	log.Info("connected to redis",
-		zap.String("addr", opt.Addr),
-		zap.Int("db", opt.DB),
+	log.Info(
+		"connected to redis",
+		zap.Any("addrs", opt.InitAddress),
+		zap.Int("db", opt.SelectDB),
 	)
 
-	return client, nil
+	return &client, nil
 }
 
-func parseRedisOptions(addr string) (*redis.Options, error) {
-	if strings.Contains(addr, "://") {
-		return redis.ParseURL(addr)
+// toRedisURL accepts both plain host:port and full redis:// URLs;
+// rueidis.ParseURL only understands the latter.
+func toRedisURL(url string) string {
+	if strings.Contains(url, "://") {
+		return url
 	}
 
-	return &redis.Options{Addr: addr}, nil
+	return "redis://" + url
 }

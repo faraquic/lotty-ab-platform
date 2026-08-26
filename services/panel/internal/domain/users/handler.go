@@ -32,8 +32,6 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 }
 
 func (h *Handler) create(c *gin.Context) {
-	h.log.Debug("handling create user request")
-
 	var req CreateUserRequest
 	if err := api.ValidateRequest(c.Writer, c.Request, &req); err != nil {
 		return
@@ -49,8 +47,6 @@ func (h *Handler) create(c *gin.Context) {
 }
 
 func (h *Handler) list(c *gin.Context) {
-	h.log.Debug("handling list users request")
-
 	limit, _ := strconv.Atoi(c.Query("limit"))
 	offset, _ := strconv.Atoi(c.Query("offset"))
 
@@ -78,6 +74,18 @@ func (h *Handler) getByID(c *gin.Context) {
 	api.OK(c.Writer, resp)
 }
 
+// CtxUserIDKey is set by the auth middleware after token verification;
+// handlers read the caller's id from it.
+const CtxUserIDKey = "user_id"
+
+func callerID(c *gin.Context) int64 {
+	id, _ := c.Get(CtxUserIDKey)
+
+	v, _ := id.(int64)
+
+	return v
+}
+
 func (h *Handler) update(c *gin.Context) {
 	id, ok := parseID(c)
 	if !ok {
@@ -89,7 +97,7 @@ func (h *Handler) update(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.svc.Update(c.Request.Context(), id, req)
+	resp, err := h.svc.Update(c.Request.Context(), callerID(c), id, req)
 	if err != nil {
 		h.respondError(c.Writer, err)
 		return
@@ -104,7 +112,7 @@ func (h *Handler) delete(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
+	if err := h.svc.Delete(c.Request.Context(), callerID(c), id); err != nil {
 		h.respondError(c.Writer, err)
 		return
 	}
@@ -130,6 +138,10 @@ func (h *Handler) respondError(w http.ResponseWriter, err error) {
 		api.Error(w, http.StatusConflict, "CONFLICT", err.Error())
 	case errors.Is(err, ErrInvalidRole):
 		api.Error(w, http.StatusBadRequest, api.BadRequest, err.Error())
+	case errors.Is(err, ErrSelfDelete), errors.Is(err, ErrSelfRoleChange):
+		api.Error(w, http.StatusForbidden, "FORBIDDEN", err.Error())
+	case errors.Is(err, ErrLastAdmin):
+		api.Error(w, http.StatusConflict, "CONFLICT", err.Error())
 	default:
 		h.log.Error("internal error", zap.Error(err))
 		api.InternalError(w)
