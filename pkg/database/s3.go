@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"go.uber.org/zap"
 )
 
@@ -44,6 +45,20 @@ func NewS3(ctx context.Context, cfg S3Config, log *zap.Logger) (*s3.Client, erro
 
 	pingCtx, cancel := context.WithTimeout(ctx, pingTimeout)
 	defer cancel()
+
+	createCtx, createCancel := context.WithTimeout(ctx, pingTimeout)
+	defer createCancel()
+
+	_, createErr := client.CreateBucket(createCtx, &s3.CreateBucketInput{
+		Bucket: aws.String(cfg.Bucket),
+	})
+	if createErr != nil {
+		var ownedErr *types.BucketAlreadyOwnedByYou
+		var existsErr *types.BucketAlreadyExists
+		if !errors.As(createErr, &ownedErr) && !errors.As(createErr, &existsErr) {
+			return nil, fmt.Errorf("create bucket %s: %w", cfg.Bucket, createErr)
+		}
+	}
 
 	if _, err := client.HeadBucket(pingCtx, &s3.HeadBucketInput{Bucket: aws.String(cfg.Bucket)}); err != nil {
 		return nil, fmt.Errorf("head bucket %s: %w", cfg.Bucket, err)
