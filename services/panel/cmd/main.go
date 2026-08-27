@@ -57,8 +57,24 @@ func main() {
 		defer (*redis).Close()
 	}
 
+	s3, err := database.NewS3(
+		connectCtx,
+		database.S3Config{
+			Bucket:   cfg.Database.S3.Bucket,
+			Region:   cfg.Database.S3.Region,
+			Endpoint: cfg.Database.S3.Endpoint,
+		},
+		log,
+	)
+	if err != nil {
+		log.Warn(
+			"s3 is unavailable, continuing without it",
+			zap.Error(err),
+		)
+	}
+
 	setGinMode(cfg.Environment, log)
-	r := newRouter(log, cfg, postgres, redis)
+	r := newRouter(log, cfg, postgres, redis, s3)
 
 	log.Info("starting server", zap.String("address", cfg.Panel.HTTP.Address))
 

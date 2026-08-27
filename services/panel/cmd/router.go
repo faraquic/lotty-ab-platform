@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -18,7 +19,7 @@ import (
 	usersdomain "github.com/faraquic/lotty-ab-platform/services/panel/internal/domain/users"
 )
 
-func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisClient *rueidis.Client) *gin.Engine {
+func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisClient *rueidis.Client, s3Client *s3.Client) *gin.Engine {
 	r := gin.New()
 	r.HandleMethodNotAllowed = true
 

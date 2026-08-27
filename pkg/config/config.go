@@ -49,6 +49,7 @@ type BootstrapConfig struct {
 type DatabaseConfig struct {
 	Postgres PostgresConfig `mapstructure:"postgres"`
 	Redis    RedisConfig    `mapstructure:"redis"`
+	S3       S3Config       `mapstructure:"s3"`
 }
 
 type PostgresConfig struct {
@@ -62,6 +63,12 @@ type RedisConfig struct {
 	Password string `mapstructure:"password"`
 	DB       int    `mapstructure:"db"`
 	PoolSize int    `mapstructure:"pool_size"`
+}
+
+type S3Config struct {
+	Bucket   string `mapstructure:"bucket"`
+	Region   string `mapstructure:"region"`
+	Endpoint string `mapstructure:"endpoint"`
 }
 
 type PanelConfig struct {
@@ -142,6 +149,11 @@ func defaultConfig() *Config {
 				Address:  "localhost:6379",
 				DB:       0,
 				PoolSize: 8,
+			},
+			S3: S3Config{
+				Bucket:   "labp",
+				Region:   "us-east-1",
+				Endpoint: "http://localhost:9000",
 			},
 		},
 		Panel: PanelConfig{

@@ -34,9 +34,17 @@ REDIS_IMAGE      ?= docker.io/library/redis:8-alpine
 REDIS_NAME       ?= labp-redis
 REDIS_PORT       ?= 6379
 
+S3_IMAGE         ?= docker.io/minio/minio:latest
+S3_NAME          ?= labp-s3
+S3_PORT          ?= 9000
+S3_CONSOLE_PORT  ?= 9001
+S3_BUCKET        ?= labp
+S3_ACCESS_KEY    ?= minioadmin
+S3_SECRET_KEY    ?= minioadmin
+
 .PHONY: help
 help:
-	@echo "dev-up    - start all dev containers (PostgreSQL + Redis)"
+	@echo "dev-up    - start all dev containers (PostgreSQL + Redis + S3/MinIO)"
 	@echo "dev-down  - stop and remove all dev containers"
 	@echo "dev-clean - stop all containers and remove their volumes"
 	@echo ""
@@ -60,6 +68,12 @@ help:
 	@echo "redis-logs    - follow Redis logs"
 	@echo "redis-cli     - open redis-cli shell inside container"
 	@echo "redis-clean   - remove Redis container and its volume"
+	@echo ""
+	@echo "S3 (MinIO):"
+	@echo "s3-up      - start MinIO dev container"
+	@echo "s3-down    - stop and remove MinIO container"
+	@echo "s3-logs    - follow MinIO logs"
+	@echo "s3-clean   - remove MinIO container and its volume"
 
 .PHONY: check-engine
 check-engine:
@@ -75,13 +89,13 @@ VOL_OPTS :=
 endif
 
 .PHONY: dev-up
-dev-up: pg-up redis-up
+dev-up: pg-up redis-up s3-up
 
 .PHONY: dev-down
-dev-down: pg-down redis-down
+dev-down: pg-down redis-down s3-down
 
 .PHONY: dev-clean
-dev-clean: pg-clean redis-clean
+dev-clean: pg-clean redis-clean s3-clean
 
 .PHONY: pg-up
 pg-up: check-engine
@@ -153,6 +167,38 @@ redis-cli: check-engine
 .PHONY: redis-clean
 redis-clean: redis-down
 	-$(CONTAINER_ENGINE) volume rm lotty-redisdata
+
+.PHONY: s3-up
+s3-up: check-engine
+	$(CONTAINER_ENGINE) run -d \
+		--replace \
+		--name $(S3_NAME) \
+		-p $(S3_PORT):9000 \
+		-p $(S3_CONSOLE_PORT):9001 \
+		-e MINIO_ROOT_USER=$(S3_ACCESS_KEY) \
+		-e MINIO_ROOT_PASSWORD=$(S3_SECRET_KEY) \
+		-v lotty-s3data:/data$(VOL_OPTS) \
+		--memory=$(MEMORY_LIMIT) \
+		--cpus=$(CPU_LIMIT) \
+		--pids-limit=$(PIDS_LIMIT) \
+		--health-cmd="mc ready local" \
+		--health-interval=5s \
+		--health-timeout=3s \
+		--health-retries=10 \
+		$(S3_IMAGE) \
+	server /data --console-address ":9001"
+
+.PHONY: s3-down
+s3-down: check-engine
+	-$(CONTAINER_ENGINE) rm -f $(S3_NAME)
+
+.PHONY: s3-logs
+s3-logs: check-engine
+	$(CONTAINER_ENGINE) logs -f $(S3_NAME)
+
+.PHONY: s3-clean
+s3-clean: s3-down
+	-$(CONTAINER_ENGINE) volume rm lotty-s3data
 
 .PHONY: pg-migrate-up
 pg-migrate-up:
