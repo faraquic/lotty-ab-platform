@@ -45,6 +45,9 @@ func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisCli
 		log.Fatal("failed to init auth middleware", zap.Error(err))
 	}
 
+	anyAuthGroup := apiV1.Group("", authMW.Handler(nil))
+	usersHandler.RegisterMeRoute(anyAuthGroup)
+
 	adminGroup := apiV1.Group("", authMW.Handler([]usersdomain.Role{usersdomain.RoleAdmin}))
 	usersHandler.RegisterRoutes(adminGroup)
 

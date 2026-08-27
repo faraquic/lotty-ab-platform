@@ -31,6 +31,20 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	}
 }
 
+func (h *Handler) RegisterMeRoute(rg *gin.RouterGroup) {
+	rg.GET("/me", h.me)
+}
+
+func (h *Handler) me(c *gin.Context) {
+	resp, err := h.svc.GetByID(c.Request.Context(), callerID(c))
+	if err != nil {
+		h.respondError(c.Writer, err)
+		return
+	}
+
+	api.OK(c.Writer, resp)
+}
+
 func (h *Handler) create(c *gin.Context) {
 	var req CreateUserRequest
 	if err := api.ValidateRequest(c.Writer, c.Request, &req); err != nil {

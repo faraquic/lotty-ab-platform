@@ -47,7 +47,7 @@ func (s *Service) Login(ctx context.Context, req LoginRequest) (string, time.Tim
 		return "", time.Time{}, err
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.HashPassword)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)); err != nil {
 		s.log.Debug("login failed: password mismatch", zap.Int64("user_id", id))
 		return "", time.Time{}, ErrInvalidCredentials
 	}

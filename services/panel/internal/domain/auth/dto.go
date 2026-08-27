@@ -3,8 +3,8 @@ package auth
 import "time"
 
 type LoginRequest struct {
-	Email        string `json:"email" binding:"required,email"`
-	HashPassword string `json:"hash_password" binding:"required"`
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required"`
 }
 
 type LoginResponse struct {

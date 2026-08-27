@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
   title: Lotty AB Platform — Panel API
-  description: Control plane API for the panel service (users management and authentication).
-  version: 0.2.0
+  description: Control plane API.
+  version: 0.0.0_dev
 
 servers:
   - url: http://localhost:8080/api/panel/v1
@@ -56,7 +56,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/panel/v1/health:
+  /health:
     get:
       tags: [health]
       summary: Liveness probe
@@ -71,7 +71,7 @@ paths:
                 type: string
                 example: OK
 
-  /api/panel/v1/ready:
+  /ready:
     get:
       tags: [health]
       summary: Readiness probe
@@ -90,6 +90,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ReadyResponse'
+
+  /me:
+    get:
+      tags: [users]
+      summary: Get the authenticated user's own profile
+      operationId: getMe
+      responses:
+        '200':
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /users:
     post:
@@ -279,6 +294,18 @@ components:
               code: FORBIDDEN
               message: cannot delete your own account
 
+    Unauthorized:
+      description: Authentication required or token invalid/revoked
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: UNAUTHORIZED
+              message: missing or malformed token
+
     InternalError:
       description: Internal server error
       content:
@@ -298,10 +325,10 @@ components:
         email:
           type: string
           format: email
-        hash_password:
+        password:
           type: string
           format: password
-      required: [email, hash_password]
+      required: [email, password]
 
     LoginResponse:
       type: object
