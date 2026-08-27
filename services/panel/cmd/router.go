@@ -27,7 +27,7 @@ func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisCli
 
 	apiV1 := r.Group("/api/panel/v1")
 
-	healthdomain.NewHandler(pool, redisClient, cfg.Environment).RegisterRoutes(apiV1)
+	healthdomain.NewHandler(pool, redisClient, s3Client, cfg.Environment).RegisterRoutes(apiV1)
 
 	tokenizer := libauth.NewJWTManager(cfg.Auth.JWT.SecretKey, cfg.Auth.JWT.TTL)
 	authRepo := authdomain.NewRepository(pool)

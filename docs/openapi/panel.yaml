@@ -480,4 +480,6 @@ components:
               $ref: '#/components/schemas/ComponentStatus'
             cache:
               $ref: '#/components/schemas/ComponentStatus'
+            storage:
+              $ref: '#/components/schemas/ComponentStatus'
       required: [service, version, environment, timestamp, components]

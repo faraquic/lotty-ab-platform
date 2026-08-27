@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/faraquic/lotty-ab-platform/pkg/config"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -14,13 +15,15 @@ import (
 type Handler struct {
 	pool        *pgxpool.Pool
 	redis       *rueidis.Client
+	s3          *s3.Client
 	environment string
 }
 
-func NewHandler(pool *pgxpool.Pool, redis *rueidis.Client, environment string) *Handler {
+func NewHandler(pool *pgxpool.Pool, redis *rueidis.Client, s3 *s3.Client, environment string) *Handler {
 	return &Handler{
 		pool:        pool,
 		redis:       redis,
+		s3:          s3,
 		environment: environment,
 	}
 }
@@ -45,6 +48,7 @@ func (h *Handler) ready(c *gin.Context) {
 
 	db := h.checkDatabase(ctx)
 	cache := h.checkCache(ctx)
+	storage := h.checkS3(ctx)
 
 	resp := ReadyResponse{
 		Service:     config.ServiceName,
@@ -55,6 +59,7 @@ func (h *Handler) ready(c *gin.Context) {
 			"service":  {Status: StatusOK},
 			"database": db,
 			"cache":    cache,
+			"storage":  storage,
 		},
 	}
 
@@ -84,6 +89,18 @@ func (h *Handler) checkCache(ctx context.Context) ComponentStatus {
 	}
 
 	if err := (*h.redis).Do(ctx, (*h.redis).B().Ping().Build()).Error(); err != nil {
+		return ComponentStatus{Status: StatusUnavailable, Message: err.Error()}
+	}
+
+	return ComponentStatus{Status: StatusOK}
+}
+
+func (h *Handler) checkS3(ctx context.Context) ComponentStatus {
+	if h.s3 == nil {
+		return ComponentStatus{Status: StatusUnavailable, Message: "s3 not connected"}
+	}
+
+	if _, err := h.s3.ListBuckets(ctx, &s3.ListBucketsInput{}); err != nil {
 		return ComponentStatus{Status: StatusUnavailable, Message: err.Error()}
 	}
 
