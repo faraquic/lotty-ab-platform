@@ -227,12 +227,16 @@ func (s *Service) UploadAvatar(ctx context.Context, userID int64, file *multipar
 		return UserResponse{}, ErrStorageUnavailable
 	}
 
+	if file.Size == 0 {
+		return UserResponse{}, ErrInvalidFileType
+	}
+
 	if file.Size > maxAvatarSize {
 		return UserResponse{}, ErrFileTooLarge
 	}
 
 	ext := ExtFromFilename(file.Filename)
-	if !allowedAvatarTypes[ext] {
+	if ext == "" || !allowedAvatarTypes[ext] {
 		return UserResponse{}, ErrInvalidFileType
 	}
 
@@ -264,6 +268,29 @@ func (s *Service) UploadAvatar(ctx context.Context, userID int64, file *multipar
 	}
 
 	if err := s.repo.UpdateAvatarURL(ctx, userID, avatarURL); err != nil {
+		return UserResponse{}, err
+	}
+
+	return s.GetByID(ctx, userID)
+}
+
+func (s *Service) DeleteAvatar(ctx context.Context, userID int64) (UserResponse, error) {
+	user, err := s.repo.GetByID(ctx, userID)
+	if err != nil {
+		return UserResponse{}, err
+	}
+
+	if user.AvatarURL == "" {
+		return toResponse(user), nil
+	}
+
+	if s.storage != nil {
+		if err := s.storage.DeleteAvatar(ctx, user.AvatarURL); err != nil {
+			s.log.Warn("failed to delete avatar from storage", zap.Error(err))
+		}
+	}
+
+	if err := s.repo.UpdateAvatarURL(ctx, userID, ""); err != nil {
 		return UserResponse{}, err
 	}
 

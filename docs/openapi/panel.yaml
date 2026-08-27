@@ -106,9 +106,13 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /me/avatar:
     post:
       tags: [users]
-      summary: Upload the authenticated user's avatar
+      summary: Upload or delete the authenticated user's avatar
+      description: |
+        Upload a new avatar by sending a file in the `avatar` field.
+        Delete the avatar by sending an empty `avatar` field or omitting it entirely.
       operationId: uploadMyAvatar
       requestBody:
         required: true
@@ -123,7 +127,7 @@ paths:
               required: [avatar]
       responses:
         '200':
-          description: Avatar uploaded, user profile returned
+          description: Avatar uploaded or deleted, user profile returned
           content:
             application/json:
               schema:
@@ -280,7 +284,10 @@ paths:
 
     post:
       tags: [users]
-      summary: Upload a user's avatar (admin only)
+      summary: Upload or delete a user's avatar (admin only)
+      description: |
+        Upload a new avatar by sending a file in the `avatar` field.
+        Delete the avatar by sending an empty `avatar` field or omitting it entirely.
       operationId: uploadUserAvatar
       requestBody:
         required: true
@@ -295,7 +302,7 @@ paths:
               required: [avatar]
       responses:
         '200':
-          description: Avatar uploaded, user profile returned
+          description: Avatar uploaded or deleted, user profile returned
           content:
             application/json:
               schema:
@@ -397,9 +404,11 @@ components:
       properties:
         email:
           type: string
+          example: root@labp.net
           format: email
         password:
           type: string
+          example: root!@#$
           format: password
       required: [email, password]
 

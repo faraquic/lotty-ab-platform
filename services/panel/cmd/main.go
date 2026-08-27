@@ -60,9 +60,11 @@ func main() {
 	s3, err := database.NewS3(
 		connectCtx,
 		database.S3Config{
-			Bucket:   cfg.Database.S3.Bucket,
-			Region:   cfg.Database.S3.Region,
-			Endpoint: cfg.Database.S3.Endpoint,
+			Bucket:    cfg.Database.S3.Bucket,
+			Region:    cfg.Database.S3.Region,
+			Endpoint:  cfg.Database.S3.Endpoint,
+			AccessKey: cfg.Database.S3.AccessKey,
+			SecretKey: cfg.Database.S3.SecretKey,
 		},
 		log,
 	)

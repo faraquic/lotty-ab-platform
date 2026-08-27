@@ -155,8 +155,13 @@ func (h *Handler) uploadMyAvatar(c *gin.Context) {
 
 func (h *Handler) handleAvatarUpload(c *gin.Context, userID int64) {
 	file, err := c.FormFile("avatar")
-	if err != nil {
-		api.Error(c.Writer, http.StatusBadRequest, api.BadRequest, "missing avatar file")
+	if err != nil || file.Size == 0 {
+		resp, err := h.svc.DeleteAvatar(c.Request.Context(), userID)
+		if err != nil {
+			h.respondError(c.Writer, err)
+			return
+		}
+		api.OK(c.Writer, resp)
 		return
 	}
 

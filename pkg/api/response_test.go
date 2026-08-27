@@ -1,11 +1,12 @@
 package api_test
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/goccy/go-json"
 
 	"github.com/faraquic/lotty-ab-platform/pkg/api"
 )

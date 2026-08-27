@@ -66,9 +66,11 @@ type RedisConfig struct {
 }
 
 type S3Config struct {
-	Bucket   string `mapstructure:"bucket"`
-	Region   string `mapstructure:"region"`
-	Endpoint string `mapstructure:"endpoint"`
+	Bucket    string `mapstructure:"bucket"`
+	Region    string `mapstructure:"region"`
+	Endpoint  string `mapstructure:"endpoint"`
+	AccessKey string `mapstructure:"access_key"`
+	SecretKey string `mapstructure:"secret_key"`
 }
 
 type PanelConfig struct {
@@ -150,11 +152,13 @@ func defaultConfig() *Config {
 				DB:       0,
 				PoolSize: 8,
 			},
-			S3: S3Config{
-				Bucket:   "labp",
-				Region:   "us-east-1",
-				Endpoint: "http://localhost:9000",
-			},
+		S3: S3Config{
+			Bucket:    "labp",
+			Region:    "us-east-1",
+			Endpoint:  "http://localhost:9000",
+			AccessKey: "minioadmin",
+			SecretKey: "minioadmin",
+		},
 		},
 		Panel: PanelConfig{
 			HTTP: HTTPConfig{

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/goccy/go-json"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -13,9 +15,11 @@ import (
 )
 
 type S3Config struct {
-	Bucket   string
-	Region   string
-	Endpoint string // optional: S3-compatible endpoint (MinIO, etc.)
+	Bucket    string
+	Region    string
+	Endpoint  string
+	AccessKey string
+	SecretKey string
 }
 
 func NewS3(ctx context.Context, cfg S3Config, log *zap.Logger) (*s3.Client, error) {
@@ -26,6 +30,16 @@ func NewS3(ctx context.Context, cfg S3Config, log *zap.Logger) (*s3.Client, erro
 	opts := []func(*awsconfig.LoadOptions) error{}
 	if cfg.Region != "" {
 		opts = append(opts, awsconfig.WithRegion(cfg.Region))
+	}
+	if cfg.AccessKey != "" && cfg.SecretKey != "" {
+		opts = append(opts, awsconfig.WithCredentialsProvider(
+			aws.CredentialsProviderFunc(func(ctx context.Context) (aws.Credentials, error) {
+				return aws.Credentials{
+					AccessKeyID:     cfg.AccessKey,
+					SecretAccessKey: cfg.SecretKey,
+				}, nil
+			}),
+		))
 	}
 
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx, opts...)
@@ -64,7 +78,36 @@ func NewS3(ctx context.Context, cfg S3Config, log *zap.Logger) (*s3.Client, erro
 		return nil, fmt.Errorf("head bucket %s: %w", cfg.Bucket, err)
 	}
 
-	log.Info("connected to s3",
+	policyCtx, policyCancel := context.WithTimeout(ctx, pingTimeout)
+	defer policyCancel()
+
+	publicReadPolicy := map[string]any{
+		"Version": "2012-10-17",
+		"Statement": []map[string]any{
+			{
+				"Sid":       "PublicReadAvatars",
+				"Effect":    "Allow",
+				"Principal": "*",
+				"Action":    "s3:GetObject",
+				"Resource":  fmt.Sprintf("arn:aws:s3:::%s/avatars/*", cfg.Bucket),
+			},
+		},
+	}
+
+	policyBytes, err := json.Marshal(publicReadPolicy)
+	if err != nil {
+		return nil, fmt.Errorf("marshal bucket policy: %w", err)
+	}
+
+	if _, err := client.PutBucketPolicy(policyCtx, &s3.PutBucketPolicyInput{
+		Bucket: aws.String(cfg.Bucket),
+		Policy: aws.String(string(policyBytes)),
+	}); err != nil {
+		log.Warn("failed to set bucket policy, avatars may not be publicly accessible", zap.Error(err))
+	}
+
+	log.Info(
+		"connected to s3",
 		zap.String("bucket", cfg.Bucket),
 		zap.String("region", cfg.Region),
 		zap.String("endpoint", cfg.Endpoint),
