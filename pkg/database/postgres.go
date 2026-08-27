@@ -26,6 +26,9 @@ func NewPostgres(ctx context.Context, dsn string, maxConns int32, minConns int32
 	cfg.MinConns = minConns
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("create postgres pool: %w", err)
+	}
 
 	pingCtx, cancel := context.WithTimeout(ctx, pingTimeout)
 	defer cancel()
@@ -35,7 +38,8 @@ func NewPostgres(ctx context.Context, dsn string, maxConns int32, minConns int32
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
 
-	log.Info("connected to postgres",
+	log.Info(
+		"connected to postgres",
 		zap.String("host", cfg.ConnConfig.Host),
 		zap.Uint16("port", cfg.ConnConfig.Port),
 		zap.String("database", cfg.ConnConfig.Database),

@@ -36,7 +36,11 @@ func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisCli
 	authHandler.RegisterRoutes(apiV1)
 
 	repo := usersdomain.NewRepository(pool)
-	svc := usersdomain.NewService(repo, authSvc, log)
+	var storage usersdomain.Storage
+	if s3Client != nil {
+		storage = usersdomain.NewS3Storage(s3Client, cfg.Database.S3.Bucket, cfg.Database.S3.Endpoint)
+	}
+	svc := usersdomain.NewService(repo, authSvc, storage, log)
 	usersHandler := usersdomain.NewHandler(svc, log)
 
 	bootstrapAdmin(log, svc, cfg.Auth.Bootstrap)

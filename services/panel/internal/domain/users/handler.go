@@ -28,11 +28,13 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 		users.GET("/:id", h.getByID)
 		users.PATCH("/:id", h.update)
 		users.DELETE("/:id", h.delete)
+		users.POST("/:id/avatar", h.uploadAvatar)
 	}
 }
 
 func (h *Handler) RegisterMeRoute(rg *gin.RouterGroup) {
 	rg.GET("/me", h.me)
+	rg.POST("/me/avatar", h.uploadMyAvatar)
 }
 
 func (h *Handler) me(c *gin.Context) {
@@ -94,8 +96,6 @@ func (h *Handler) getByID(c *gin.Context) {
 	api.OK(c.Writer, resp)
 }
 
-// CtxUserIDKey is set by the auth middleware after token verification;
-// handlers read the caller's id from it.
 const CtxUserIDKey = "user_id"
 
 func callerID(c *gin.Context) int64 {
@@ -140,6 +140,35 @@ func (h *Handler) delete(c *gin.Context) {
 	c.Writer.WriteHeader(http.StatusNoContent)
 }
 
+func (h *Handler) uploadAvatar(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+
+	h.handleAvatarUpload(c, id)
+}
+
+func (h *Handler) uploadMyAvatar(c *gin.Context) {
+	h.handleAvatarUpload(c, callerID(c))
+}
+
+func (h *Handler) handleAvatarUpload(c *gin.Context, userID int64) {
+	file, err := c.FormFile("avatar")
+	if err != nil {
+		api.Error(c.Writer, http.StatusBadRequest, api.BadRequest, "missing avatar file")
+		return
+	}
+
+	resp, err := h.svc.UploadAvatar(c.Request.Context(), userID, file)
+	if err != nil {
+		h.respondError(c.Writer, err)
+		return
+	}
+
+	api.OK(c.Writer, resp)
+}
+
 func parseID(c *gin.Context) (int64, bool) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || id < 1 {
@@ -162,6 +191,10 @@ func (h *Handler) respondError(w http.ResponseWriter, err error) {
 		api.Error(w, http.StatusForbidden, "FORBIDDEN", err.Error())
 	case errors.Is(err, ErrLastAdmin):
 		api.Error(w, http.StatusConflict, "CONFLICT", err.Error())
+	case errors.Is(err, ErrInvalidFileType), errors.Is(err, ErrFileTooLarge):
+		api.Error(w, http.StatusBadRequest, api.BadRequest, err.Error())
+	case errors.Is(err, ErrStorageUnavailable):
+		api.Error(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", err.Error())
 	default:
 		h.log.Error("internal error", zap.Error(err))
 		api.InternalError(w)

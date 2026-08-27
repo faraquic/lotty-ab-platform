@@ -106,6 +106,35 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+    post:
+      tags: [users]
+      summary: Upload the authenticated user's avatar
+      operationId: uploadMyAvatar
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+              required: [avatar]
+      responses:
+        '200':
+          description: Avatar uploaded, user profile returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /users:
     post:
       tags: [users]
@@ -235,6 +264,50 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /users/{id}/avatar:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: User ID
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+
+    post:
+      tags: [users]
+      summary: Upload a user's avatar (admin only)
+      operationId: uploadUserAvatar
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+              required: [avatar]
+      responses:
+        '200':
+          description: Avatar uploaded, user profile returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -368,6 +441,10 @@ components:
           format: email
         role:
           $ref: '#/components/schemas/Role'
+        avatar_url:
+          type: string
+          format: uri
+          nullable: true
         created_at:
           type: string
           format: date-time

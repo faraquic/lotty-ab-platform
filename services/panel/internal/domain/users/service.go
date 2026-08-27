@@ -4,16 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"mime/multipart"
 
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 )
 
 var (
-	ErrInvalidRole    = errors.New("invalid role")
-	ErrSelfRoleChange = errors.New("cannot change your own role")
-	ErrSelfDelete     = errors.New("cannot delete your own account")
-	ErrLastAdmin      = errors.New("cannot remove the last admin")
+	ErrInvalidRole        = errors.New("invalid role")
+	ErrSelfRoleChange     = errors.New("cannot change your own role")
+	ErrSelfDelete         = errors.New("cannot delete your own account")
+	ErrLastAdmin          = errors.New("cannot remove the last admin")
+	ErrInvalidFileType    = errors.New("unsupported file type; allowed: jpeg, png, webp")
+	ErrFileTooLarge       = errors.New("file too large; maximum 5 MB")
+	ErrStorageUnavailable = errors.New("storage unavailable")
 )
 
 type UserRepo interface {
@@ -22,6 +26,7 @@ type UserRepo interface {
 	List(ctx context.Context, limit, offset int) ([]User, error)
 	Update(ctx context.Context, id int64, email *string, role *Role) (User, error)
 	Delete(ctx context.Context, id int64) error
+	UpdateAvatarURL(ctx context.Context, id int64, avatarURL string) error
 	Count(ctx context.Context) (int64, error)
 	CountAdmins(ctx context.Context) (int64, error)
 }
@@ -35,11 +40,12 @@ type SessionRevoker interface {
 type Service struct {
 	repo    UserRepo
 	revoker SessionRevoker
+	storage Storage
 	log     *zap.Logger
 }
 
-func NewService(repo UserRepo, revoker SessionRevoker, log *zap.Logger) *Service {
-	return &Service{repo: repo, revoker: revoker, log: log}
+func NewService(repo UserRepo, revoker SessionRevoker, storage Storage, log *zap.Logger) *Service {
+	return &Service{repo: repo, revoker: revoker, storage: storage, log: log}
 }
 
 func (s *Service) Create(ctx context.Context, req CreateUserRequest) (UserResponse, error) {
@@ -177,8 +183,6 @@ func (s *Service) Delete(ctx context.Context, callerID, id int64) error {
 	return nil
 }
 
-// EnsureBootstrapAdmin creates the first admin when the users table is empty.
-// Safe to call on every startup; a no-op once any user exists.
 func (s *Service) EnsureBootstrapAdmin(ctx context.Context, username, email, password string) (bool, error) {
 	if len(password) < 8 {
 		return false, errors.New("bootstrap password must be at least 8 characters")
@@ -207,6 +211,63 @@ func (s *Service) EnsureBootstrapAdmin(ctx context.Context, username, email, pas
 	s.log.Info("bootstrap admin created", zap.Int64("id", resp.ID), zap.String("email", email))
 
 	return true, nil
+}
+
+const maxAvatarSize = 5 << 20 // 5 MB
+
+var allowedAvatarTypes = map[string]bool{
+	".jpeg": true,
+	".jpg":  true,
+	".png":  true,
+	".webp": true,
+}
+
+func (s *Service) UploadAvatar(ctx context.Context, userID int64, file *multipart.FileHeader) (UserResponse, error) {
+	if s.storage == nil {
+		return UserResponse{}, ErrStorageUnavailable
+	}
+
+	if file.Size > maxAvatarSize {
+		return UserResponse{}, ErrFileTooLarge
+	}
+
+	ext := ExtFromFilename(file.Filename)
+	if !allowedAvatarTypes[ext] {
+		return UserResponse{}, ErrInvalidFileType
+	}
+
+	src, err := file.Open()
+	if err != nil {
+		return UserResponse{}, fmt.Errorf("open uploaded file: %w", err)
+	}
+	defer src.Close()
+
+	buf := make([]byte, file.Size)
+	if _, err := src.Read(buf); err != nil {
+		return UserResponse{}, fmt.Errorf("read uploaded file: %w", err)
+	}
+
+	user, err := s.repo.GetByID(ctx, userID)
+	if err != nil {
+		return UserResponse{}, err
+	}
+
+	if user.AvatarURL != "" {
+		if err := s.storage.DeleteAvatar(ctx, user.AvatarURL); err != nil {
+			s.log.Warn("failed to delete old avatar", zap.Error(err))
+		}
+	}
+
+	avatarURL, err := s.storage.UploadAvatar(ctx, userID, ext, buf)
+	if err != nil {
+		return UserResponse{}, fmt.Errorf("upload avatar: %w", err)
+	}
+
+	if err := s.repo.UpdateAvatarURL(ctx, userID, avatarURL); err != nil {
+		return UserResponse{}, err
+	}
+
+	return s.GetByID(ctx, userID)
 }
 
 func (s *Service) revokeSessions(ctx context.Context, userID int64) error {
