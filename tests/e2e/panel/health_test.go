@@ -113,25 +113,10 @@ func TestHealth_ReadinessNoSecretsInResponse(t *testing.T) {
 	resp := doRequest(http.MethodGet, "/api/panel/v1/ready", "", nil)
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
-	s := string(body)
-
-	leaked := []string{
-		"postgres://",
-		"lottypassword",
-		"minioadmin",
-		"secret_key",
-		"access_key",
-		"e2e-test-secret",
-		"localhost:5433",
-		"localhost:6379",
-		"localhost:9000",
-	}
-	for _, pattern := range leaked {
-		if strings.Contains(s, pattern) {
-			t.Errorf("response leaks sensitive data: contains %q", pattern)
-		}
-	}
+	requireNoSensitiveFields(t, resp,
+		"postgres://", "lottypassword", "minioadmin", "secret_key",
+		"access_key", "e2e-test-secret", "localhost:5433", "localhost:6379", "localhost:9000",
+	)
 }
 
 func TestHealth_ReadinessRedisUnavailable(t *testing.T) {

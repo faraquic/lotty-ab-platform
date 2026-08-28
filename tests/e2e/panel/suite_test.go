@@ -39,6 +39,65 @@ const (
 	e2eS3Endpoint  = "http://localhost:9000"
 )
 
+type errorResponse struct {
+	Success bool `json:"success"`
+	Error   struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+type meResponse struct {
+	Success bool `json:"success"`
+	Data    struct {
+		ID        int64   `json:"id"`
+		Username  string  `json:"username"`
+		Email     string  `json:"email"`
+		Role      string  `json:"role"`
+		AvatarURL *string `json:"avatar_url"`
+	} `json:"data"`
+}
+
+type userResponse struct {
+	Success bool `json:"success"`
+	Data    struct {
+		ID        int64   `json:"id"`
+		Username  string  `json:"username"`
+		Email     string  `json:"email"`
+		Role      string  `json:"role"`
+		AvatarURL *string `json:"avatar_url"`
+		CreatedAt string  `json:"created_at"`
+		UpdatedAt string  `json:"updated_at"`
+	} `json:"data"`
+}
+
+type usersResponse struct {
+	Success bool `json:"success"`
+	Data    []struct {
+		ID    int64  `json:"id"`
+		Email string `json:"email"`
+	} `json:"data"`
+}
+
+type loginResponse struct {
+	Success bool `json:"success"`
+	Data    struct {
+		Token     string `json:"token"`
+		ExpiresAt string `json:"expires_at"`
+	} `json:"data"`
+}
+
+type avatarResponse struct {
+	Success bool `json:"success"`
+	Data    struct {
+		AvatarURL *string `json:"avatar_url"`
+	} `json:"data"`
+	Error *struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	} `json:"error,omitempty"`
+}
+
 func TestMain(m *testing.M) {
 	os.Exit(runSuite(m))
 }
@@ -205,49 +264,7 @@ func testUsername(prefix string) string {
 	return fmt.Sprintf("%s-%s", prefix, runID)
 }
 
-func createUser(t *testing.T, role, prefix string) (int64, string) {
-	t.Helper()
-	email := testEmail(prefix)
-	body := jsonBody(map[string]string{
-		"username": testUsername(prefix),
-		"email":    email,
-		"password": "testpass123",
-		"role":     role,
-	})
-	resp := doRequest(http.MethodPost, "/api/panel/v1/users", adminToken, body)
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("createUser(%s): expected 200, got %d", prefix, resp.StatusCode)
-	}
-
-	var result struct {
-		Data struct {
-			ID int64 `json:"id"`
-		} `json:"data"`
-	}
-	decodeJSON(resp, &result)
-
-	return result.Data.ID, email
-}
-
-func login(email, password string) string {
-	body := jsonBody(map[string]string{"email": email, "password": password})
-	resp := doRequest(http.MethodPost, "/api/panel/v1/login", "", body)
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return ""
-	}
-
-	var result struct {
-		Data struct {
-			Token string `json:"token"`
-		} `json:"data"`
-	}
-	json.NewDecoder(resp.Body).Decode(&result)
-	return result.Data.Token
-}
+// --- request helpers ---
 
 func jsonBody(v interface{}) io.Reader {
 	b, _ := json.Marshal(v)
@@ -300,17 +317,185 @@ func doMultipartRequest(path, token, fieldName, filename string, fileData []byte
 	return resp
 }
 
+func doRequestWithAuth(t *testing.T, method, path string, setAuth bool, authValue string, body io.Reader) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(method, baseURL+path, body)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if setAuth {
+		req.Header.Set("Authorization", authValue)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do request %s %s: %v", method, path, err)
+	}
+	return resp
+}
+
+func doRequestWithRawBody(method, path, token string, body io.Reader) *http.Response {
+	req, err := http.NewRequest(method, baseURL+path, body)
+	if err != nil {
+		panic(fmt.Sprintf("create request: %v", err))
+	}
+
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		panic(fmt.Sprintf("do request %s %s: %v", method, path, err))
+	}
+	return resp
+}
+
+// --- domain request helpers ---
+
+func getMe(t *testing.T, token string) *http.Response {
+	t.Helper()
+	return doRequest(http.MethodGet, "/api/panel/v1/me", token, nil)
+}
+
+func getUser(t *testing.T, id int64) *http.Response {
+	t.Helper()
+	return doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/users/%d", id), adminToken, nil)
+}
+
+func updateUser(t *testing.T, id int64, body io.Reader) *http.Response {
+	t.Helper()
+	return doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/users/%d", id), adminToken, body)
+}
+
+func deleteUser(t *testing.T, id int64) *http.Response {
+	t.Helper()
+	return doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/users/%d", id), adminToken, nil)
+}
+
+func uploadAvatar(t *testing.T, token, filename string, data []byte) *http.Response {
+	t.Helper()
+	return doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", filename, data)
+}
+
+func deleteAvatar(t *testing.T, token string) *http.Response {
+	t.Helper()
+	return doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "", nil)
+}
+
+func uploadUserAvatar(t *testing.T, token string, userID int64, filename string, data []byte) *http.Response {
+	t.Helper()
+	return doMultipartRequest(fmt.Sprintf("/api/panel/v1/users/%d/avatar", userID), token, "avatar", filename, data)
+}
+
+func deleteUserAvatar(t *testing.T, token string, userID int64) *http.Response {
+	t.Helper()
+	return doMultipartRequest(fmt.Sprintf("/api/panel/v1/users/%d/avatar", userID), token, "avatar", "", nil)
+}
+
+// --- setup helpers ---
+
+func createUser(t *testing.T, role, prefix string) (int64, string) {
+	t.Helper()
+	email := testEmail(prefix)
+	body := jsonBody(map[string]string{
+		"username": testUsername(prefix),
+		"email":    email,
+		"password": "testpass123",
+		"role":     role,
+	})
+	resp := doRequest(http.MethodPost, "/api/panel/v1/users", adminToken, body)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("createUser(%s): expected 200, got %d", prefix, resp.StatusCode)
+	}
+
+	var result struct {
+		Data struct {
+			ID int64 `json:"id"`
+		} `json:"data"`
+	}
+	decodeJSON(resp, &result)
+
+	return result.Data.ID, email
+}
+
+func createAndLoginUser(t *testing.T, role, prefix string) (int64, string, string) {
+	t.Helper()
+	id, email := createUser(t, role, prefix)
+	token := login(email, "testpass123")
+	if token == "" {
+		t.Fatalf("login failed for %s", prefix)
+	}
+	return id, email, token
+}
+
+func login(email, password string) string {
+	body := jsonBody(map[string]string{"email": email, "password": password})
+	resp := doRequest(http.MethodPost, "/api/panel/v1/login", "", body)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+
+	var result struct {
+		Data struct {
+			Token string `json:"token"`
+		} `json:"data"`
+	}
+	json.NewDecoder(resp.Body).Decode(&result)
+	return result.Data.Token
+}
+
+// --- response decoders ---
+
 func decodeJSON(resp *http.Response, v interface{}) {
 	json.NewDecoder(resp.Body).Decode(v)
 }
 
-type errorResponse struct {
-	Success bool `json:"success"`
-	Error   struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
-	} `json:"error"`
+func decodeLoginResponse(t *testing.T, resp *http.Response) loginResponse {
+	t.Helper()
+	var r loginResponse
+	decodeJSON(resp, &r)
+	return r
 }
+
+func decodeMeResponse(t *testing.T, resp *http.Response) meResponse {
+	t.Helper()
+	var r meResponse
+	decodeJSON(resp, &r)
+	return r
+}
+
+func decodeUserResponse(t *testing.T, resp *http.Response) userResponse {
+	t.Helper()
+	var r userResponse
+	decodeJSON(resp, &r)
+	return r
+}
+
+func decodeUsersResponse(t *testing.T, resp *http.Response) usersResponse {
+	t.Helper()
+	var r usersResponse
+	decodeJSON(resp, &r)
+	return r
+}
+
+func decodeAvatarResponse(t *testing.T, resp *http.Response) avatarResponse {
+	t.Helper()
+	var r avatarResponse
+	decodeJSON(resp, &r)
+	return r
+}
+
+// --- assertion helpers ---
 
 func requireStatus(t *testing.T, resp *http.Response, want int) {
 	t.Helper()
@@ -344,24 +529,36 @@ func requireErrorResponse(t *testing.T, resp *http.Response, wantStatus int, wan
 	return result
 }
 
-func doRequestWithAuth(t *testing.T, method, path string, setAuth bool, authValue string, body io.Reader) *http.Response {
+func requireNoSensitiveFields(t *testing.T, resp *http.Response, fields ...string) {
 	t.Helper()
-	req, err := http.NewRequest(method, baseURL+path, body)
-	if err != nil {
-		t.Fatalf("create request: %v", err)
+	body, _ := io.ReadAll(resp.Body)
+	s := string(body)
+	for _, pattern := range fields {
+		if strings.Contains(s, pattern) {
+			t.Errorf("response leaks sensitive data: contains %q", pattern)
+		}
 	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	if setAuth {
-		req.Header.Set("Authorization", authValue)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("do request %s %s: %v", method, path, err)
-	}
-	return resp
 }
+
+func requireAvatarURL(t *testing.T, result avatarResponse) *string {
+	t.Helper()
+	if result.Data.AvatarURL == nil {
+		t.Fatal("expected avatar_url to be set")
+	}
+	if !strings.Contains(*result.Data.AvatarURL, "avatars/") {
+		t.Errorf("avatar_url does not contain expected path: %s", *result.Data.AvatarURL)
+	}
+	return result.Data.AvatarURL
+}
+
+func requireNoAvatarURL(t *testing.T, result avatarResponse) {
+	t.Helper()
+	if result.Data.AvatarURL != nil {
+		t.Errorf("expected avatar_url null, got %s", *result.Data.AvatarURL)
+	}
+}
+
+// --- health test helpers ---
 
 func waitForServer(url string) {
 	deadline := time.Now().Add(30 * time.Second)

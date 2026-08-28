@@ -48,143 +48,78 @@ var smallWebP = []byte{
 	0x00, 0x00, 0x01, 0x00, 0x01, 0x80, 0x00, 0x00,
 }
 
-type avatarUploadResult struct {
-	Data struct {
-		AvatarURL *string `json:"avatar_url"`
-	} `json:"data"`
-	Success bool `json:"success"`
-	Error   *struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
-	} `json:"error,omitempty"`
-}
-
 func TestAvatar_SelfUploadAndDelete(t *testing.T) {
-	_, email := createUser(t, "viewer", "av-self")
-	token := login(email, "testpass123")
-	if token == "" {
-		t.Fatal("login failed")
-	}
+	_, _, token := createAndLoginUser(t, "viewer", "av-self")
 
-	uploadResp := doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "avatar.png", smallPNG)
+	uploadResp := uploadAvatar(t, token, "avatar.png", smallPNG)
 	defer uploadResp.Body.Close()
 
 	requireStatus(t, uploadResp, http.StatusOK)
+	upload := decodeAvatarResponse(t, uploadResp)
+	avatarURL := requireAvatarURL(t, upload)
 
-	var upload avatarUploadResult
-	decodeJSON(uploadResp, &upload)
-
-	if !upload.Success {
-		t.Fatalf("upload response: success=false, error=%v", upload.Error)
-	}
-	if upload.Data.AvatarURL == nil {
-		t.Fatal("expected avatar_url to be set after upload")
-	}
-	if !strings.Contains(*upload.Data.AvatarURL, "avatars/") {
-		t.Errorf("avatar_url does not contain expected path: %s", *upload.Data.AvatarURL)
-	}
-
-	getResp := doRequest(http.MethodGet, "/api/panel/v1/me", token, nil)
+	getResp := getMe(t, token)
 	defer getResp.Body.Close()
-
-	var me struct {
-		Data struct {
-			AvatarURL *string `json:"avatar_url"`
-		} `json:"data"`
-	}
-	decodeJSON(getResp, &me)
+	me := decodeMeResponse(t, getResp)
 
 	if me.Data.AvatarURL == nil {
 		t.Fatal("avatar_url not visible via GET /me")
 	}
-	if *me.Data.AvatarURL != *upload.Data.AvatarURL {
-		t.Errorf("avatar_url mismatch: upload=%s, me=%s", *upload.Data.AvatarURL, *me.Data.AvatarURL)
+	if *me.Data.AvatarURL != *avatarURL {
+		t.Errorf("avatar_url mismatch: upload=%s, me=%s", *avatarURL, *me.Data.AvatarURL)
 	}
 
-	delResp := doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "", nil)
+	delResp := deleteAvatar(t, token)
 	defer delResp.Body.Close()
 
 	requireStatus(t, delResp, http.StatusOK)
-
-	var del avatarUploadResult
-	decodeJSON(delResp, &del)
-
-	if del.Data.AvatarURL != nil {
-		t.Errorf("expected avatar_url null after delete, got %s", *del.Data.AvatarURL)
-	}
+	requireNoAvatarURL(t, decodeAvatarResponse(t, delResp))
 }
 
 func TestAvatar_AdminUploadAndDeleteForUser(t *testing.T) {
 	id, _ := createUser(t, "viewer", "av-admin-target")
 
-	uploadResp := doMultipartRequest(fmt.Sprintf("/api/panel/v1/users/%d/avatar", id), adminToken, "avatar", "avatar.png", smallPNG)
+	uploadResp := uploadUserAvatar(t, adminToken, id, "avatar.png", smallPNG)
 	defer uploadResp.Body.Close()
 
 	requireStatus(t, uploadResp, http.StatusOK)
+	upload := decodeAvatarResponse(t, uploadResp)
+	avatarURL := requireAvatarURL(t, upload)
 
-	var upload avatarUploadResult
-	decodeJSON(uploadResp, &upload)
-
-	if upload.Data.AvatarURL == nil {
-		t.Fatal("expected avatar_url to be set after admin upload")
-	}
-
-	getResp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/users/%d", id), adminToken, nil)
+	getResp := getUser(t, id)
 	defer getResp.Body.Close()
-
-	var user struct {
-		Data struct {
-			AvatarURL *string `json:"avatar_url"`
-		} `json:"data"`
-	}
-	decodeJSON(getResp, &user)
+	user := decodeUserResponse(t, getResp)
 
 	if user.Data.AvatarURL == nil {
 		t.Fatal("avatar_url not visible via GET /users/:id")
 	}
-	if *user.Data.AvatarURL != *upload.Data.AvatarURL {
-		t.Errorf("avatar_url mismatch: upload=%s, get=%s", *upload.Data.AvatarURL, *user.Data.AvatarURL)
+	if *user.Data.AvatarURL != *avatarURL {
+		t.Errorf("avatar_url mismatch: upload=%s, get=%s", *avatarURL, *user.Data.AvatarURL)
 	}
 
-	delResp := doMultipartRequest(fmt.Sprintf("/api/panel/v1/users/%d/avatar", id), adminToken, "avatar", "", nil)
+	delResp := deleteUserAvatar(t, adminToken, id)
 	defer delResp.Body.Close()
 
 	requireStatus(t, delResp, http.StatusOK)
-
-	var del avatarUploadResult
-	decodeJSON(delResp, &del)
-
-	if del.Data.AvatarURL != nil {
-		t.Errorf("expected avatar_url null after delete, got %s", *del.Data.AvatarURL)
-	}
+	requireNoAvatarURL(t, decodeAvatarResponse(t, delResp))
 }
 
 func TestAvatar_UploadReplacesExisting(t *testing.T) {
-	_, email := createUser(t, "viewer", "av-replace")
-	token := login(email, "testpass123")
-	if token == "" {
-		t.Fatal("login failed")
-	}
+	_, _, token := createAndLoginUser(t, "viewer", "av-replace")
 
-	firstResp := doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "first.png", smallPNG)
+	firstResp := uploadAvatar(t, token, "first.png", smallPNG)
 	defer firstResp.Body.Close()
 
-	var first avatarUploadResult
-	decodeJSON(firstResp, &first)
-
+	first := decodeAvatarResponse(t, firstResp)
 	if first.Data.AvatarURL == nil {
 		t.Fatal("first upload did not set avatar_url")
 	}
-	firstURL := *first.Data.AvatarURL
+	key1 := strings.TrimPrefix(*first.Data.AvatarURL, e2eS3Endpoint+"/"+e2eS3Bucket+"/")
 
-	key1 := strings.TrimPrefix(firstURL, e2eS3Endpoint+"/"+e2eS3Bucket+"/")
-
-	secondResp := doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "second.png", smallPNG)
+	secondResp := uploadAvatar(t, token, "second.png", smallPNG)
 	defer secondResp.Body.Close()
 
-	var second avatarUploadResult
-	decodeJSON(secondResp, &second)
-
+	second := decodeAvatarResponse(t, secondResp)
 	if second.Data.AvatarURL == nil {
 		t.Fatal("second upload did not set avatar_url")
 	}
@@ -200,76 +135,37 @@ func TestAvatar_UploadReplacesExisting(t *testing.T) {
 }
 
 func TestAvatar_UnauthenticatedRejected(t *testing.T) {
-	endpoints := []struct {
-		method string
-		path   string
-	}{
-		{http.MethodPost, "/api/panel/v1/me/avatar"},
-	}
+	resp := uploadAvatar(t, "", "test.png", smallPNG)
+	defer resp.Body.Close()
 
-	for _, ep := range endpoints {
-		t.Run(ep.method+" "+ep.path, func(t *testing.T) {
-			resp := doMultipartRequest(ep.path, "", "avatar", "test.png", smallPNG)
-			defer resp.Body.Close()
-
-			requireStatus(t, resp, http.StatusUnauthorized)
-		})
-	}
+	requireStatus(t, resp, http.StatusUnauthorized)
 }
 
 func TestAvatar_ViewerCannotUploadForOther(t *testing.T) {
-	_, viewerEmail := createUser(t, "viewer", "av-viewer-auth")
-	viewerToken := login(viewerEmail, "testpass123")
-	if viewerToken == "" {
-		t.Fatal("login failed")
-	}
+	_, _, viewerToken := createAndLoginUser(t, "viewer", "av-viewer-auth")
 
 	targetID, _ := createUser(t, "viewer", "av-viewer-target")
 
-	resp := doMultipartRequest(fmt.Sprintf("/api/panel/v1/users/%d/avatar", targetID), viewerToken, "avatar", "avatar.png", smallPNG)
+	resp := uploadUserAvatar(t, viewerToken, targetID, "avatar.png", smallPNG)
 	defer resp.Body.Close()
 
 	requireErrorResponse(t, resp, http.StatusForbidden, "FORBIDDEN")
 }
 
-func TestAvatar_EmptyFileTriggersDelete(t *testing.T) {
-	_, email := createUser(t, "viewer", "av-empty-file")
-	token := login(email, "testpass123")
-	if token == "" {
-		t.Fatal("login failed")
-	}
+func TestAvatar_DeleteNoOpWhenNoAvatar(t *testing.T) {
+	_, _, token := createAndLoginUser(t, "viewer", "av-delete-noop")
 
-	uploadResp := doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "avatar.png", smallPNG)
-	defer uploadResp.Body.Close()
-	requireStatus(t, uploadResp, http.StatusOK)
+	resp := deleteAvatar(t, token)
+	defer resp.Body.Close()
 
-	var before avatarUploadResult
-	decodeJSON(uploadResp, &before)
-	if before.Data.AvatarURL == nil {
-		t.Fatal("expected avatar_url after initial upload")
-	}
-
-	deleteResp := doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "avatar.png", nil)
-	defer deleteResp.Body.Close()
-
-	requireStatus(t, deleteResp, http.StatusOK)
-
-	var after avatarUploadResult
-	decodeJSON(deleteResp, &after)
-
-	if after.Data.AvatarURL != nil {
-		t.Errorf("expected avatar_url null after empty-file delete, got %s", *after.Data.AvatarURL)
-	}
+	requireStatus(t, resp, http.StatusOK)
+	requireNoAvatarURL(t, decodeAvatarResponse(t, resp))
 }
 
 func TestAvatar_MissingFormFieldTriggersDelete(t *testing.T) {
-	_, email := createUser(t, "viewer", "av-missing-field")
-	token := login(email, "testpass123")
-	if token == "" {
-		t.Fatal("login failed")
-	}
+	_, _, token := createAndLoginUser(t, "viewer", "av-missing-field")
 
-	uploadResp := doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "avatar.png", smallPNG)
+	uploadResp := uploadAvatar(t, token, "avatar.png", smallPNG)
 	defer uploadResp.Body.Close()
 	requireStatus(t, uploadResp, http.StatusOK)
 
@@ -277,33 +173,7 @@ func TestAvatar_MissingFormFieldTriggersDelete(t *testing.T) {
 	defer deleteResp.Body.Close()
 
 	requireStatus(t, deleteResp, http.StatusOK)
-
-	var after avatarUploadResult
-	decodeJSON(deleteResp, &after)
-
-	if after.Data.AvatarURL != nil {
-		t.Errorf("expected avatar_url null after missing-field delete, got %s", *after.Data.AvatarURL)
-	}
-}
-
-func TestAvatar_DeleteNoOpWhenNoAvatar(t *testing.T) {
-	_, email := createUser(t, "viewer", "av-delete-noop")
-	token := login(email, "testpass123")
-	if token == "" {
-		t.Fatal("login failed")
-	}
-
-	resp := doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "", nil)
-	defer resp.Body.Close()
-
-	requireStatus(t, resp, http.StatusOK)
-
-	var result avatarUploadResult
-	decodeJSON(resp, &result)
-
-	if result.Data.AvatarURL != nil {
-		t.Errorf("expected avatar_url null for no-op delete, got %s", *result.Data.AvatarURL)
-	}
+	requireNoAvatarURL(t, decodeAvatarResponse(t, deleteResp))
 }
 
 func TestAvatar_RejectsInvalidUploads(t *testing.T) {
@@ -316,23 +186,21 @@ func TestAvatar_RejectsInvalidUploads(t *testing.T) {
 		name        string
 		filename    string
 		data        []byte
-		wantStatus  int
-		wantCode    string
 		wantMessage string
 	}{
-		{"exe file", "malware.exe", []byte("not-a-real-exe"), http.StatusBadRequest, "BAD_REQUEST", ""},
-		{"gif file", "image.gif", []byte("GIF89a"), http.StatusBadRequest, "BAD_REQUEST", ""},
-		{"bmp file", "image.bmp", []byte("BM"), http.StatusBadRequest, "BAD_REQUEST", ""},
-		{"no extension", "avatar", smallPNG, http.StatusBadRequest, "BAD_REQUEST", ""},
-		{"oversized file", "big.png", big, http.StatusBadRequest, "BAD_REQUEST", "5 MB"},
+		{"exe file", "malware.exe", []byte("not-a-real-exe"), ""},
+		{"gif file", "image.gif", []byte("GIF89a"), ""},
+		{"bmp file", "image.bmp", []byte("BM"), ""},
+		{"no extension", "avatar", smallPNG, ""},
+		{"oversized file", "big.png", big, "5 MB"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			resp := doMultipartRequest("/api/panel/v1/me/avatar", adminToken, "avatar", tc.filename, tc.data)
+			resp := uploadAvatar(t, adminToken, tc.filename, tc.data)
 			defer resp.Body.Close()
 
-			result := requireErrorResponse(t, resp, tc.wantStatus, tc.wantCode)
+			result := requireErrorResponse(t, resp, http.StatusBadRequest, "BAD_REQUEST")
 			if tc.wantMessage != "" && !strings.Contains(result.Error.Message, tc.wantMessage) {
 				t.Errorf("error message should contain %q: got %q", tc.wantMessage, result.Error.Message)
 			}
@@ -353,124 +221,77 @@ func TestAvatar_ValidTypesAccepted(t *testing.T) {
 
 	for _, tc := range types {
 		t.Run(tc.name, func(t *testing.T) {
-			_, email := createUser(t, "viewer", "av-type-"+tc.name)
-			token := login(email, "testpass123")
-			if token == "" {
-				t.Fatal("login failed")
-			}
+			_, _, token := createAndLoginUser(t, "viewer", "av-type-"+tc.name)
 
-			resp := doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", tc.filename, tc.data)
+			resp := uploadAvatar(t, token, tc.filename, tc.data)
 			defer resp.Body.Close()
 
 			requireStatus(t, resp, http.StatusOK)
-
-			var result avatarUploadResult
-			decodeJSON(resp, &result)
+			result := decodeAvatarResponse(t, resp)
 
 			if result.Data.AvatarURL == nil {
 				t.Error("expected avatar_url to be set")
 			}
 
-			doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "", nil)
+			deleteAvatar(t, token)
 		})
 	}
 }
 
 func TestAvatar_UploadNoSecretsInResponse(t *testing.T) {
-	_, email := createUser(t, "viewer", "av-secrets")
-	token := login(email, "testpass123")
-	if token == "" {
-		t.Fatal("login failed")
-	}
+	_, _, token := createAndLoginUser(t, "viewer", "av-secrets")
 
-	resp := doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "avatar.png", smallPNG)
+	resp := uploadAvatar(t, token, "avatar.png", smallPNG)
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
-	s := string(body)
-
-	leaked := []string{
-		"minioadmin",
-		"secret_key",
-		"access_key",
-		"password_hash",
-	}
-
-	for _, pattern := range leaked {
-		if strings.Contains(s, pattern) {
-			t.Errorf("response leaks sensitive data: contains %q", pattern)
-		}
-	}
+	requireNoSensitiveFields(t, resp, "minioadmin", "secret_key", "access_key", "password_hash")
 }
 
 func TestAvatar_ResponseContentTypeJSON(t *testing.T) {
-	_, email := createUser(t, "viewer", "av-ct")
-	token := login(email, "testpass123")
-	if token == "" {
-		t.Fatal("login failed")
-	}
+	_, _, token := createAndLoginUser(t, "viewer", "av-ct")
 
-	resp := doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "avatar.png", smallPNG)
+	resp := uploadAvatar(t, token, "avatar.png", smallPNG)
 	defer resp.Body.Close()
 
 	requireJSONContentType(t, resp)
 }
 
 func TestAvatar_UploadSetsS3ObjectKey(t *testing.T) {
-	_, email := createUser(t, "viewer", "av-s3key")
-	token := login(email, "testpass123")
-	if token == "" {
-		t.Fatal("login failed")
-	}
+	_, _, token := createAndLoginUser(t, "viewer", "av-s3key")
 
-	resp := doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "avatar.png", smallPNG)
+	resp := uploadAvatar(t, token, "avatar.png", smallPNG)
 	defer resp.Body.Close()
 
-	var result avatarUploadResult
-	decodeJSON(resp, &result)
-
+	result := decodeAvatarResponse(t, resp)
 	if result.Data.AvatarURL == nil {
 		t.Fatal("expected avatar_url after upload")
 	}
 
 	avatarURL := *result.Data.AvatarURL
-
 	expectedPrefix := e2eS3Endpoint + "/" + e2eS3Bucket + "/avatars/"
 	if !strings.HasPrefix(avatarURL, expectedPrefix) {
 		t.Errorf("avatar_url prefix: got %q, want prefix %q", avatarURL, expectedPrefix)
 	}
 
-	// verify object exists in S3
 	key := strings.TrimPrefix(avatarURL, e2eS3Endpoint+"/"+e2eS3Bucket+"/")
 	if !s3ObjectExists(t, key) {
 		t.Errorf("S3 object %q does not exist", key)
 	}
 
-	doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "", nil)
+	deleteAvatar(t, token)
 }
 
 func TestAvatar_DifferentUsersHaveDifferentKeys(t *testing.T) {
-	_, email1 := createUser(t, "viewer", "av-key-a")
-	token1 := login(email1, "testpass123")
-	if token1 == "" {
-		t.Fatal("login failed")
-	}
+	_, _, token1 := createAndLoginUser(t, "viewer", "av-key-a")
+	_, _, token2 := createAndLoginUser(t, "viewer", "av-key-b")
 
-	_, email2 := createUser(t, "viewer", "av-key-b")
-	token2 := login(email2, "testpass123")
-	if token2 == "" {
-		t.Fatal("login failed")
-	}
-
-	resp1 := doMultipartRequest("/api/panel/v1/me/avatar", token1, "avatar", "avatar.png", smallPNG)
+	resp1 := uploadAvatar(t, token1, "avatar.png", smallPNG)
 	defer resp1.Body.Close()
-	var r1 avatarUploadResult
-	decodeJSON(resp1, &r1)
+	r1 := decodeAvatarResponse(t, resp1)
 
-	resp2 := doMultipartRequest("/api/panel/v1/me/avatar", token2, "avatar", "avatar.png", smallPNG)
+	resp2 := uploadAvatar(t, token2, "avatar.png", smallPNG)
 	defer resp2.Body.Close()
-	var r2 avatarUploadResult
-	decodeJSON(resp2, &r2)
+	r2 := decodeAvatarResponse(t, resp2)
 
 	if r1.Data.AvatarURL == nil || r2.Data.AvatarURL == nil {
 		t.Fatal("expected both avatar_urls to be set")
@@ -485,8 +306,8 @@ func TestAvatar_DifferentUsersHaveDifferentKeys(t *testing.T) {
 		t.Errorf("different users got same S3 key: %s", key1)
 	}
 
-	doMultipartRequest("/api/panel/v1/me/avatar", token1, "avatar", "", nil)
-	doMultipartRequest("/api/panel/v1/me/avatar", token2, "avatar", "", nil)
+	deleteAvatar(t, token1)
+	deleteAvatar(t, token2)
 }
 
 func TestAvatar_RejectsInvalidOrNonexistentUserIDs(t *testing.T) {
@@ -511,13 +332,9 @@ func TestAvatar_RejectsInvalidOrNonexistentUserIDs(t *testing.T) {
 }
 
 func TestAvatar_ResponseSchema(t *testing.T) {
-	_, email := createUser(t, "viewer", "av-schema")
-	token := login(email, "testpass123")
-	if token == "" {
-		t.Fatal("login failed")
-	}
+	_, _, token := createAndLoginUser(t, "viewer", "av-schema")
 
-	resp := doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "avatar.png", smallPNG)
+	resp := uploadAvatar(t, token, "avatar.png", smallPNG)
 	defer resp.Body.Close()
 
 	requireStatus(t, resp, http.StatusOK)
@@ -539,7 +356,7 @@ func TestAvatar_ResponseSchema(t *testing.T) {
 		}
 	}
 
-	doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "", nil)
+	deleteAvatar(t, token)
 }
 
 // --- helpers ---
