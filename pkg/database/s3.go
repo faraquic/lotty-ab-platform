@@ -5,12 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/goccy/go-json"
-
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"go.uber.org/zap"
 )
 
@@ -60,50 +57,8 @@ func NewS3(ctx context.Context, cfg S3Config, log *zap.Logger) (*s3.Client, erro
 	pingCtx, cancel := context.WithTimeout(ctx, pingTimeout)
 	defer cancel()
 
-	createCtx, createCancel := context.WithTimeout(ctx, pingTimeout)
-	defer createCancel()
-
-	_, createErr := client.CreateBucket(createCtx, &s3.CreateBucketInput{
-		Bucket: aws.String(cfg.Bucket),
-	})
-	if createErr != nil {
-		var ownedErr *types.BucketAlreadyOwnedByYou
-		var existsErr *types.BucketAlreadyExists
-		if !errors.As(createErr, &ownedErr) && !errors.As(createErr, &existsErr) {
-			return nil, fmt.Errorf("create bucket %s: %w", cfg.Bucket, createErr)
-		}
-	}
-
 	if _, err := client.HeadBucket(pingCtx, &s3.HeadBucketInput{Bucket: aws.String(cfg.Bucket)}); err != nil {
 		return nil, fmt.Errorf("head bucket %s: %w", cfg.Bucket, err)
-	}
-
-	policyCtx, policyCancel := context.WithTimeout(ctx, pingTimeout)
-	defer policyCancel()
-
-	publicReadPolicy := map[string]any{
-		"Version": "2012-10-17",
-		"Statement": []map[string]any{
-			{
-				"Sid":       "PublicReadAvatars",
-				"Effect":    "Allow",
-				"Principal": "*",
-				"Action":    "s3:GetObject",
-				"Resource":  fmt.Sprintf("arn:aws:s3:::%s/avatars/*", cfg.Bucket),
-			},
-		},
-	}
-
-	policyBytes, err := json.Marshal(publicReadPolicy)
-	if err != nil {
-		return nil, fmt.Errorf("marshal bucket policy: %w", err)
-	}
-
-	if _, err := client.PutBucketPolicy(policyCtx, &s3.PutBucketPolicyInput{
-		Bucket: aws.String(cfg.Bucket),
-		Policy: aws.String(string(policyBytes)),
-	}); err != nil {
-		log.Warn("failed to set bucket policy, avatars may not be publicly accessible", zap.Error(err))
 	}
 
 	log.Info(

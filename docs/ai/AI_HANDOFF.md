@@ -7,11 +7,12 @@ This session added S3 object storage support to the panel service, completing th
 ## What Was Completed
 
 ### S3 Client (`pkg/database/s3.go`)
-- `S3Config` struct with `Bucket`, `Region`, `Endpoint` fields
+- `S3Config` struct with `Bucket`, `Region`, `Endpoint`, `AccessKey`, `SecretKey` fields
 - `NewS3(ctx, S3Config, logger)` constructor that:
   - Loads AWS config via `aws-sdk-go-v2/config`
   - Supports custom endpoints (MinIO) with path-style addressing
   - Verifies bucket connectivity with `HeadBucket` using `pingTimeout` (3s)
+  - Does **not** create buckets or modify bucket policies
   - Returns `*s3.Client` or error
 
 ### S3 Tests (`pkg/database/s3_test.go`)
@@ -84,14 +85,13 @@ ff954bb feat(panel): bootstrap admin, self-management protections, health probes
 ## Current Unfinished Tasks
 
 - S3 is not yet used by any domain logic — it's initialized and available but no endpoints upload/download objects
-- No S3 bucket creation automation in `make dev-up` (MinIO starts but bucket must be created manually or via app)
 - No integration tests that exercise S3 operations (put/get/delete objects)
 - No tests for the health handler with S3 scenarios
 
 ## Known Issues & Technical Debt
 
 1. **MinIO health check** uses `mc ready local` — requires `mc` inside the container. Verify this works with the official MinIO image.
-2. **S3 bucket not auto-created** — `make s3-up` starts MinIO but doesn't create the `labp` bucket. First `HeadBucket` call will fail until bucket exists.
+2. **S3 bucket provisioning is explicit** — `make dev-up` provisions the `labp` bucket via `tools/s3-provision`; `make test-e2e` provisions `labp-e2e`. Buckets are created idempotently with public-read avatar policies.
 3. **No S3 CORS config** — MinIO defaults have no CORS; browser-based uploads will fail without it.
 4. **`config.ServiceVersion`** is a `var`, not `const` — this is intentional (overridden via ldflags) but could confuse new contributors.
 5. **JWT secret defaults to `"change-me"`** — fine for local dev but must be overridden in production.
@@ -102,10 +102,12 @@ ff954bb feat(panel): bootstrap admin, self-management protections, health probes
 |----------|-----------|
 | S3 uses `*s3.Client` (concrete), not interface | AWS SDK v2 returns concrete types; wrapping in interface adds indirection with no benefit |
 | S3 failure is warning, not fatal | Keeps service operational for auth/users even if storage is misconfigured |
-| `HeadBucket` for connectivity check | Lightweight, requires only `s3:GetBucketLocation` permission |
+| `HeadBucket` for connectivity check | Lightweight, requires only `s3:GetBucketLocation` permission; does not mutate state |
+| `NewS3` does not create buckets | Buckets are infrastructure; provisioning belongs in `make dev-up` / `make test-e2e`, not application startup |
 | Path-style addressing for MinIO | MinIO doesn't support virtual-hosted-style by default |
 | Health check uses `ListBuckets` not `HeadBucket` | `ListBuckets` is a lighter operation and doesn't require bucket-specific permissions |
 | `/ready` fails only on database | Consistent with design: DB is the critical dependency; cache and storage are optional |
+| Explicit bucket provisioning via `tools/s3-provision` | Uses AWS SDK v2 (existing dependency); idempotent; works on any environment without external tooling |
 
 ## Commands to Verify the Project
 
