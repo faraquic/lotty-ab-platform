@@ -69,9 +69,7 @@ func TestAvatar_SelfUploadAndDelete(t *testing.T) {
 	uploadResp := doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "avatar.png", smallPNG)
 	defer uploadResp.Body.Close()
 
-	if uploadResp.StatusCode != http.StatusOK {
-		t.Fatalf("upload status: got %d, want 200", uploadResp.StatusCode)
-	}
+	requireStatus(t, uploadResp, http.StatusOK)
 
 	var upload avatarUploadResult
 	decodeJSON(uploadResp, &upload)
@@ -106,9 +104,7 @@ func TestAvatar_SelfUploadAndDelete(t *testing.T) {
 	delResp := doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "", nil)
 	defer delResp.Body.Close()
 
-	if delResp.StatusCode != http.StatusOK {
-		t.Fatalf("delete status: got %d, want 200", delResp.StatusCode)
-	}
+	requireStatus(t, delResp, http.StatusOK)
 
 	var del avatarUploadResult
 	decodeJSON(delResp, &del)
@@ -124,9 +120,7 @@ func TestAvatar_AdminUploadAndDeleteForUser(t *testing.T) {
 	uploadResp := doMultipartRequest(fmt.Sprintf("/api/panel/v1/users/%d/avatar", id), adminToken, "avatar", "avatar.png", smallPNG)
 	defer uploadResp.Body.Close()
 
-	if uploadResp.StatusCode != http.StatusOK {
-		t.Fatalf("upload status: got %d, want 200", uploadResp.StatusCode)
-	}
+	requireStatus(t, uploadResp, http.StatusOK)
 
 	var upload avatarUploadResult
 	decodeJSON(uploadResp, &upload)
@@ -155,9 +149,7 @@ func TestAvatar_AdminUploadAndDeleteForUser(t *testing.T) {
 	delResp := doMultipartRequest(fmt.Sprintf("/api/panel/v1/users/%d/avatar", id), adminToken, "avatar", "", nil)
 	defer delResp.Body.Close()
 
-	if delResp.StatusCode != http.StatusOK {
-		t.Fatalf("delete status: got %d, want 200", delResp.StatusCode)
-	}
+	requireStatus(t, delResp, http.StatusOK)
 
 	var del avatarUploadResult
 	decodeJSON(delResp, &del)
@@ -220,9 +212,7 @@ func TestAvatar_UnauthenticatedRejected(t *testing.T) {
 			resp := doMultipartRequest(ep.path, "", "avatar", "test.png", smallPNG)
 			defer resp.Body.Close()
 
-			if resp.StatusCode != http.StatusUnauthorized {
-				t.Errorf("status: got %d, want 401", resp.StatusCode)
-			}
+			requireStatus(t, resp, http.StatusUnauthorized)
 		})
 	}
 }
@@ -239,24 +229,7 @@ func TestAvatar_ViewerCannotUploadForOther(t *testing.T) {
 	resp := doMultipartRequest(fmt.Sprintf("/api/panel/v1/users/%d/avatar", targetID), viewerToken, "avatar", "avatar.png", smallPNG)
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("status: got %d, want 403", resp.StatusCode)
-	}
-
-	var errResp struct {
-		Success bool `json:"success"`
-		Error   struct {
-			Code string `json:"code"`
-		} `json:"error"`
-	}
-	decodeJSON(resp, &errResp)
-
-	if errResp.Success {
-		t.Error("expected success=false")
-	}
-	if errResp.Error.Code != "FORBIDDEN" {
-		t.Errorf("error code: got %q, want %q", errResp.Error.Code, "FORBIDDEN")
-	}
+	requireErrorResponse(t, resp, http.StatusForbidden, "FORBIDDEN")
 }
 
 func TestAvatar_EmptyFileTriggersDelete(t *testing.T) {
@@ -268,9 +241,7 @@ func TestAvatar_EmptyFileTriggersDelete(t *testing.T) {
 
 	uploadResp := doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "avatar.png", smallPNG)
 	defer uploadResp.Body.Close()
-	if uploadResp.StatusCode != http.StatusOK {
-		t.Fatalf("initial upload: got %d", uploadResp.StatusCode)
-	}
+	requireStatus(t, uploadResp, http.StatusOK)
 
 	var before avatarUploadResult
 	decodeJSON(uploadResp, &before)
@@ -281,9 +252,7 @@ func TestAvatar_EmptyFileTriggersDelete(t *testing.T) {
 	deleteResp := doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "avatar.png", nil)
 	defer deleteResp.Body.Close()
 
-	if deleteResp.StatusCode != http.StatusOK {
-		t.Fatalf("delete-via-empty status: got %d, want 200", deleteResp.StatusCode)
-	}
+	requireStatus(t, deleteResp, http.StatusOK)
 
 	var after avatarUploadResult
 	decodeJSON(deleteResp, &after)
@@ -302,16 +271,12 @@ func TestAvatar_MissingFormFieldTriggersDelete(t *testing.T) {
 
 	uploadResp := doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "avatar.png", smallPNG)
 	defer uploadResp.Body.Close()
-	if uploadResp.StatusCode != http.StatusOK {
-		t.Fatalf("initial upload: got %d", uploadResp.StatusCode)
-	}
+	requireStatus(t, uploadResp, http.StatusOK)
 
 	deleteResp := doMultipartRequestNoFile("/api/panel/v1/me/avatar", token)
 	defer deleteResp.Body.Close()
 
-	if deleteResp.StatusCode != http.StatusOK {
-		t.Fatalf("delete-via-missing-field status: got %d, want 200", deleteResp.StatusCode)
-	}
+	requireStatus(t, deleteResp, http.StatusOK)
 
 	var after avatarUploadResult
 	decodeJSON(deleteResp, &after)
@@ -331,9 +296,7 @@ func TestAvatar_DeleteNoOpWhenNoAvatar(t *testing.T) {
 	resp := doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "", nil)
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status: got %d, want 200", resp.StatusCode)
-	}
+	requireStatus(t, resp, http.StatusOK)
 
 	var result avatarUploadResult
 	decodeJSON(resp, &result)
@@ -343,73 +306,37 @@ func TestAvatar_DeleteNoOpWhenNoAvatar(t *testing.T) {
 	}
 }
 
-func TestAvatar_InvalidFileType(t *testing.T) {
-	tests := []struct {
-		name     string
-		filename string
-		data     []byte
-	}{
-		{"exe", "malware.exe", []byte("not-a-real-exe")},
-		{"gif", "image.gif", []byte("GIF89a")},
-		{"bmp", "image.bmp", []byte("BM")},
-		{"no-extension", "avatar", smallPNG},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			resp := doMultipartRequest("/api/panel/v1/me/avatar", adminToken, "avatar", tc.filename, tc.data)
-			defer resp.Body.Close()
-
-			if resp.StatusCode != http.StatusBadRequest {
-				t.Errorf("status: got %d, want 400", resp.StatusCode)
-			}
-
-			var errResp struct {
-				Success bool `json:"success"`
-				Error   struct {
-					Code    string `json:"code"`
-					Message string `json:"message"`
-				} `json:"error"`
-			}
-			decodeJSON(resp, &errResp)
-
-			if errResp.Success {
-				t.Error("expected success=false")
-			}
-			if errResp.Error.Code != "BAD_REQUEST" {
-				t.Errorf("error code: got %q, want %q", errResp.Error.Code, "BAD_REQUEST")
-			}
-		})
-	}
-}
-
-func TestAvatar_OversizedFileRejected(t *testing.T) {
+func TestAvatar_RejectsInvalidUploads(t *testing.T) {
 	big := make([]byte, 6<<20)
 	for i := range big {
 		big[i] = 0xFF
 	}
 
-	resp := doMultipartRequest("/api/panel/v1/me/avatar", adminToken, "avatar", "big.png", big)
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status: got %d, want 400", resp.StatusCode)
+	cases := []struct {
+		name        string
+		filename    string
+		data        []byte
+		wantStatus  int
+		wantCode    string
+		wantMessage string
+	}{
+		{"exe file", "malware.exe", []byte("not-a-real-exe"), http.StatusBadRequest, "BAD_REQUEST", ""},
+		{"gif file", "image.gif", []byte("GIF89a"), http.StatusBadRequest, "BAD_REQUEST", ""},
+		{"bmp file", "image.bmp", []byte("BM"), http.StatusBadRequest, "BAD_REQUEST", ""},
+		{"no extension", "avatar", smallPNG, http.StatusBadRequest, "BAD_REQUEST", ""},
+		{"oversized file", "big.png", big, http.StatusBadRequest, "BAD_REQUEST", "5 MB"},
 	}
 
-	var errResp struct {
-		Success bool `json:"success"`
-		Error   struct {
-			Code    string `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	decodeJSON(resp, &errResp)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := doMultipartRequest("/api/panel/v1/me/avatar", adminToken, "avatar", tc.filename, tc.data)
+			defer resp.Body.Close()
 
-	if errResp.Error.Code != "BAD_REQUEST" {
-		t.Errorf("error code: got %q, want %q", errResp.Error.Code, "BAD_REQUEST")
-	}
-	if !strings.Contains(errResp.Error.Message, "5 MB") {
-		t.Errorf("error message should mention size limit: %s", errResp.Error.Message)
+			result := requireErrorResponse(t, resp, tc.wantStatus, tc.wantCode)
+			if tc.wantMessage != "" && !strings.Contains(result.Error.Message, tc.wantMessage) {
+				t.Errorf("error message should contain %q: got %q", tc.wantMessage, result.Error.Message)
+			}
+		})
 	}
 }
 
@@ -435,9 +362,7 @@ func TestAvatar_ValidTypesAccepted(t *testing.T) {
 			resp := doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", tc.filename, tc.data)
 			defer resp.Body.Close()
 
-			if resp.StatusCode != http.StatusOK {
-				t.Fatalf("status: got %d, want 200", resp.StatusCode)
-			}
+			requireStatus(t, resp, http.StatusOK)
 
 			var result avatarUploadResult
 			decodeJSON(resp, &result)
@@ -488,10 +413,7 @@ func TestAvatar_ResponseContentTypeJSON(t *testing.T) {
 	resp := doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "avatar.png", smallPNG)
 	defer resp.Body.Close()
 
-	ct := resp.Header.Get("Content-Type")
-	if !strings.HasPrefix(ct, "application/json") {
-		t.Errorf("Content-Type: got %q, want application/json", ct)
-	}
+	requireJSONContentType(t, resp)
 }
 
 func TestAvatar_UploadSetsS3ObjectKey(t *testing.T) {
@@ -567,30 +489,24 @@ func TestAvatar_DifferentUsersHaveDifferentKeys(t *testing.T) {
 	doMultipartRequest("/api/panel/v1/me/avatar", token2, "avatar", "", nil)
 }
 
-func TestAvatar_AdminUploadNonexistentUser(t *testing.T) {
-	resp := doMultipartRequest("/api/panel/v1/users/999999999/avatar", adminToken, "avatar", "avatar.png", smallPNG)
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("status: got %d, want 404", resp.StatusCode)
+func TestAvatar_RejectsInvalidOrNonexistentUserIDs(t *testing.T) {
+	cases := []struct {
+		name       string
+		path       string
+		wantStatus int
+		wantCode   string
+	}{
+		{"nonexistent user", "/api/panel/v1/users/999999999/avatar", http.StatusNotFound, "NOT_FOUND"},
+		{"non-numeric id", "/api/panel/v1/users/abc/avatar", http.StatusBadRequest, "BAD_REQUEST"},
+		{"negative id", "/api/panel/v1/users/-1/avatar", http.StatusBadRequest, "BAD_REQUEST"},
 	}
-}
 
-func TestAvatar_InvalidUserID(t *testing.T) {
-	resp := doMultipartRequest("/api/panel/v1/users/abc/avatar", adminToken, "avatar", "avatar.png", smallPNG)
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status: got %d, want 400", resp.StatusCode)
-	}
-}
-
-func TestAvatar_NegativeUserID(t *testing.T) {
-	resp := doMultipartRequest("/api/panel/v1/users/-1/avatar", adminToken, "avatar", "avatar.png", smallPNG)
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status: got %d, want 400", resp.StatusCode)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := doMultipartRequest(tc.path, adminToken, "avatar", "avatar.png", smallPNG)
+			defer resp.Body.Close()
+			requireErrorResponse(t, resp, tc.wantStatus, tc.wantCode)
+		})
 	}
 }
 
@@ -603,6 +519,8 @@ func TestAvatar_ResponseSchema(t *testing.T) {
 
 	resp := doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "avatar.png", smallPNG)
 	defer resp.Body.Close()
+
+	requireStatus(t, resp, http.StatusOK)
 
 	body, _ := io.ReadAll(resp.Body)
 	s := string(body)

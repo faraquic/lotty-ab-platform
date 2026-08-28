@@ -20,9 +20,7 @@ func TestAuth_Login_ValidCredentialsReturnsToken(t *testing.T) {
 		jsonBody(map[string]string{"email": "root@labp.net", "password": "root!@#$"}))
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status: got %d, want 200", resp.StatusCode)
-	}
+	requireStatus(t, resp, http.StatusOK)
 
 	body, _ := io.ReadAll(resp.Body)
 	var result struct {
@@ -56,9 +54,7 @@ func TestAuth_Login_TokenUsableOnProtectedEndpoint(t *testing.T) {
 	resp := doRequest(http.MethodGet, "/api/panel/v1/me", token, nil)
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status: got %d, want 200", resp.StatusCode)
-	}
+	requireStatus(t, resp, http.StatusOK)
 
 	var result struct {
 		Success bool `json:"success"`
@@ -117,25 +113,7 @@ func TestAuth_Login_InvalidPassword(t *testing.T) {
 		jsonBody(map[string]string{"email": "root@labp.net", "password": "wrongpassword"}))
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("status: got %d, want 401", resp.StatusCode)
-	}
-
-	var result struct {
-		Success bool `json:"success"`
-		Error   struct {
-			Code    string `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	decodeJSON(resp, &result)
-
-	if result.Success {
-		t.Error("expected success=false")
-	}
-	if result.Error.Code != "UNAUTHORIZED" {
-		t.Errorf("error code: got %q, want %q", result.Error.Code, "UNAUTHORIZED")
-	}
+	result := requireErrorResponse(t, resp, http.StatusUnauthorized, "UNAUTHORIZED")
 	if result.Error.Message == "" {
 		t.Error("expected non-empty error message")
 	}
@@ -146,24 +124,7 @@ func TestAuth_Login_NonexistentUser(t *testing.T) {
 		jsonBody(map[string]string{"email": "nobody@test.local", "password": "whatever"}))
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("status: got %d, want 401", resp.StatusCode)
-	}
-
-	var result struct {
-		Success bool `json:"success"`
-		Error   struct {
-			Code string `json:"code"`
-		} `json:"error"`
-	}
-	decodeJSON(resp, &result)
-
-	if result.Success {
-		t.Error("expected success=false")
-	}
-	if result.Error.Code != "UNAUTHORIZED" {
-		t.Errorf("error code: got %q, want %q", result.Error.Code, "UNAUTHORIZED")
-	}
+	requireErrorResponse(t, resp, http.StatusUnauthorized, "UNAUTHORIZED")
 }
 
 func TestAuth_Login_NoUserEnumeration(t *testing.T) {
@@ -185,250 +146,106 @@ func TestAuth_Login_NoUserEnumeration(t *testing.T) {
 	}
 }
 
-func TestAuth_Login_MalformedJSON(t *testing.T) {
-	resp := doRequestWithRawBody(http.MethodPost, "/api/panel/v1/login", "",
-		strings.NewReader("{not json}"))
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status: got %d, want 400", resp.StatusCode)
+func TestAuth_Login_RejectsInvalidRequests(t *testing.T) {
+	cases := []struct {
+		name string
+		send func(t *testing.T) *http.Response
+	}{
+		{
+			name: "empty body",
+			send: func(t *testing.T) *http.Response {
+				return doRequestWithRawBody(http.MethodPost, "/api/panel/v1/login", "", strings.NewReader(""))
+			},
+		},
+		{
+			name: "malformed json",
+			send: func(t *testing.T) *http.Response {
+				return doRequestWithRawBody(http.MethodPost, "/api/panel/v1/login", "", strings.NewReader("{not json}"))
+			},
+		},
+		{
+			name: "missing email",
+			send: func(t *testing.T) *http.Response {
+				return doRequest(http.MethodPost, "/api/panel/v1/login", "",
+					jsonBody(map[string]string{"password": "root!@#$"}))
+			},
+		},
+		{
+			name: "missing password",
+			send: func(t *testing.T) *http.Response {
+				return doRequest(http.MethodPost, "/api/panel/v1/login", "",
+					jsonBody(map[string]string{"email": "root@labp.net"}))
+			},
+		},
+		{
+			name: "invalid email format",
+			send: func(t *testing.T) *http.Response {
+				return doRequest(http.MethodPost, "/api/panel/v1/login", "",
+					jsonBody(map[string]string{"email": "not-an-email", "password": "root!@#$"}))
+			},
+		},
 	}
 
-	var result struct {
-		Success bool `json:"success"`
-		Error   struct {
-			Code string `json:"code"`
-		} `json:"error"`
-	}
-	decodeJSON(resp, &result)
-
-	if result.Success {
-		t.Error("expected success=false")
-	}
-	if result.Error.Code != "BAD_REQUEST" {
-		t.Errorf("error code: got %q, want %q", result.Error.Code, "BAD_REQUEST")
-	}
-}
-
-func TestAuth_Login_EmptyBody(t *testing.T) {
-	resp := doRequestWithRawBody(http.MethodPost, "/api/panel/v1/login", "",
-		strings.NewReader(""))
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status: got %d, want 400", resp.StatusCode)
-	}
-}
-
-func TestAuth_Login_MissingEmail(t *testing.T) {
-	resp := doRequest(http.MethodPost, "/api/panel/v1/login", "",
-		jsonBody(map[string]string{"password": "root!@#$"}))
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status: got %d, want 400", resp.StatusCode)
-	}
-
-	var result struct {
-		Success bool `json:"success"`
-		Error   struct {
-			Code string `json:"code"`
-		} `json:"error"`
-	}
-	decodeJSON(resp, &result)
-
-	if result.Error.Code != "BAD_REQUEST" {
-		t.Errorf("error code: got %q, want %q", result.Error.Code, "BAD_REQUEST")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := tc.send(t)
+			defer resp.Body.Close()
+			requireErrorResponse(t, resp, http.StatusBadRequest, "BAD_REQUEST")
+		})
 	}
 }
 
-func TestAuth_Login_MissingPassword(t *testing.T) {
-	resp := doRequest(http.MethodPost, "/api/panel/v1/login", "",
-		jsonBody(map[string]string{"email": "root@labp.net"}))
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status: got %d, want 400", resp.StatusCode)
+func TestAuth_Middleware_RejectsInvalidAuthorization(t *testing.T) {
+	cases := []struct {
+		name      string
+		setHeader bool
+		value     string
+	}{
+		{"no header", false, ""},
+		{"empty header", true, ""},
+		{"wrong scheme", true, "Basic some-token"},
+		{"bearer without token", true, "Bearer "},
+		{"bearer only", true, "Bearer"},
+		{"garbage token", true, "Bearer totally.invalid.token"},
+		{
+			"invalid signature",
+			true,
+			"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." +
+				"eyJzdWIiOiIxIiwicm9sZSI6ImFkbWluIiwiaWF0IjoxNjAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDB9." +
+				"bWFsb21lZHNpZ25hdHVyZXZhbGlkZm9ybWF0",
+		},
 	}
 
-	var result struct {
-		Success bool `json:"success"`
-		Error   struct {
-			Code string `json:"code"`
-		} `json:"error"`
-	}
-	decodeJSON(resp, &result)
-
-	if result.Error.Code != "BAD_REQUEST" {
-		t.Errorf("error code: got %q, want %q", result.Error.Code, "BAD_REQUEST")
-	}
-}
-
-func TestAuth_Login_InvalidEmailFormat(t *testing.T) {
-	resp := doRequest(http.MethodPost, "/api/panel/v1/login", "",
-		jsonBody(map[string]string{"email": "not-an-email", "password": "root!@#$"}))
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status: got %d, want 400", resp.StatusCode)
-	}
-}
-
-func TestAuth_Middleware_NoAuthHeader(t *testing.T) {
-	req, err := http.NewRequest(http.MethodGet, baseURL+"/api/panel/v1/me", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("status: got %d, want 401", resp.StatusCode)
-	}
-}
-
-func TestAuth_Middleware_EmptyAuthHeader(t *testing.T) {
-	req, err := http.NewRequest(http.MethodGet, baseURL+"/api/panel/v1/me", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Authorization", "")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("status: got %d, want 401", resp.StatusCode)
-	}
-}
-
-func TestAuth_Middleware_WrongScheme(t *testing.T) {
-	token := login("root@labp.net", "root!@#$")
-	if token == "" {
-		t.Fatal("login failed")
-	}
-
-	req, err := http.NewRequest(http.MethodGet, baseURL+"/api/panel/v1/me", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Authorization", "Basic "+token)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("status: got %d, want 401", resp.StatusCode)
-	}
-}
-
-func TestAuth_Middleware_BearerWithNoToken(t *testing.T) {
-	req, err := http.NewRequest(http.MethodGet, baseURL+"/api/panel/v1/me", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Authorization", "Bearer ")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("status: got %d, want 401", resp.StatusCode)
-	}
-}
-
-func TestAuth_Middleware_BearerOnly(t *testing.T) {
-	req, err := http.NewRequest(http.MethodGet, baseURL+"/api/panel/v1/me", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Authorization", "Bearer")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("status: got %d, want 401", resp.StatusCode)
-	}
-}
-
-func TestAuth_Middleware_GarbageToken(t *testing.T) {
-	resp := doRequest(http.MethodGet, "/api/panel/v1/me", "totally.invalid.token", nil)
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("status: got %d, want 401", resp.StatusCode)
-	}
-}
-
-func TestAuth_Middleware_WrongSignature(t *testing.T) {
-	// Generate a valid-looking JWT with a different secret
-	token := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." +
-		"eyJzdWIiOiIxIiwicm9sZSI6ImFkbWluIiwiaWF0IjoxNjAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDB9." +
-		"bWFsb21lZHNpZ25hdHVyZXZhbGlkZm9ybWF0"
-
-	resp := doRequest(http.MethodGet, "/api/panel/v1/me", token, nil)
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("status: got %d, want 401", resp.StatusCode)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := doRequestWithAuth(t, http.MethodGet, "/api/panel/v1/me", tc.setHeader, tc.value, nil)
+			defer resp.Body.Close()
+			requireErrorResponse(t, resp, http.StatusUnauthorized, "UNAUTHORIZED")
+		})
 	}
 }
 
 func TestAuth_Session_RevokedTokenRejected(t *testing.T) {
-	// Create a user and log in
 	_, email := createUser(t, "viewer", "revoke-test")
 	token := login(email, "testpass123")
 	if token == "" {
 		t.Fatal("login failed")
 	}
 
-	// Verify token works
 	resp := doRequest(http.MethodGet, "/api/panel/v1/me", token, nil)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("pre-revoke check: expected 200, got %d", resp.StatusCode)
 	}
 	resp.Body.Close()
 
-	// Delete the session key from Redis directly
 	if err := deleteSessionFromRedis(email, token); err != nil {
 		t.Fatalf("delete session from redis: %v", err)
 	}
 
-	// Verify token is now rejected
 	resp = doRequest(http.MethodGet, "/api/panel/v1/me", token, nil)
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("post-revoke: got %d, want 401", resp.StatusCode)
-	}
-
-	var result struct {
-		Success bool `json:"success"`
-		Error   struct {
-			Code    string `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	decodeJSON(resp, &result)
-
-	if result.Success {
-		t.Error("expected success=false")
-	}
-	if result.Error.Code != "UNAUTHORIZED" {
-		t.Errorf("error code: got %q, want %q", result.Error.Code, "UNAUTHORIZED")
-	}
+	requireErrorResponse(t, resp, http.StatusUnauthorized, "UNAUTHORIZED")
 }
 
 func TestAuth_Session_RevokedTokenNoUserLeakage(t *testing.T) {
@@ -458,10 +275,7 @@ func TestAuth_Security_ContentTypeJSON(t *testing.T) {
 		jsonBody(map[string]string{"email": "root@labp.net", "password": "root!@#$"}))
 	defer resp.Body.Close()
 
-	ct := resp.Header.Get("Content-Type")
-	if !strings.HasPrefix(ct, "application/json") {
-		t.Errorf("Content-Type: got %q, want application/json", ct)
-	}
+	requireJSONContentType(t, resp)
 }
 
 func TestAuth_Security_ErrorContentTypeJSON(t *testing.T) {
@@ -469,10 +283,7 @@ func TestAuth_Security_ErrorContentTypeJSON(t *testing.T) {
 		jsonBody(map[string]string{"email": "root@labp.net", "password": "wrong"}))
 	defer resp.Body.Close()
 
-	ct := resp.Header.Get("Content-Type")
-	if !strings.HasPrefix(ct, "application/json") {
-		t.Errorf("Content-Type: got %q, want application/json", ct)
-	}
+	requireJSONContentType(t, resp)
 }
 
 func TestAuth_Security_NoStackTracesInError(t *testing.T) {
@@ -533,13 +344,8 @@ func TestAuth_Security_AllErrorResponseCodes(t *testing.T) {
 			}
 			defer resp.Body.Close()
 
-			if resp.StatusCode != tc.wantCode {
-				t.Errorf("status: got %d, want %d", resp.StatusCode, tc.wantCode)
-			}
-
-			if !strings.HasPrefix(resp.Header.Get("Content-Type"), "application/json") {
-				t.Errorf("Content-Type: got %q, want application/json", resp.Header.Get("Content-Type"))
-			}
+			requireStatus(t, resp, tc.wantCode)
+			requireJSONContentType(t, resp)
 		})
 	}
 }
@@ -550,21 +356,13 @@ func TestAuth_Login_AdminTokenGrantsAdminAccess(t *testing.T) {
 		t.Fatal("login failed")
 	}
 
-	// /me works for any authenticated role
 	resp := doRequest(http.MethodGet, "/api/panel/v1/me", token, nil)
 	defer resp.Body.Close()
+	requireStatus(t, resp, http.StatusOK)
 
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200 for /me, got %d", resp.StatusCode)
-	}
-
-	// admin-only /users endpoint works
 	resp2 := doRequest(http.MethodGet, "/api/panel/v1/users", token, nil)
 	defer resp2.Body.Close()
-
-	if resp2.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200 for /users (admin), got %d", resp2.StatusCode)
-	}
+	requireStatus(t, resp2, http.StatusOK)
 }
 
 func TestAuth_Login_NonAdminTokenRejectedByAdminEndpoint(t *testing.T) {
@@ -574,21 +372,13 @@ func TestAuth_Login_NonAdminTokenRejectedByAdminEndpoint(t *testing.T) {
 		t.Fatal("login failed")
 	}
 
-	// /me works for any authenticated role
 	resp := doRequest(http.MethodGet, "/api/panel/v1/me", token, nil)
 	defer resp.Body.Close()
+	requireStatus(t, resp, http.StatusOK)
 
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200 for /me, got %d", resp.StatusCode)
-	}
-
-	// admin-only /users endpoint rejected for viewer
 	resp2 := doRequest(http.MethodGet, "/api/panel/v1/users", token, nil)
 	defer resp2.Body.Close()
-
-	if resp2.StatusCode != http.StatusForbidden {
-		t.Fatalf("expected 403 for /users (viewer), got %d", resp2.StatusCode)
-	}
+	requireStatus(t, resp2, http.StatusForbidden)
 }
 
 // --- helpers ---
@@ -628,9 +418,6 @@ func doRequestWithRawBody(method, path, token string, body io.Reader) *http.Resp
 }
 
 func deleteSessionFromRedis(email, token string) error {
-	// We need the user ID to compute the session key.
-	// Login returned a token but didn't give us the ID directly,
-	// so we query the DB for it.
 	ctx := tCtx()
 	pool, err := pgxpool.New(ctx, e2ePostgresDSN)
 	if err != nil {

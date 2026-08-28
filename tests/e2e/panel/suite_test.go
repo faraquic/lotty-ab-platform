@@ -79,7 +79,7 @@ func runSuite(m *testing.M) int {
 	}
 
 	cfgPath := filepath.Join(tmpDir, "config.local.json")
-	if err := os.WriteFile(cfgPath, []byte(fmt.Sprintf(`{
+	if err := os.WriteFile(cfgPath, fmt.Appendf(nil, `{
 		"environment": "local",
 		"auth": {
 			"jwt": {"secret_key": "e2e-test-secret-not-for-prod", "ttl": "1h"},
@@ -91,7 +91,7 @@ func runSuite(m *testing.M) int {
 			"s3":       {"bucket": %q, "region": "us-east-1", "endpoint": %q, "access_key": "minioadmin", "secret_key": "minioadmin"}
 		},
 		"panel": {"http": {"address": "0.0.0.0:%s"}}
-	}`, e2ePostgresDSN, e2eRedisURL, e2eS3Bucket, e2eS3Endpoint, testPort)), 0o644); err != nil {
+	}`, e2ePostgresDSN, e2eRedisURL, e2eS3Bucket, e2eS3Endpoint, testPort), 0o644); err != nil {
 		fmt.Printf("failed to write config: %v\n", err)
 		os.RemoveAll(tmpDir)
 		return 1
@@ -302,6 +302,65 @@ func doMultipartRequest(path, token, fieldName, filename string, fileData []byte
 
 func decodeJSON(resp *http.Response, v interface{}) {
 	json.NewDecoder(resp.Body).Decode(v)
+}
+
+type errorResponse struct {
+	Success bool `json:"success"`
+	Error   struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+func requireStatus(t *testing.T, resp *http.Response, want int) {
+	t.Helper()
+	if resp.StatusCode != want {
+		t.Fatalf("status: got %d, want %d", resp.StatusCode, want)
+	}
+}
+
+func requireJSONContentType(t *testing.T, resp *http.Response) {
+	t.Helper()
+	ct := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("Content-Type: got %q, want application/json", ct)
+	}
+}
+
+func requireErrorResponse(t *testing.T, resp *http.Response, wantStatus int, wantCode string) errorResponse {
+	t.Helper()
+	requireStatus(t, resp, wantStatus)
+	requireJSONContentType(t, resp)
+
+	var result errorResponse
+	decodeJSON(resp, &result)
+
+	if result.Success {
+		t.Error("expected success=false")
+	}
+	if result.Error.Code != wantCode {
+		t.Errorf("error code: got %q, want %q", result.Error.Code, wantCode)
+	}
+	return result
+}
+
+func doRequestWithAuth(t *testing.T, method, path string, setAuth bool, authValue string, body io.Reader) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(method, baseURL+path, body)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if setAuth {
+		req.Header.Set("Authorization", authValue)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do request %s %s: %v", method, path, err)
+	}
+	return resp
 }
 
 func waitForServer(url string) {

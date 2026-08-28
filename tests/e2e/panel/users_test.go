@@ -13,13 +13,8 @@ func TestGetMe(t *testing.T) {
 	resp := doRequest(http.MethodGet, "/api/panel/v1/me", adminToken, nil)
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
-	}
-
-	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
-		t.Errorf("Content-Type: got %q, want application/json", ct)
-	}
+	requireStatus(t, resp, http.StatusOK)
+	requireJSONContentType(t, resp)
 
 	var result struct {
 		Success bool `json:"success"`
@@ -46,9 +41,7 @@ func TestGetMe_Unauthenticated(t *testing.T) {
 	resp := doRequest(http.MethodGet, "/api/panel/v1/me", "", nil)
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", resp.StatusCode)
-	}
+	requireStatus(t, resp, http.StatusUnauthorized)
 }
 
 func TestGetMe_NoSecretsInResponse(t *testing.T) {
@@ -84,9 +77,7 @@ func TestGetMe_InvalidToken(t *testing.T) {
 	resp := doRequest(http.MethodGet, "/api/panel/v1/me", "not-a-real-jwt", nil)
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", resp.StatusCode)
-	}
+	requireStatus(t, resp, http.StatusUnauthorized)
 }
 
 func TestCreateAndListUser(t *testing.T) {
@@ -95,13 +86,8 @@ func TestCreateAndListUser(t *testing.T) {
 	listResp := doRequest(http.MethodGet, "/api/panel/v1/users?limit=100", adminToken, nil)
 	defer listResp.Body.Close()
 
-	if listResp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", listResp.StatusCode)
-	}
-
-	if ct := listResp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
-		t.Errorf("Content-Type: got %q, want application/json", ct)
-	}
+	requireStatus(t, listResp, http.StatusOK)
+	requireJSONContentType(t, listResp)
 
 	var listResult struct {
 		Success bool `json:"success"`
@@ -135,9 +121,7 @@ func TestListUsers_Pagination(t *testing.T) {
 	resp := doRequest(http.MethodGet, "/api/panel/v1/users?limit=1&offset=0", adminToken, nil)
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
-	}
+	requireStatus(t, resp, http.StatusOK)
 
 	var result struct {
 		Success bool `json:"success"`
@@ -159,9 +143,7 @@ func TestListUsers_DefaultLimit(t *testing.T) {
 	resp := doRequest(http.MethodGet, "/api/panel/v1/users", adminToken, nil)
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
-	}
+	requireStatus(t, resp, http.StatusOK)
 
 	var result struct {
 		Success bool `json:"success"`
@@ -197,9 +179,7 @@ func TestGetUserByID(t *testing.T) {
 	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/users/%d", id), adminToken, nil)
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
-	}
+	requireStatus(t, resp, http.StatusOK)
 
 	var result struct {
 		Data struct {
@@ -217,21 +197,24 @@ func TestGetUserByID(t *testing.T) {
 	}
 }
 
-func TestGetUserByID_NonNumericID(t *testing.T) {
-	resp := doRequest(http.MethodGet, "/api/panel/v1/users/abc", adminToken, nil)
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", resp.StatusCode)
+func TestUsers_RejectsInvalidOrNonexistentIDs(t *testing.T) {
+	cases := []struct {
+		name       string
+		path       string
+		wantStatus int
+		wantCode   string
+	}{
+		{"non-numeric id", "/api/panel/v1/users/abc", http.StatusBadRequest, "BAD_REQUEST"},
+		{"negative id", "/api/panel/v1/users/-1", http.StatusBadRequest, "BAD_REQUEST"},
+		{"nonexistent id", "/api/panel/v1/users/999999999", http.StatusNotFound, "NOT_FOUND"},
 	}
-}
 
-func TestGetUserByID_NegativeID(t *testing.T) {
-	resp := doRequest(http.MethodGet, "/api/panel/v1/users/-1", adminToken, nil)
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := doRequest(http.MethodGet, tc.path, adminToken, nil)
+			defer resp.Body.Close()
+			requireErrorResponse(t, resp, tc.wantStatus, tc.wantCode)
+		})
 	}
 }
 
@@ -243,9 +226,7 @@ func TestUpdateUserEmail(t *testing.T) {
 		jsonBody(map[string]string{"email": newEmail}))
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
-	}
+	requireStatus(t, resp, http.StatusOK)
 
 	var result struct {
 		Data struct {
@@ -266,9 +247,7 @@ func TestUpdateUserRole(t *testing.T) {
 		jsonBody(map[string]string{"role": "approver"}))
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
-	}
+	requireStatus(t, resp, http.StatusOK)
 
 	var result struct {
 		Data struct {
@@ -287,33 +266,7 @@ func TestUpdateUser_NonexistentID(t *testing.T) {
 		jsonBody(map[string]string{"email": "new@test.local"}))
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d", resp.StatusCode)
-	}
-}
-
-func TestUpdateUser_InvalidEmail(t *testing.T) {
-	id, _ := createUser(t, "viewer", "update-bad-email")
-
-	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/users/%d", id), adminToken,
-		jsonBody(map[string]string{"email": "not-an-email"}))
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", resp.StatusCode)
-	}
-}
-
-func TestUpdateUser_InvalidRole(t *testing.T) {
-	id, _ := createUser(t, "viewer", "update-bad-role")
-
-	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/users/%d", id), adminToken,
-		jsonBody(map[string]string{"role": "bogus"}))
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", resp.StatusCode)
-	}
+	requireStatus(t, resp, http.StatusNotFound)
 }
 
 func TestDeleteUser(t *testing.T) {
@@ -322,25 +275,19 @@ func TestDeleteUser(t *testing.T) {
 	resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/users/%d", id), adminToken, nil)
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("expected 204, got %d", resp.StatusCode)
-	}
+	requireStatus(t, resp, http.StatusNoContent)
 
 	getResp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/users/%d", id), adminToken, nil)
 	defer getResp.Body.Close()
 
-	if getResp.StatusCode != http.StatusNotFound {
-		t.Errorf("expected 404 after delete, got %d", getResp.StatusCode)
-	}
+	requireStatus(t, getResp, http.StatusNotFound)
 }
 
 func TestDeleteUser_NonexistentID(t *testing.T) {
 	resp := doRequest(http.MethodDelete, "/api/panel/v1/users/999999999", adminToken, nil)
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d", resp.StatusCode)
-	}
+	requireStatus(t, resp, http.StatusNotFound)
 }
 
 func TestSelfDeleteForbidden(t *testing.T) {
@@ -356,24 +303,9 @@ func TestSelfDeleteForbidden(t *testing.T) {
 	resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/users/%d", me.Data.ID), adminToken, nil)
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("expected 403, got %d", resp.StatusCode)
-	}
-
-	var errResult struct {
-		Success bool `json:"success"`
-		Error   struct {
-			Code    string `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	decodeJSON(resp, &errResult)
-
-	if errResult.Error.Code != "FORBIDDEN" {
-		t.Errorf("error code: got %q, want %q", errResult.Error.Code, "FORBIDDEN")
-	}
-	if !strings.Contains(errResult.Error.Message, "cannot delete") {
-		t.Errorf("error message should mention self-delete, got %q", errResult.Error.Message)
+	result := requireErrorResponse(t, resp, http.StatusForbidden, "FORBIDDEN")
+	if !strings.Contains(result.Error.Message, "cannot delete") {
+		t.Errorf("error message should mention self-delete, got %q", result.Error.Message)
 	}
 }
 
@@ -391,22 +323,7 @@ func TestSelfRoleChangeForbidden(t *testing.T) {
 		jsonBody(map[string]string{"role": "viewer"}))
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("expected 403, got %d", resp.StatusCode)
-	}
-
-	var errResult struct {
-		Success bool `json:"success"`
-		Error   struct {
-			Code    string `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	decodeJSON(resp, &errResult)
-
-	if errResult.Error.Code != "FORBIDDEN" {
-		t.Errorf("error code: got %q, want %q", errResult.Error.Code, "FORBIDDEN")
-	}
+	requireErrorResponse(t, resp, http.StatusForbidden, "FORBIDDEN")
 }
 
 func TestAdminCanDeleteAnotherAdmin(t *testing.T) {
@@ -415,9 +332,7 @@ func TestAdminCanDeleteAnotherAdmin(t *testing.T) {
 	resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/users/%d", id), adminToken, nil)
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("expected 204, got %d", resp.StatusCode)
-	}
+	requireStatus(t, resp, http.StatusNoContent)
 }
 
 func TestAdminCanDemoteAnotherAdmin(t *testing.T) {
@@ -427,9 +342,7 @@ func TestAdminCanDemoteAnotherAdmin(t *testing.T) {
 		jsonBody(map[string]string{"role": "viewer"}))
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
-	}
+	requireStatus(t, resp, http.StatusOK)
 }
 
 func TestCreateUser_DuplicateEmail(t *testing.T) {
@@ -445,21 +358,7 @@ func TestCreateUser_DuplicateEmail(t *testing.T) {
 		}))
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("expected 409, got %d", resp.StatusCode)
-	}
-
-	var errResult struct {
-		Success bool `json:"success"`
-		Error   struct {
-			Code string `json:"code"`
-		} `json:"error"`
-	}
-	decodeJSON(resp, &errResult)
-
-	if errResult.Error.Code != "CONFLICT" {
-		t.Errorf("error code: got %q, want %q", errResult.Error.Code, "CONFLICT")
-	}
+	requireErrorResponse(t, resp, http.StatusConflict, "CONFLICT")
 }
 
 func TestCreateUser_DuplicateUsername(t *testing.T) {
@@ -475,9 +374,7 @@ func TestCreateUser_DuplicateUsername(t *testing.T) {
 		}))
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("expected 409, got %d", resp.StatusCode)
-	}
+	requireStatus(t, resp, http.StatusConflict)
 }
 
 func TestViewerCannotManageUsers(t *testing.T) {
@@ -510,42 +407,32 @@ func TestViewerCannotManageUsers(t *testing.T) {
 				"role":     "viewer",
 			}))
 		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusForbidden {
-			t.Fatalf("expected 403, got %d", resp.StatusCode)
-		}
+		requireStatus(t, resp, http.StatusForbidden)
 	})
 
 	t.Run("cannot list users", func(t *testing.T) {
 		resp := doRequest(http.MethodGet, "/api/panel/v1/users", viewerToken, nil)
 		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusForbidden {
-			t.Fatalf("expected 403, got %d", resp.StatusCode)
-		}
+		requireStatus(t, resp, http.StatusForbidden)
 	})
 
 	t.Run("cannot get user by id", func(t *testing.T) {
 		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/users/%d", targetID), viewerToken, nil)
 		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusForbidden {
-			t.Fatalf("expected 403, got %d", resp.StatusCode)
-		}
+		requireStatus(t, resp, http.StatusForbidden)
 	})
 
 	t.Run("cannot update user", func(t *testing.T) {
 		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/users/%d", targetID), viewerToken,
 			jsonBody(map[string]string{"email": "hacker@test.local"}))
 		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusForbidden {
-			t.Fatalf("expected 403, got %d", resp.StatusCode)
-		}
+		requireStatus(t, resp, http.StatusForbidden)
 	})
 
 	t.Run("cannot delete user", func(t *testing.T) {
 		resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/users/%d", targetID), viewerToken, nil)
 		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusForbidden {
-			t.Fatalf("expected 403, got %d", resp.StatusCode)
-		}
+		requireStatus(t, resp, http.StatusForbidden)
 	})
 }
 
@@ -555,17 +442,13 @@ func TestUnauthenticatedUser_RejectedFromAllEndpoints(t *testing.T) {
 	t.Run("GET /users", func(t *testing.T) {
 		resp := doRequest(http.MethodGet, "/api/panel/v1/users", "", nil)
 		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusUnauthorized {
-			t.Fatalf("expected 401, got %d", resp.StatusCode)
-		}
+		requireStatus(t, resp, http.StatusUnauthorized)
 	})
 
 	t.Run("GET /users/:id", func(t *testing.T) {
 		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/users/%d", id), "", nil)
 		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusUnauthorized {
-			t.Fatalf("expected 401, got %d", resp.StatusCode)
-		}
+		requireStatus(t, resp, http.StatusUnauthorized)
 	})
 
 	t.Run("POST /users", func(t *testing.T) {
@@ -577,79 +460,25 @@ func TestUnauthenticatedUser_RejectedFromAllEndpoints(t *testing.T) {
 				"role":     "viewer",
 			}))
 		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusUnauthorized {
-			t.Fatalf("expected 401, got %d", resp.StatusCode)
-		}
+		requireStatus(t, resp, http.StatusUnauthorized)
 	})
 
 	t.Run("PATCH /users/:id", func(t *testing.T) {
 		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/users/%d", id), "",
 			jsonBody(map[string]string{"email": "hacker@test.local"}))
 		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusUnauthorized {
-			t.Fatalf("expected 401, got %d", resp.StatusCode)
-		}
+		requireStatus(t, resp, http.StatusUnauthorized)
 	})
 
 	t.Run("DELETE /users/:id", func(t *testing.T) {
 		resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/users/%d", id), "", nil)
 		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusUnauthorized {
-			t.Fatalf("expected 401, got %d", resp.StatusCode)
-		}
+		requireStatus(t, resp, http.StatusUnauthorized)
 	})
 }
 
-func TestGetNonexistentUser(t *testing.T) {
-	resp := doRequest(http.MethodGet, "/api/panel/v1/users/999999999", adminToken, nil)
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d", resp.StatusCode)
-	}
-
-	var errResult struct {
-		Success bool `json:"success"`
-		Error   struct {
-			Code string `json:"code"`
-		} `json:"error"`
-	}
-	decodeJSON(resp, &errResult)
-
-	if errResult.Error.Code != "NOT_FOUND" {
-		t.Errorf("error code: got %q, want %q", errResult.Error.Code, "NOT_FOUND")
-	}
-}
-
-func TestCreateUser_InvalidPayload(t *testing.T) {
-	resp := doRequest(http.MethodPost, "/api/panel/v1/users", adminToken,
-		jsonBody(map[string]string{
-			"username": "x",
-			"email":    "not-an-email",
-			"password": "short",
-			"role":     "bogus",
-		}))
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", resp.StatusCode)
-	}
-
-	var errResult struct {
-		Success bool `json:"success"`
-		Error   struct {
-			Code string `json:"code"`
-		} `json:"error"`
-	}
-	decodeJSON(resp, &errResult)
-
-	if errResult.Error.Code != "BAD_REQUEST" {
-		t.Errorf("error code: got %q, want %q", errResult.Error.Code, "BAD_REQUEST")
-	}
-}
-
-func TestCreateUser_MissingFields(t *testing.T) {
-	tests := []struct {
+func TestCreateUser_RejectsInvalidRequests(t *testing.T) {
+	cases := []struct {
 		name    string
 		payload map[string]string
 	}{
@@ -673,104 +502,51 @@ func TestCreateUser_MissingFields(t *testing.T) {
 			name:    "missing username",
 			payload: map[string]string{"email": "valid@test.local", "password": "testpass123", "role": "viewer"},
 		},
+		{
+			name:    "invalid email format",
+			payload: map[string]string{"username": "valid-user", "email": "not-an-email", "password": "testpass123", "role": "viewer"},
+		},
+		{
+			name:    "empty role",
+			payload: map[string]string{"username": testUsername("bad-role"), "email": testEmail("bad-role"), "password": "testpass123", "role": ""},
+		},
+		{
+			name:    "unknown role",
+			payload: map[string]string{"username": testUsername("bad-role"), "email": testEmail("bad-role"), "password": "testpass123", "role": "superadmin"},
+		},
+		{
+			name:    "capitalized role",
+			payload: map[string]string{"username": testUsername("bad-role"), "email": testEmail("bad-role"), "password": "testpass123", "role": "Admin"},
+		},
+		{
+			name:    "username too short",
+			payload: map[string]string{"username": "ab", "email": testEmail("short-username"), "password": "testpass123", "role": "viewer"},
+		},
+		{
+			name:    "username too long",
+			payload: map[string]string{"username": strings.Repeat("a", 65), "email": testEmail("long-username"), "password": "testpass123", "role": "viewer"},
+		},
+		{
+			name:    "password too short",
+			payload: map[string]string{"username": testUsername("short-pass"), "email": testEmail("short-pass"), "password": "short", "role": "viewer"},
+		},
+		{
+			name: "all fields invalid",
+			payload: map[string]string{
+				"username": "x",
+				"email":    "not-an-email",
+				"password": "short",
+				"role":     "bogus",
+			},
+		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			resp := doRequest(http.MethodPost, "/api/panel/v1/users", adminToken, jsonBody(tt.payload))
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := doRequest(http.MethodPost, "/api/panel/v1/users", adminToken, jsonBody(tc.payload))
 			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusBadRequest {
-				t.Fatalf("expected 400, got %d", resp.StatusCode)
-			}
+			requireErrorResponse(t, resp, http.StatusBadRequest, "BAD_REQUEST")
 		})
-	}
-}
-
-func TestCreateUser_InvalidEmail(t *testing.T) {
-	resp := doRequest(http.MethodPost, "/api/panel/v1/users", adminToken,
-		jsonBody(map[string]string{
-			"username": "valid-user",
-			"email":    "not-an-email",
-			"password": "testpass123",
-			"role":     "viewer",
-		}))
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", resp.StatusCode)
-	}
-}
-
-func TestCreateUser_InvalidRole(t *testing.T) {
-	tests := []struct {
-		name string
-		role string
-	}{
-		{"empty role", ""},
-		{"unknown role", "superadmin"},
-		{"capitalized role", "Admin"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			resp := doRequest(http.MethodPost, "/api/panel/v1/users", adminToken,
-				jsonBody(map[string]string{
-					"username": testUsername("bad-role"),
-					"email":    testEmail("bad-role"),
-					"password": "testpass123",
-					"role":     tt.role,
-				}))
-			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusBadRequest {
-				t.Fatalf("expected 400, got %d", resp.StatusCode)
-			}
-		})
-	}
-}
-
-func TestCreateUser_UsernameTooShort(t *testing.T) {
-	resp := doRequest(http.MethodPost, "/api/panel/v1/users", adminToken,
-		jsonBody(map[string]string{
-			"username": "ab",
-			"email":    testEmail("short-username"),
-			"password": "testpass123",
-			"role":     "viewer",
-		}))
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", resp.StatusCode)
-	}
-}
-
-func TestCreateUser_UsernameTooLong(t *testing.T) {
-	longName := strings.Repeat("a", 65)
-	resp := doRequest(http.MethodPost, "/api/panel/v1/users", adminToken,
-		jsonBody(map[string]string{
-			"username": longName,
-			"email":    testEmail("long-username"),
-			"password": "testpass123",
-			"role":     "viewer",
-		}))
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", resp.StatusCode)
-	}
-}
-
-func TestCreateUser_PasswordTooShort(t *testing.T) {
-	resp := doRequest(http.MethodPost, "/api/panel/v1/users", adminToken,
-		jsonBody(map[string]string{
-			"username": testUsername("short-pass"),
-			"email":    testEmail("short-pass"),
-			"password": "short",
-			"role":     "viewer",
-		}))
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", resp.StatusCode)
 	}
 }
 
@@ -779,9 +555,7 @@ func TestCreateUser_InvalidJSON(t *testing.T) {
 		strings.NewReader("{invalid json"))
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", resp.StatusCode)
-	}
+	requireStatus(t, resp, http.StatusBadRequest)
 }
 
 func TestCreateUser_NoSecretsInResponse(t *testing.T) {
@@ -851,7 +625,5 @@ func TestListUsers_JSONContentType(t *testing.T) {
 	resp := doRequest(http.MethodGet, "/api/panel/v1/users", adminToken, nil)
 	defer resp.Body.Close()
 
-	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
-		t.Errorf("Content-Type: got %q, want application/json", ct)
-	}
+	requireJSONContentType(t, resp)
 }

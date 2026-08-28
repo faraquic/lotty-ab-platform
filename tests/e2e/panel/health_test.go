@@ -14,8 +14,6 @@ import (
 	"time"
 )
 
-const healthTestPort = "18081"
-
 type healthReadyResponse struct {
 	Service     string                      `json:"service"`
 	Version     string                      `json:"version"`
@@ -33,9 +31,7 @@ func TestHealth_Liveness(t *testing.T) {
 	resp := doRequest(http.MethodGet, "/api/panel/v1/health", "", nil)
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status: got %d, want 200", resp.StatusCode)
-	}
+	requireStatus(t, resp, http.StatusOK)
 
 	ct := resp.Header.Get("Content-Type")
 	if !strings.HasPrefix(ct, "text/plain") {
@@ -60,23 +56,15 @@ func TestHealth_LivenessNoAuthRequired(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status without auth: got %d, want 200", resp.StatusCode)
-	}
+	requireStatus(t, resp, http.StatusOK)
 }
 
 func TestHealth_Readiness(t *testing.T) {
 	resp := doRequest(http.MethodGet, "/api/panel/v1/ready", "", nil)
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status: got %d, want 200", resp.StatusCode)
-	}
-
-	ct := resp.Header.Get("Content-Type")
-	if !strings.HasPrefix(ct, "application/json") {
-		t.Errorf("Content-Type: got %q, want application/json", ct)
-	}
+	requireStatus(t, resp, http.StatusOK)
+	requireJSONContentType(t, resp)
 
 	var result healthReadyResponse
 	decodeJSON(resp, &result)
@@ -118,9 +106,7 @@ func TestHealth_ReadinessNoAuthRequired(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status without auth: got %d, want 200", resp.StatusCode)
-	}
+	requireStatus(t, resp, http.StatusOK)
 }
 
 func TestHealth_ReadinessNoSecretsInResponse(t *testing.T) {
