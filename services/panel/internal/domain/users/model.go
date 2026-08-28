@@ -31,6 +31,7 @@ type User struct {
 	PasswordHash string
 	Role         Role
 	AvatarURL    string
+	DeletedAt    *time.Time
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }

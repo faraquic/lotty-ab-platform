@@ -20,12 +20,7 @@ type Handler struct {
 }
 
 func NewHandler(pool *pgxpool.Pool, redis *rueidis.Client, s3 *s3.Client, environment string) *Handler {
-	return &Handler{
-		pool:        pool,
-		redis:       redis,
-		s3:          s3,
-		environment: environment,
-	}
+	return &Handler{pool, redis, s3, environment}
 }
 
 func (h *Handler) RegisterRoutes(g *gin.RouterGroup) {

@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
+	pgconnutils "github.com/faraquic/lotty-ab-platform/services/panel/internal/lib/pgconn-utils"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -24,14 +24,15 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 
 func (r *Repository) Create(ctx context.Context, u User) (int64, error) {
 	const q = `
-INSERT INTO users (username, email, password_hash, role)
-VALUES ($1, $2, $3, $4)
-RETURNING id`
+INSERT INTO users(username, email, password_hash, role)
+    VALUES ($1, $2, $3, $4)
+RETURNING
+    id`
 
 	var id int64
 	err := r.db.QueryRow(ctx, q, u.Username, u.Email, u.PasswordHash, u.Role).Scan(&id)
 	if err != nil {
-		if isUniqueViolation(err) {
+		if pgconnutils.IsUniqueViolation(err) {
 			return 0, ErrConflict
 		}
 		return 0, err
@@ -42,9 +43,20 @@ RETURNING id`
 
 func (r *Repository) GetByID(ctx context.Context, id int64) (User, error) {
 	const q = `
-SELECT id, username, email, password_hash, role, COALESCE(avatar_url, ''), created_at, updated_at
-FROM users
-WHERE id = $1 AND deleted_at IS NULL`
+SELECT
+    id,
+    username,
+    email,
+    password_hash,
+    ROLE,
+    COALESCE(avatar_url, ''),
+    created_at,
+    updated_at
+FROM
+    users
+WHERE
+    id = $1
+    AND deleted_at IS NULL`
 
 	var u User
 	err := r.db.QueryRow(ctx, q, id).
@@ -61,10 +73,21 @@ WHERE id = $1 AND deleted_at IS NULL`
 
 func (r *Repository) List(ctx context.Context, limit, offset int) ([]User, error) {
 	const q = `
-SELECT id, username, email, password_hash, role, COALESCE(avatar_url, ''), created_at, updated_at
-FROM users
-WHERE deleted_at IS NULL
-ORDER BY id
+SELECT
+    id,
+    username,
+    email,
+    password_hash,
+    ROLE,
+    COALESCE(avatar_url, ''),
+    created_at,
+    updated_at
+FROM
+    users
+WHERE
+    deleted_at IS NULL
+ORDER BY
+    id
 LIMIT $1 OFFSET $2`
 
 	rows, err := r.db.Query(ctx, q, limit, offset)
@@ -87,11 +110,23 @@ LIMIT $1 OFFSET $2`
 
 func (r *Repository) Update(ctx context.Context, id int64, email *string, role *Role) (User, error) {
 	const q = `
-UPDATE users
-SET email = COALESCE($2, email),
+UPDATE
+    users
+SET
+    email = COALESCE($2, email),
     role = COALESCE($3, role)
-WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, username, email, password_hash, role, COALESCE(avatar_url, ''), created_at, updated_at`
+WHERE
+    id = $1
+    AND deleted_at IS NULL
+RETURNING
+    id,
+    username,
+    email,
+    password_hash,
+    role,
+    COALESCE(avatar_url, ''),
+    created_at,
+    updated_at`
 
 	var u User
 	err := r.db.QueryRow(ctx, q, id, email, role).
@@ -100,7 +135,7 @@ RETURNING id, username, email, password_hash, role, COALESCE(avatar_url, ''), cr
 		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrNotFound
 		}
-		if isUniqueViolation(err) {
+		if pgconnutils.IsUniqueViolation(err) {
 			return User{}, ErrConflict
 		}
 		return User{}, err
@@ -111,9 +146,13 @@ RETURNING id, username, email, password_hash, role, COALESCE(avatar_url, ''), cr
 
 func (r *Repository) Delete(ctx context.Context, id int64) error {
 	const q = `
-UPDATE users
-SET deleted_at = now()
-WHERE id = $1 AND deleted_at IS NULL`
+UPDATE
+    users
+SET
+    deleted_at = now()
+WHERE
+    id = $1
+    AND deleted_at IS NULL`
 
 	tag, err := r.db.Exec(ctx, q, id)
 	if err != nil {
@@ -128,9 +167,13 @@ WHERE id = $1 AND deleted_at IS NULL`
 
 func (r *Repository) UpdateAvatarURL(ctx context.Context, id int64, avatarURL string) error {
 	const q = `
-UPDATE users
-SET avatar_url = $2
-WHERE id = $1 AND deleted_at IS NULL`
+UPDATE
+    users
+SET
+    avatar_url = $2
+WHERE
+    id = $1
+    AND deleted_at IS NULL`
 
 	tag, err := r.db.Exec(ctx, q, id, avatarURL)
 	if err != nil {
@@ -143,13 +186,14 @@ WHERE id = $1 AND deleted_at IS NULL`
 	return nil
 }
 
-func isUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505"
-}
-
 func (r *Repository) Count(ctx context.Context) (int64, error) {
-	const q = `SELECT count(*) FROM users`
+	const q = `
+SELECT
+  count(*)
+FROM
+  users
+WHERE
+  deleted_at IS NULL`
 
 	var n int64
 	err := r.db.QueryRow(ctx, q).Scan(&n)
@@ -159,8 +203,13 @@ func (r *Repository) Count(ctx context.Context) (int64, error) {
 
 func (r *Repository) CountAdmins(ctx context.Context) (int64, error) {
 	const q = `
-SELECT count(*) FROM users
-WHERE role = 'admin' AND deleted_at IS NULL`
+SELECT
+    count(*)
+FROM
+    users
+WHERE
+    ROLE = 'admin'
+    AND deleted_at IS NULL`
 
 	var n int64
 	err := r.db.QueryRow(ctx, q).Scan(&n)

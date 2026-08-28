@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"mime/multipart"
 
+	"github.com/faraquic/lotty-ab-platform/pkg/api"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -45,7 +46,7 @@ type Service struct {
 }
 
 func NewService(repo UserRepo, revoker SessionRevoker, storage Storage, log *zap.Logger) *Service {
-	return &Service{repo: repo, revoker: revoker, storage: storage, log: log}
+	return &Service{repo, revoker, storage, log}
 }
 
 func (s *Service) Create(ctx context.Context, req CreateUserRequest) (UserResponse, error) {
@@ -82,10 +83,10 @@ func (s *Service) GetByID(ctx context.Context, id int64) (UserResponse, error) {
 		return UserResponse{}, err
 	}
 
-	return toResponse(u), nil
+	return ToResponse(u), nil
 }
 
-func (s *Service) List(ctx context.Context, limit, offset int) ([]UserResponse, error) {
+func (s *Service) List(ctx context.Context, limit, offset int) (PaginatedUserResponse, error) {
 	if limit < 1 || limit > 100 {
 		limit = 20
 	}
@@ -93,17 +94,34 @@ func (s *Service) List(ctx context.Context, limit, offset int) ([]UserResponse, 
 		offset = 0
 	}
 
+	total, err := s.repo.Count(ctx)
+	if err != nil {
+		return PaginatedUserResponse{}, err
+	}
+
 	usersList, err := s.repo.List(ctx, limit, offset)
 	if err != nil {
-		return nil, err
+		return PaginatedUserResponse{}, err
 	}
 
 	resp := make([]UserResponse, 0, len(usersList))
 	for _, u := range usersList {
-		resp = append(resp, toResponse(u))
+		resp = append(resp, ToResponse(u))
 	}
 
-	return resp, nil
+	count := len(resp)
+	hasNext := int64(offset)+int64(count) < total
+
+	return PaginatedUserResponse{
+		Data: resp,
+		Meta: api.PaginationMeta{
+			Limit:   limit,
+			Offset:  offset,
+			Count:   count,
+			Total:   total,
+			HasNext: hasNext,
+		},
+	}, nil
 }
 
 func (s *Service) Update(ctx context.Context, callerID, id int64, req UpdateUserRequest) (UserResponse, error) {
@@ -151,7 +169,7 @@ func (s *Service) Update(ctx context.Context, callerID, id int64, req UpdateUser
 		s.revokeSessions(ctx, id)
 	}
 
-	return toResponse(u), nil
+	return ToResponse(u), nil
 }
 
 func (s *Service) Delete(ctx context.Context, callerID, id int64) error {
@@ -281,7 +299,7 @@ func (s *Service) DeleteAvatar(ctx context.Context, userID int64) (UserResponse,
 	}
 
 	if user.AvatarURL == "" {
-		return toResponse(user), nil
+		return ToResponse(user), nil
 	}
 
 	if s.storage != nil {

@@ -1,6 +1,6 @@
 package users
 
-import "time"
+import "github.com/faraquic/lotty-ab-platform/pkg/api"
 
 type CreateUserRequest struct {
 	Username string `json:"username" binding:"required,min=3,max=64"`
@@ -15,27 +15,30 @@ type UpdateUserRequest struct {
 }
 
 type UserResponse struct {
-	ID        int64     `json:"id"`
-	Username  string    `json:"username"`
-	Email     string    `json:"email"`
-	Role      string    `json:"role"`
-	AvatarURL *string   `json:"avatar_url"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	api.ResourceResponse
+	Username  string  `json:"username"`
+	Email     string  `json:"email"`
+	Role      string  `json:"role"`
+	AvatarURL *string `json:"avatar_url"`
 }
 
-func toResponse(u User) UserResponse {
+type PaginatedUserResponse struct {
+	Data []UserResponse     `json:"data"`
+	Meta api.PaginationMeta `json:"meta"`
+}
+
+func ToResponse(u User) UserResponse {
 	var avatarURL *string
 	if u.AvatarURL != "" {
 		avatarURL = &u.AvatarURL
 	}
 	return UserResponse{
 		ID:        u.ID,
+		CreatedAt: u.CreatedAt,
+		UpdatedAt: u.UpdatedAt,
 		Username:  u.Username,
 		Email:     u.Email,
 		Role:      string(u.Role),
 		AvatarURL: avatarURL,
-		CreatedAt: u.CreatedAt,
-		UpdatedAt: u.UpdatedAt,
 	}
 }

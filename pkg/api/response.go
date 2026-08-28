@@ -21,7 +21,7 @@ type Response struct {
 	Success bool       `json:"success"`
 	Data    any        `json:"data,omitempty"`
 	Error   *ErrorInfo `json:"error,omitempty"`
-	Meta    *Meta      `json:"meta,omitempty"`
+	Meta    any        `json:"meta,omitempty"`
 }
 
 type ErrorInfo struct {
@@ -36,10 +36,20 @@ type Meta struct {
 	TotalPages int `json:"total_pages,omitempty"`
 }
 
+type PaginationMeta struct {
+	Limit   int   `json:"limit"`
+	Offset  int   `json:"offset"`
+	Count   int   `json:"count"`
+	Total   int64 `json:"total"`
+	HasNext bool  `json:"has_next"`
+}
+
 const (
 	StatusOK            = "OK"
 	BadRequest          = "BAD_REQUEST"
+	Forbidden           = "FORBIDDEN"
 	NotFound            = "NOT_FOUND"
+	Conflict            = "CONFLICT"
 	PayloadTooLarge     = "PAYLOAD_TOO_LARGE"
 	InternalServerError = "INTERNAL_SERVER_ERROR"
 
@@ -50,6 +60,14 @@ func OK(w http.ResponseWriter, data any) {
 	writeJSON(w, http.StatusOK, Response{
 		Success: true,
 		Data:    data,
+	})
+}
+
+func OKWithMeta(w http.ResponseWriter, data any, meta *PaginationMeta) {
+	writeJSON(w, http.StatusOK, Response{
+		Success: true,
+		Data:    data,
+		Meta:    meta,
 	})
 }
 

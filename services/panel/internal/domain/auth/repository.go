@@ -23,9 +23,15 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 }
 
 const selectCredentialsByEmail = `
-SELECT id, role, password_hash
-FROM users
-WHERE email = $1 AND deleted_at IS NULL`
+SELECT
+    id,
+    ROLE,
+    password_hash
+FROM
+    users
+WHERE
+    email = $1
+    AND deleted_at IS NULL`
 
 func (r *Repository) GetCredentialsByEmail(ctx context.Context, email string) (int64, string, string, error) {
 	var (

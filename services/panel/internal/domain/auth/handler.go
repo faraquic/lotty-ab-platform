@@ -17,7 +17,7 @@ type Handler struct {
 }
 
 func NewHandler(svc *Service, log *zap.Logger) *Handler {
-	return &Handler{svc: svc, log: log}
+	return &Handler{svc, log}
 }
 
 func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {

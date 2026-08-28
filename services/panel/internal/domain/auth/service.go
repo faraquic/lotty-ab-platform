@@ -29,13 +29,7 @@ type Service struct {
 }
 
 func NewService(repo AuthRepo, tokenizer libauth.Tokenizer, redisClient *rueidis.Client, ttl time.Duration, log *zap.Logger) *Service {
-	return &Service{
-		repo:      repo,
-		tokenizer: tokenizer,
-		redis:     redisClient,
-		ttl:       ttl,
-		log:       log,
-	}
+	return &Service{repo, tokenizer, redisClient, ttl, log}
 }
 
 func (s *Service) Login(ctx context.Context, req LoginRequest) (string, time.Time, error) {
@@ -115,7 +109,8 @@ func (s *Service) RevokeUserSessions(ctx context.Context, userID int64) error {
 	var cursor uint64
 
 	for {
-		entry, err := (*s.redis).Do(ctx,
+		entry, err := (*s.redis).Do(
+			ctx,
 			(*s.redis).B().Scan().Cursor(cursor).Match(pattern).Count(100).Build(),
 		).AsScanEntry()
 		if err != nil {

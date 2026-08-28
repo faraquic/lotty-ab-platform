@@ -3,6 +3,7 @@ package e2e
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -14,8 +15,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/goccy/go-json"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/rueidis"
@@ -77,6 +76,26 @@ type usersResponse struct {
 		ID    int64  `json:"id"`
 		Email string `json:"email"`
 	} `json:"data"`
+}
+
+type paginatedUsersResponse struct {
+	Success bool `json:"success"`
+	Data    []struct {
+		ID        int64   `json:"id"`
+		Username  string  `json:"username"`
+		Email     string  `json:"email"`
+		Role      string  `json:"role"`
+		AvatarURL *string `json:"avatar_url"`
+		CreatedAt string  `json:"created_at"`
+		UpdatedAt string  `json:"updated_at"`
+	} `json:"data"`
+	Meta struct {
+		Limit   int   `json:"limit"`
+		Offset  int   `json:"offset"`
+		Count   int   `json:"count"`
+		Total   int64 `json:"total"`
+		HasNext bool  `json:"has_next"`
+	} `json:"meta"`
 }
 
 type loginResponse struct {
@@ -234,9 +253,9 @@ func cleanupTestState() error {
 	}
 	defer pool.Close()
 
-	_, err = pool.Exec(ctx, "TRUNCATE users RESTART IDENTITY")
+	_, err = pool.Exec(ctx, "TRUNCATE flags, users RESTART IDENTITY CASCADE")
 	if err != nil {
-		return fmt.Errorf("truncate users: %w", err)
+		return fmt.Errorf("truncate tables: %w", err)
 	}
 
 	redisClient, err := rueidis.NewClient(rueidis.ClientOption{
@@ -457,7 +476,8 @@ func login(email, password string) string {
 // --- response decoders ---
 
 func decodeJSON(resp *http.Response, v interface{}) {
-	json.NewDecoder(resp.Body).Decode(v)
+	body, _ := io.ReadAll(resp.Body)
+	json.Unmarshal(body, v)
 }
 
 func decodeLoginResponse(t *testing.T, resp *http.Response) loginResponse {
@@ -484,6 +504,13 @@ func decodeUserResponse(t *testing.T, resp *http.Response) userResponse {
 func decodeUsersResponse(t *testing.T, resp *http.Response) usersResponse {
 	t.Helper()
 	var r usersResponse
+	decodeJSON(resp, &r)
+	return r
+}
+
+func decodePaginatedUsersResponse(t *testing.T, resp *http.Response) paginatedUsersResponse {
+	t.Helper()
+	var r paginatedUsersResponse
 	decodeJSON(resp, &r)
 	return r
 }

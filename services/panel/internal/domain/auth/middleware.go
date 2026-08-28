@@ -13,6 +13,7 @@ import (
 	"github.com/faraquic/lotty-ab-platform/pkg/api"
 	"github.com/faraquic/lotty-ab-platform/pkg/config"
 	"github.com/faraquic/lotty-ab-platform/services/panel/internal/domain/users"
+	"github.com/faraquic/lotty-ab-platform/services/panel/internal/lib/gin-context-utils"
 )
 
 const (
@@ -60,7 +61,7 @@ func NewMiddleware(cfg *config.Config, svc *Service, log *zap.Logger) (*Middlewa
 				return false
 			}
 
-			c.Set(users.CtxUserIDKey, id)
+			c.Set(gincontextutils.CtxUserIDKey, id)
 
 			raw, exists := c.Get(requiredRolesKey)
 			if !exists {

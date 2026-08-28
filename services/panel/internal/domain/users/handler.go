@@ -8,6 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	gincontextutils "github.com/faraquic/lotty-ab-platform/services/panel/internal/lib/gin-context-utils"
+
 	"github.com/faraquic/lotty-ab-platform/pkg/api"
 )
 
@@ -17,7 +19,7 @@ type Handler struct {
 }
 
 func NewHandler(svc *Service, log *zap.Logger) *Handler {
-	return &Handler{svc: svc, log: log}
+	return &Handler{svc, log}
 }
 
 func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
@@ -38,7 +40,7 @@ func (h *Handler) RegisterMeRoute(rg *gin.RouterGroup) {
 }
 
 func (h *Handler) me(c *gin.Context) {
-	resp, err := h.svc.GetByID(c.Request.Context(), callerID(c))
+	resp, err := h.svc.GetByID(c.Request.Context(), gincontextutils.CallerID(c))
 	if err != nil {
 		h.respondError(c.Writer, err)
 		return
@@ -78,7 +80,7 @@ func (h *Handler) list(c *gin.Context) {
 		return
 	}
 
-	api.OK(c.Writer, resp)
+	api.OKWithMeta(c.Writer, resp.Data, &resp.Meta)
 }
 
 func (h *Handler) getByID(c *gin.Context) {
@@ -96,16 +98,6 @@ func (h *Handler) getByID(c *gin.Context) {
 	api.OK(c.Writer, resp)
 }
 
-const CtxUserIDKey = "user_id"
-
-func callerID(c *gin.Context) int64 {
-	id, _ := c.Get(CtxUserIDKey)
-
-	v, _ := id.(int64)
-
-	return v
-}
-
 func (h *Handler) update(c *gin.Context) {
 	id, ok := parseID(c)
 	if !ok {
@@ -117,7 +109,7 @@ func (h *Handler) update(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.svc.Update(c.Request.Context(), callerID(c), id, req)
+	resp, err := h.svc.Update(c.Request.Context(), gincontextutils.CallerID(c), id, req)
 	if err != nil {
 		h.respondError(c.Writer, err)
 		return
@@ -132,7 +124,7 @@ func (h *Handler) delete(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.Delete(c.Request.Context(), callerID(c), id); err != nil {
+	if err := h.svc.Delete(c.Request.Context(), gincontextutils.CallerID(c), id); err != nil {
 		h.respondError(c.Writer, err)
 		return
 	}
@@ -150,7 +142,7 @@ func (h *Handler) uploadAvatar(c *gin.Context) {
 }
 
 func (h *Handler) uploadMyAvatar(c *gin.Context) {
-	h.handleAvatarUpload(c, callerID(c))
+	h.handleAvatarUpload(c, gincontextutils.CallerID(c))
 }
 
 func (h *Handler) handleAvatarUpload(c *gin.Context, userID int64) {
@@ -189,13 +181,13 @@ func (h *Handler) respondError(w http.ResponseWriter, err error) {
 	case errors.Is(err, ErrNotFound):
 		api.Error(w, http.StatusNotFound, api.NotFound, err.Error())
 	case errors.Is(err, ErrConflict):
-		api.Error(w, http.StatusConflict, "CONFLICT", err.Error())
+		api.Error(w, http.StatusConflict, api.Conflict, err.Error())
 	case errors.Is(err, ErrInvalidRole):
 		api.Error(w, http.StatusBadRequest, api.BadRequest, err.Error())
 	case errors.Is(err, ErrSelfDelete), errors.Is(err, ErrSelfRoleChange):
-		api.Error(w, http.StatusForbidden, "FORBIDDEN", err.Error())
+		api.Error(w, http.StatusForbidden, api.Forbidden, err.Error())
 	case errors.Is(err, ErrLastAdmin):
-		api.Error(w, http.StatusConflict, "CONFLICT", err.Error())
+		api.Error(w, http.StatusConflict, api.Conflict, err.Error())
 	case errors.Is(err, ErrInvalidFileType), errors.Is(err, ErrFileTooLarge):
 		api.Error(w, http.StatusBadRequest, api.BadRequest, err.Error())
 	case errors.Is(err, ErrStorageUnavailable):

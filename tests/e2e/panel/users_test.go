@@ -81,7 +81,7 @@ func TestCreateAndListUser(t *testing.T) {
 	requireStatus(t, listResp, http.StatusOK)
 	requireJSONContentType(t, listResp)
 
-	result := decodeUsersResponse(t, listResp)
+	result := decodePaginatedUsersResponse(t, listResp)
 
 	if !result.Success {
 		t.Error("expected success=true")
@@ -108,19 +108,86 @@ func TestListUsers_Pagination(t *testing.T) {
 
 	requireStatus(t, resp, http.StatusOK)
 
-	var result struct {
-		Success bool `json:"success"`
-		Data    []struct {
-			ID int64 `json:"id"`
-		} `json:"data"`
-	}
-	decodeJSON(resp, &result)
+	result := decodePaginatedUsersResponse(t, resp)
 
 	if !result.Success {
 		t.Error("expected success=true")
 	}
 	if len(result.Data) != 1 {
 		t.Errorf("limit=1: got %d users, want 1", len(result.Data))
+	}
+	if result.Meta.Limit != 1 {
+		t.Errorf("meta.limit: got %d, want 1", result.Meta.Limit)
+	}
+	if result.Meta.Offset != 0 {
+		t.Errorf("meta.offset: got %d, want 0", result.Meta.Offset)
+	}
+	if result.Meta.Count != 1 {
+		t.Errorf("meta.count: got %d, want 1", result.Meta.Count)
+	}
+	if !result.Meta.HasNext {
+		t.Error("expected has_next=true on first page with more results")
+	}
+}
+
+func TestListUsers_Pagination_HasNextFalseOnFinalPage(t *testing.T) {
+	createUser(t, "viewer", "final-a")
+	createUser(t, "viewer", "final-b")
+
+	// Get total count first
+	firstResp := doRequest(http.MethodGet, "/api/panel/v1/users?limit=1&offset=0", adminToken, nil)
+	defer firstResp.Body.Close()
+	first := decodePaginatedUsersResponse(t, firstResp)
+
+	// Fetch the last page (offset = total - 1)
+	lastOffset := int(first.Meta.Total) - 1
+	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/users?limit=1&offset=%d", lastOffset), adminToken, nil)
+	defer resp.Body.Close()
+
+	requireStatus(t, resp, http.StatusOK)
+	result := decodePaginatedUsersResponse(t, resp)
+
+	if len(result.Data) != 1 {
+		t.Errorf("final page: got %d users, want 1", len(result.Data))
+	}
+	if result.Meta.Count != 1 {
+		t.Errorf("meta.count: got %d, want 1", result.Meta.Count)
+	}
+	if result.Meta.HasNext {
+		t.Error("expected has_next=false on final page")
+	}
+}
+
+func TestListUsers_Pagination_OffsetBeyondTotal(t *testing.T) {
+	// Get baseline total
+	baseResp := doRequest(http.MethodGet, "/api/panel/v1/users?limit=1&offset=0", adminToken, nil)
+	defer baseResp.Body.Close()
+	base := decodePaginatedUsersResponse(t, baseResp)
+
+	// Create two more users
+	id1, _ := createUser(t, "viewer", "beyond-a")
+	id2, _ := createUser(t, "viewer", "beyond-b")
+	_ = id1
+	_ = id2
+
+	// Request offset far beyond total
+	resp := doRequest(http.MethodGet, "/api/panel/v1/users?limit=1&offset=100000", adminToken, nil)
+	defer resp.Body.Close()
+
+	requireStatus(t, resp, http.StatusOK)
+	result := decodePaginatedUsersResponse(t, resp)
+
+	if len(result.Data) != 0 {
+		t.Errorf("offset beyond total: got %d users, want 0", len(result.Data))
+	}
+	if result.Meta.Count != 0 {
+		t.Errorf("meta.count: got %d, want 0", result.Meta.Count)
+	}
+	if result.Meta.Total < base.Meta.Total+2 {
+		t.Errorf("meta.total (%d) should be >= baseline+2 (%d)", result.Meta.Total, base.Meta.Total+2)
+	}
+	if result.Meta.HasNext {
+		t.Error("expected has_next=false when offset beyond total")
 	}
 }
 
@@ -130,19 +197,28 @@ func TestListUsers_DefaultLimit(t *testing.T) {
 
 	requireStatus(t, resp, http.StatusOK)
 
-	var result struct {
-		Success bool `json:"success"`
-		Data    []struct {
-			ID int64 `json:"id"`
-		} `json:"data"`
-	}
-	decodeJSON(resp, &result)
+	result := decodePaginatedUsersResponse(t, resp)
 
 	if !result.Success {
 		t.Error("expected success=true")
 	}
 	if len(result.Data) == 0 {
 		t.Error("expected at least one user (bootstrap admin)")
+	}
+	if result.Meta.Limit != 20 {
+		t.Errorf("meta.limit: got %d, want 20", result.Meta.Limit)
+	}
+	if result.Meta.Offset != 0 {
+		t.Errorf("meta.offset: got %d, want 0", result.Meta.Offset)
+	}
+	if result.Meta.Count != len(result.Data) {
+		t.Errorf("meta.count: got %d, want %d", result.Meta.Count, len(result.Data))
+	}
+	if result.Meta.Total < int64(result.Meta.Count) {
+		t.Errorf("meta.total (%d) < meta.count (%d)", result.Meta.Total, result.Meta.Count)
+	}
+	if result.Meta.HasNext != (int64(result.Meta.Offset)+int64(result.Meta.Count) < result.Meta.Total) {
+		t.Errorf("meta.has_next inconsistent: offset=%d count=%d total=%d has_next=%v", result.Meta.Offset, result.Meta.Count, result.Meta.Total, result.Meta.HasNext)
 	}
 }
 
