@@ -19,6 +19,8 @@ tags:
     description: Authentication
   - name: health
     description: Liveness and readiness probes
+  - name: flags
+    description: Feature flags
 
 paths:
   /login:
@@ -318,6 +320,132 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /flags:
+    post:
+      tags: [flags]
+      summary: Create a feature flag
+      operationId: createFlag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFlagRequest'
+      responses:
+        '200':
+          description: Flag created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlagResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    get:
+      tags: [flags]
+      summary: List feature flags
+      operationId: listFlags
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of flags to return (1-100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of flags to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: List of flags
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlagListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /flags/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Flag ID
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+
+    get:
+      tags: [flags]
+      summary: Get a flag by ID
+      operationId: getFlag
+      responses:
+        '200':
+          description: Flag found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlagResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    patch:
+      tags: [flags]
+      summary: Partially update a flag
+      operationId: updateFlag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFlagRequest'
+      responses:
+        '200':
+          description: Flag updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlagResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags: [flags]
+      summary: Soft-delete a flag
+      operationId: deleteFlag
+      responses:
+        '204':
+          description: Flag deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -500,8 +628,34 @@ components:
           $ref: '#/components/schemas/User'
       required: [success, data]
 
+    PaginationMeta:
+      type: object
+      required: [limit, offset, count, total, has_next]
+      properties:
+        limit:
+          type: integer
+          minimum: 1
+          example: 20
+        offset:
+          type: integer
+          minimum: 0
+          example: 0
+        count:
+          type: integer
+          minimum: 0
+          example: 20
+        total:
+          type: integer
+          format: int64
+          minimum: 0
+          example: 137
+        has_next:
+          type: boolean
+          example: true
+
     UserListResponse:
       type: object
+      required: [success, data, meta]
       properties:
         success:
           type: boolean
@@ -510,7 +664,8 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/User'
-      required: [success, data]
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
 
     ErrorResponse:
       type: object
@@ -569,3 +724,96 @@ components:
             storage:
               $ref: '#/components/schemas/ComponentStatus'
       required: [service, version, environment, timestamp, components]
+
+    FlagType:
+      type: string
+      enum: [string, number, bool]
+
+    Flag:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        key:
+          type: string
+          minLength: 3
+          maxLength: 128
+        type:
+          $ref: '#/components/schemas/FlagType'
+        default_value:
+          description: JSON value matching the flag type (string, number, or boolean)
+          oneOf:
+            - type: string
+            - type: number
+            - type: boolean
+        description:
+          type: string
+          maxLength: 4096
+        owner:
+          $ref: '#/components/schemas/User'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, key, type, default_value, owner, created_at, updated_at]
+
+    CreateFlagRequest:
+      type: object
+      properties:
+        key:
+          type: string
+          minLength: 3
+          maxLength: 128
+        type:
+          $ref: '#/components/schemas/FlagType'
+        default_value:
+          description: JSON value matching the flag type
+          oneOf:
+            - type: string
+            - type: number
+            - type: boolean
+        description:
+          type: string
+          minLength: 1
+          maxLength: 4096
+      required: [key, type, default_value]
+
+    UpdateFlagRequest:
+      type: object
+      properties:
+        key:
+          type: string
+          minLength: 3
+          maxLength: 128
+        description:
+          type: string
+          minLength: 1
+          maxLength: 4096
+      minProperties: 1
+
+    FlagResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/Flag'
+      required: [success, data]
+
+    FlagListResponse:
+      type: object
+      required: [success, data, meta]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Flag'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'

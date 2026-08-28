@@ -15,6 +15,7 @@ import (
 	"github.com/faraquic/lotty-ab-platform/pkg/config"
 	"github.com/faraquic/lotty-ab-platform/pkg/middleware"
 	authdomain "github.com/faraquic/lotty-ab-platform/services/panel/internal/domain/auth"
+	flagsdomain "github.com/faraquic/lotty-ab-platform/services/panel/internal/domain/flags"
 	healthdomain "github.com/faraquic/lotty-ab-platform/services/panel/internal/domain/health"
 	usersdomain "github.com/faraquic/lotty-ab-platform/services/panel/internal/domain/users"
 )
@@ -45,6 +46,10 @@ func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisCli
 
 	bootstrapAdmin(log, svc, cfg.Auth.Bootstrap)
 
+	flagsRepo := flagsdomain.NewRepository(pool)
+	flagsSvc := flagsdomain.NewService(flagsRepo, log)
+	flagsHandler := flagsdomain.NewHandler(flagsSvc, log)
+
 	authMW, err := authdomain.NewMiddleware(cfg, authSvc, log)
 	if err != nil {
 		log.Fatal("failed to init auth middleware", zap.Error(err))
@@ -55,6 +60,8 @@ func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisCli
 
 	adminGroup := apiV1.Group("", authMW.Handler([]usersdomain.Role{usersdomain.RoleAdmin}))
 	usersHandler.RegisterRoutes(adminGroup)
+
+	flagsHandler.RegisterRoutes(anyAuthGroup)
 
 	return r
 }
