@@ -152,13 +152,13 @@ func defaultConfig() *Config {
 				DB:       0,
 				PoolSize: 8,
 			},
-		S3: S3Config{
-			Bucket:    "labp",
-			Region:    "us-east-1",
-			Endpoint:  "http://localhost:9000",
-			AccessKey: "minioadmin",
-			SecretKey: "minioadmin",
-		},
+			S3: S3Config{
+				Bucket:    "labp",
+				Region:    "us-east-1",
+				Endpoint:  "http://localhost:9000",
+				AccessKey: "minioadmin",
+				SecretKey: "minioadmin",
+			},
 		},
 		Panel: PanelConfig{
 			HTTP: HTTPConfig{

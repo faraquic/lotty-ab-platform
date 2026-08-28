@@ -71,6 +71,8 @@ help:
 	@echo ""
 	@echo "S3 (MinIO):"
 	@echo "s3-up      - start MinIO dev container"
+	@echo "s3-provision - create labp bucket and avatar policy"
+	@echo "s3-provision-e2e - create labp-e2e bucket and avatar policy"
 	@echo "s3-down    - stop and remove MinIO container"
 	@echo "s3-logs    - follow MinIO logs"
 	@echo "s3-clean   - remove MinIO container and its volume"
@@ -89,7 +91,7 @@ VOL_OPTS :=
 endif
 
 .PHONY: dev-up
-dev-up: pg-up redis-up s3-up
+dev-up: pg-up redis-up s3-up s3-provision
 
 .PHONY: dev-down
 dev-down: pg-down redis-down s3-down
@@ -200,6 +202,14 @@ s3-logs: check-engine
 s3-clean: s3-down
 	-$(CONTAINER_ENGINE) volume rm lotty-s3data
 
+.PHONY: s3-provision
+s3-provision:
+	go run ./tools/s3-provision -endpoint http://localhost:$(S3_PORT) -bucket $(S3_BUCKET) -region us-east-1 -access-key $(S3_ACCESS_KEY) -secret-key $(S3_SECRET_KEY)
+
+.PHONY: s3-provision-e2e
+s3-provision-e2e:
+	go run ./tools/s3-provision -endpoint http://localhost:$(S3_PORT) -bucket $(S3_BUCKET)-e2e -region us-east-1 -access-key $(S3_ACCESS_KEY) -secret-key $(S3_SECRET_KEY)
+
 .PHONY: pg-migrate-up
 pg-migrate-up:
 	go tool goose -dir $(MIGRATIONS_DIR) postgres "$(POSTGRES_DSN)" up
@@ -223,3 +233,10 @@ pg-migrate-new:
 .PHONY: build
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(PANEL_BIN) ./services/panel/cmd
+
+.PHONY: test-e2e
+test-e2e: s3-provision-e2e
+	$(CONTAINER_ENGINE) exec $(POSTGRES_NAME) psql -U $(POSTGRES_USER) -d postgres -c "SELECT 1 FROM pg_database WHERE datname = '$(POSTGRES_DB)_e2e'" | grep -q 1 || \
+		$(CONTAINER_ENGINE) exec $(POSTGRES_NAME) psql -U $(POSTGRES_USER) -d postgres -c "CREATE DATABASE $(POSTGRES_DB)_e2e"
+	go tool goose -dir $(MIGRATIONS_DIR) postgres "postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:$(POSTGRES_PORT)/$(POSTGRES_DB)_e2e?sslmode=disable" up
+	E2E_TEST=1 go test ./tests/e2e/panel/... -v -count=1
