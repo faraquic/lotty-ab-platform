@@ -90,13 +90,15 @@ type Flag struct {
 	Type         TypeFlag   `db:"type"`
 	DefaultValue ValueFlag  `db:"default_value"`
 	Description  *string    `db:"description"`
-	Owner        int64      `db:"owner"`
+	CreatedBy    int64      `db:"created_by"`
+	UpdatedBy    int64      `db:"updated_by"`
 	DeletedAt    *time.Time `db:"deleted_at"`
 	CreatedAt    time.Time  `db:"created_at"`
 	UpdatedAt    time.Time  `db:"updated_at"`
 }
 
-type FlagWithOwner struct {
-	Flag  Flag
-	Owner *users.User
+type FlagWithCreatorAndUpdater struct {
+	Flag      Flag
+	CreatedBy *users.User
+	UpdatedBy *users.User
 }

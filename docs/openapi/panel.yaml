@@ -34,29 +34,29 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/LoginRequest'
+              $ref: "#/components/schemas/LoginRequest"
       responses:
-        '200':
+        "200":
           description: Authenticated, token issued
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LoginResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
           description: Invalid credentials
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
               example:
                 success: false
                 error:
                   code: UNAUTHORIZED
                   message: invalid email or password
-        '500':
-          $ref: '#/components/responses/InternalError'
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /health:
     get:
@@ -65,7 +65,7 @@ paths:
       operationId: health
       security: []
       responses:
-        '200':
+        "200":
           description: Service is alive
           content:
             text/plain:
@@ -80,18 +80,18 @@ paths:
       operationId: ready
       security: []
       responses:
-        '200':
+        "200":
           description: Service is ready to serve traffic
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ReadyResponse'
-        '503':
+                $ref: "#/components/schemas/ReadyResponse"
+        "503":
           description: Service is not ready (e.g. database unreachable)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ReadyResponse'
+                $ref: "#/components/schemas/ReadyResponse"
 
   /me:
     get:
@@ -99,14 +99,14 @@ paths:
       summary: Get the authenticated user's own profile
       operationId: getMe
       responses:
-        '200':
+        "200":
           description: Current user profile
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+                $ref: "#/components/schemas/UserResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /me/avatar:
     post:
@@ -128,18 +128,18 @@ paths:
                   format: binary
               required: [avatar]
       responses:
-        '200':
+        "200":
           description: Avatar uploaded or deleted, user profile returned
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /users:
     post:
@@ -151,20 +151,20 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateUserRequest'
+              $ref: "#/components/schemas/CreateUserRequest"
       responses:
-        '200':
+        "200":
           description: User created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
     get:
       tags: [users]
@@ -187,16 +187,16 @@ paths:
             minimum: 0
             default: 0
       responses:
-        '200':
+        "200":
           description: List of users
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserListResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                $ref: "#/components/schemas/UserListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /users/{id}:
     parameters:
@@ -214,18 +214,18 @@ paths:
       summary: Get a user by ID
       operationId: getUser
       responses:
-        '200':
+        "200":
           description: User found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
     patch:
       tags: [users]
@@ -236,42 +236,42 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateUserRequest'
+              $ref: "#/components/schemas/UpdateUserRequest"
       responses:
-        '200':
+        "200":
           description: User updated
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
     delete:
       tags: [users]
       summary: Soft-delete a user
       operationId: deleteUser
       responses:
-        '204':
+        "204":
           description: User deleted
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalError'
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /users/{id}/avatar:
     parameters:
@@ -303,22 +303,22 @@ paths:
                   format: binary
               required: [avatar]
       responses:
-        '200':
+        "200":
           description: Avatar uploaded or deleted, user profile returned
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /flags:
     post:
@@ -330,20 +330,20 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateFlagRequest'
+              $ref: "#/components/schemas/CreateFlagRequest"
       responses:
-        '200':
+        "200":
           description: Flag created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FlagResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                $ref: "#/components/schemas/FlagResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
     get:
       tags: [flags]
@@ -366,16 +366,16 @@ paths:
             minimum: 0
             default: 0
       responses:
-        '200':
+        "200":
           description: List of flags
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FlagListResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                $ref: "#/components/schemas/FlagListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /flags/{id}:
     parameters:
@@ -393,18 +393,18 @@ paths:
       summary: Get a flag by ID
       operationId: getFlag
       responses:
-        '200':
+        "200":
           description: Flag found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FlagResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                $ref: "#/components/schemas/FlagResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
     patch:
       tags: [flags]
@@ -415,36 +415,36 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateFlagRequest'
+              $ref: "#/components/schemas/UpdateFlagRequest"
       responses:
-        '200':
+        "200":
           description: Flag updated
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FlagResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                $ref: "#/components/schemas/FlagResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
     delete:
       tags: [flags]
       summary: Soft-delete a flag
       operationId: deleteFlag
       responses:
-        '204':
+        "204":
           description: Flag deleted
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
 components:
   securitySchemes:
@@ -459,7 +459,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: "#/components/schemas/ErrorResponse"
           example:
             success: false
             error:
@@ -471,7 +471,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: "#/components/schemas/ErrorResponse"
           example:
             success: false
             error:
@@ -483,7 +483,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: "#/components/schemas/ErrorResponse"
           example:
             success: false
             error:
@@ -495,7 +495,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: "#/components/schemas/ErrorResponse"
           example:
             success: false
             error:
@@ -507,7 +507,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: "#/components/schemas/ErrorResponse"
           example:
             success: false
             error:
@@ -519,7 +519,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: "#/components/schemas/ErrorResponse"
           example:
             success: false
             error:
@@ -577,7 +577,7 @@ components:
           type: string
           format: email
         role:
-          $ref: '#/components/schemas/Role'
+          $ref: "#/components/schemas/Role"
         avatar_url:
           type: string
           format: uri
@@ -605,7 +605,7 @@ components:
           format: password
           minLength: 8
         role:
-          $ref: '#/components/schemas/Role'
+          $ref: "#/components/schemas/Role"
       required: [username, email, password, role]
 
     UpdateUserRequest:
@@ -615,7 +615,7 @@ components:
           type: string
           format: email
         role:
-          $ref: '#/components/schemas/Role'
+          $ref: "#/components/schemas/Role"
       minProperties: 1
 
     UserResponse:
@@ -625,7 +625,7 @@ components:
           type: boolean
           example: true
         data:
-          $ref: '#/components/schemas/User'
+          $ref: "#/components/schemas/User"
       required: [success, data]
 
     PaginationMeta:
@@ -663,9 +663,9 @@ components:
         data:
           type: array
           items:
-            $ref: '#/components/schemas/User'
+            $ref: "#/components/schemas/User"
         meta:
-          $ref: '#/components/schemas/PaginationMeta'
+          $ref: "#/components/schemas/PaginationMeta"
 
     ErrorResponse:
       type: object
@@ -678,7 +678,15 @@ components:
           properties:
             code:
               type: string
-              enum: [BAD_REQUEST, NOT_FOUND, PAYLOAD_TOO_LARGE, CONFLICT, FORBIDDEN, INTERNAL_SERVER_ERROR]
+              enum:
+                [
+                  BAD_REQUEST,
+                  NOT_FOUND,
+                  PAYLOAD_TOO_LARGE,
+                  CONFLICT,
+                  FORBIDDEN,
+                  INTERNAL_SERVER_ERROR,
+                ]
             message:
               type: string
           required: [code, message]
@@ -713,16 +721,16 @@ components:
         components:
           type: object
           additionalProperties:
-            $ref: '#/components/schemas/ComponentStatus'
+            $ref: "#/components/schemas/ComponentStatus"
           properties:
             service:
-              $ref: '#/components/schemas/ComponentStatus'
+              $ref: "#/components/schemas/ComponentStatus"
             database:
-              $ref: '#/components/schemas/ComponentStatus'
+              $ref: "#/components/schemas/ComponentStatus"
             cache:
-              $ref: '#/components/schemas/ComponentStatus'
+              $ref: "#/components/schemas/ComponentStatus"
             storage:
-              $ref: '#/components/schemas/ComponentStatus'
+              $ref: "#/components/schemas/ComponentStatus"
       required: [service, version, environment, timestamp, components]
 
     FlagType:
@@ -744,7 +752,7 @@ components:
           minLength: 1
           maxLength: 256
         type:
-          $ref: '#/components/schemas/FlagType'
+          $ref: "#/components/schemas/FlagType"
         default_value:
           description: JSON value matching the flag type (string, number, or boolean)
           oneOf:
@@ -754,16 +762,28 @@ components:
         description:
           type: string
           maxLength: 4096
-        owner:
-          $ref: '#/components/schemas/User'
-          nullable: true
+        created_by:
+          $ref: "#/components/schemas/User"
+        updated_by:
+          $ref: "#/components/schemas/User"
         created_at:
           type: string
           format: date-time
         updated_at:
           type: string
           format: date-time
-      required: [id, key, name, type, default_value, created_at, updated_at]
+      required:
+        [
+          id,
+          key,
+          name,
+          type,
+          default_value,
+          created_by,
+          updated_by,
+          created_at,
+          updated_at,
+        ]
 
     CreateFlagRequest:
       type: object
@@ -777,7 +797,7 @@ components:
           minLength: 1
           maxLength: 256
         type:
-          $ref: '#/components/schemas/FlagType'
+          $ref: "#/components/schemas/FlagType"
         default_value:
           description: JSON value matching the flag type
           oneOf:
@@ -820,7 +840,7 @@ components:
           type: boolean
           example: true
         data:
-          $ref: '#/components/schemas/Flag'
+          $ref: "#/components/schemas/Flag"
       required: [success, data]
 
     FlagListResponse:
@@ -833,6 +853,40 @@ components:
         data:
           type: array
           items:
-            $ref: '#/components/schemas/Flag'
+            $ref: "#/components/schemas/FlagListItem"
         meta:
-          $ref: '#/components/schemas/PaginationMeta'
+          $ref: "#/components/schemas/PaginationMeta"
+
+    FlagListItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        key:
+          type: string
+          minLength: 3
+          maxLength: 128
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+        type:
+          $ref: "#/components/schemas/FlagType"
+        default_value:
+          description: JSON value matching the flag type (string, number, or boolean)
+          oneOf:
+            - type: string
+            - type: number
+            - type: boolean
+        description:
+          type: string
+          maxLength: 4096
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        [id, key, name, type, default_value, created_at, updated_at]

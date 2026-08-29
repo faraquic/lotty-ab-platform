@@ -37,6 +37,7 @@ Control-plane backend for the Lotty A/B testing platform. Provides user manageme
 │       └── internal/
 │           └── domain/
 │               ├── auth/  — login, JWT token creation, middleware, Redis sessions
+│               ├── flags/ — feature flags CRUD, list/detail endpoints
 │               ├── health/ — /health, /ready probes
 │               └── users/ — CRUD, self-management protections, RBAC
 └── docs/openapi/panel.yaml — OpenAPI 3.0.3 spec (must stay aligned with backend)
@@ -93,6 +94,8 @@ gofmt -l pkg/ services/
 6. **Self-management protections:** Users cannot delete themselves (403), cannot change their own role (403), and the last admin cannot be demoted or deleted (409). These are enforced at the service layer.
 7. **Bootstrap admin** runs on every startup if `auth.bootstrap.password` is set and the users table is empty. Password must be ≥ 8 characters; empty password produces a warning, not a failure.
 8. **OpenAPI spec** at `docs/openapi/panel.yaml` must stay aligned with the backend. Any new endpoint or changed response schema must update both code and spec.
+9. **Flags list endpoint** (`GET /api/panel/v1/flags`) returns `created_by`/`updated_by` as `null` — no user object joins. The detail endpoint (`GET /flags/:id`) returns full user objects.
+10. **Flag names are unique** — duplicate names return 409 Conflict. The `name` field is required and max 256 chars.
 
 ## Required Checks Before Completing a Task
 

@@ -28,8 +28,8 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 
 func (r *Repository) Create(ctx context.Context, f Flag) (int64, error) {
 	const q = `
-INSERT INTO flags(key, name, type, default_value, description, owner)
-    VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO flags(key, name, type, default_value, description, created_by, updated_by)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING
     id`
 
@@ -38,7 +38,7 @@ RETURNING
 	if f.Description != nil {
 		desc = *f.Description
 	}
-	err := r.db.QueryRow(ctx, q, f.Key, f.Name, f.Type, f.DefaultValue, desc, f.Owner).Scan(&id)
+	err := r.db.QueryRow(ctx, q, f.Key, f.Name, f.Type, f.DefaultValue, desc, f.CreatedBy, f.UpdatedBy).Scan(&id)
 	if err != nil {
 		if pgconnutils.IsUniqueViolation(err) {
 			if strings.Contains(err.Error(), "flags_key_key") {
@@ -54,7 +54,7 @@ RETURNING
 	return id, nil
 }
 
-const selectFlagWithOwner = `
+const selectFlagWithCreatorAndUpdater = `
 SELECT
     f.id,
     f.key,
@@ -62,47 +62,64 @@ SELECT
     f.type,
     f.default_value,
     f.description,
-    f.owner,
+    f.created_by,
+    f.updated_by,
     f.deleted_at,
     f.created_at,
     f.updated_at,
-    u.id,
-    u.username,
-    u.email,
-    u.role,
-    u.avatar_url,
-    u.created_at,
-    u.updated_at
+    cb.id,
+    cb.username,
+    cb.email,
+    cb.role,
+    cb.avatar_url,
+    cb.created_at,
+    cb.updated_at,
+    ub.id,
+    ub.username,
+    ub.email,
+    ub.role,
+    ub.avatar_url,
+    ub.created_at,
+    ub.updated_at
 FROM
     flags f
-    JOIN users u ON f.owner = u.id`
+    JOIN users cb ON f.created_by = cb.id
+    JOIN users ub ON f.updated_by = ub.id`
 
-type flagWithOwnerRow struct {
-	FlagID       int64
-	Key          string
-	Name         string
-	Type         TypeFlag
-	DefaultValue ValueFlag
-	Description  string
-	OwnerID      int64
-	DeletedAt    *time.Time
-	FlagCreated  time.Time
-	FlagUpdated  time.Time
-	UserID       int64
-	Username     string
-	Email        string
-	Role         string
-	AvatarURL    *string
-	UserCreated  time.Time
-	UserUpdated  time.Time
+type flagWithCreatorAndUpdaterRow struct {
+	FlagID          int64
+	Key             string
+	Name            string
+	Type            TypeFlag
+	DefaultValue    ValueFlag
+	Description     string
+	CreatedByID     int64
+	UpdatedByID     int64
+	DeletedAt       *time.Time
+	FlagCreated     time.Time
+	FlagUpdated     time.Time
+	CreatorID       int64
+	CreatorUsername string
+	CreatorEmail    string
+	CreatorRole     string
+	CreatorAvatar   *string
+	CreatorCreated  time.Time
+	CreatorUpdated  time.Time
+	UpdaterID       int64
+	UpdaterUsername string
+	UpdaterEmail    string
+	UpdaterRole     string
+	UpdaterAvatar   *string
+	UpdaterCreated  time.Time
+	UpdaterUpdated  time.Time
 }
 
-func (r flagWithOwnerRow) toFlagWithOwner() FlagWithOwner {
+func (r flagWithCreatorAndUpdaterRow) toFlagWithCreatorAndUpdater() FlagWithCreatorAndUpdater {
 	var desc *string
 	if r.Description != "" {
 		desc = &r.Description
 	}
-	return FlagWithOwner{
+	return FlagWithCreatorAndUpdater{
 		Flag: Flag{
 			ID:           r.FlagID,
 			Key:          r.Key,
@@ -110,29 +127,38 @@ func (r flagWithOwnerRow) toFlagWithOwner() FlagWithOwner {
 			Type:         r.Type,
 			DefaultValue: r.DefaultValue,
 			Description:  desc,
-			Owner:        r.OwnerID,
+			CreatedBy:    r.CreatedByID,
+			UpdatedBy:    r.UpdatedByID,
 			DeletedAt:    r.DeletedAt,
 			CreatedAt:    r.FlagCreated,
 			UpdatedAt:    r.FlagUpdated,
 		},
-		Owner: &users.User{
-			ID:        r.UserID,
-			Username:  r.Username,
-			Email:     r.Email,
-			Role:      users.Role(r.Role),
-			CreatedAt: r.UserCreated,
-			UpdatedAt: r.UserUpdated,
+		CreatedBy: &users.User{
+			ID:        r.CreatorID,
+			Username:  r.CreatorUsername,
+			Email:     r.CreatorEmail,
+			Role:      users.Role(r.CreatorRole),
+			CreatedAt: r.CreatorCreated,
+			UpdatedAt: r.CreatorUpdated,
+		},
+		UpdatedBy: &users.User{
+			ID:        r.UpdaterID,
+			Username:  r.UpdaterUsername,
+			Email:     r.UpdaterEmail,
+			Role:      users.Role(r.UpdaterRole),
+			CreatedAt: r.UpdaterCreated,
+			UpdatedAt: r.UpdaterUpdated,
 		},
 	}
 }
 
-func (r *Repository) GetByID(ctx context.Context, id int64) (FlagWithOwner, error) {
-	const q = selectFlagWithOwner + `
+func (r *Repository) GetByID(ctx context.Context, id int64) (FlagWithCreatorAndUpdater, error) {
+	const q = selectFlagWithCreatorAndUpdater + `
 WHERE
     f.id = $1
     AND f.deleted_at IS NULL`
 
-	var row flagWithOwnerRow
+	var row flagWithCreatorAndUpdaterRow
 	err := r.db.QueryRow(ctx, q, id).Scan(
 		&row.FlagID,
 		&row.Key,
@@ -140,28 +166,39 @@ WHERE
 		&row.Type,
 		&row.DefaultValue,
 		&row.Description,
-		&row.OwnerID,
+		&row.CreatedByID,
+		&row.UpdatedByID,
 		&row.DeletedAt,
 		&row.FlagCreated,
 		&row.FlagUpdated,
-		&row.UserID,
-		&row.Username,
-		&row.Email,
-		&row.Role,
-		&row.AvatarURL,
-		&row.UserCreated,
-		&row.UserUpdated,
+		&row.CreatorID,
+		&row.CreatorUsername,
+		&row.CreatorEmail,
+		&row.CreatorRole,
+		&row.CreatorAvatar,
+		&row.CreatorCreated,
+		&row.CreatorUpdated,
+		&row.UpdaterID,
+		&row.UpdaterUsername,
+		&row.UpdaterEmail,
+		&row.UpdaterRole,
+		&row.UpdaterAvatar,
+		&row.UpdaterCreated,
+		&row.UpdaterUpdated,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return FlagWithOwner{}, ErrNotFound
+			return FlagWithCreatorAndUpdater{}, ErrNotFound
 		}
-		return FlagWithOwner{}, err
+		return FlagWithCreatorAndUpdater{}, err
 	}
 
-	fwo := row.toFlagWithOwner()
-	if row.AvatarURL != nil {
-		fwo.Owner.AvatarURL = *row.AvatarURL
+	fwo := row.toFlagWithCreatorAndUpdater()
+	if row.CreatorAvatar != nil {
+		fwo.CreatedBy.AvatarURL = *row.CreatorAvatar
+	}
+	if row.UpdaterAvatar != nil {
+		fwo.UpdatedBy.AvatarURL = *row.UpdaterAvatar
 	}
 	return fwo, nil
 }
@@ -169,13 +206,23 @@ WHERE
 func (r *Repository) List(ctx context.Context, limit, offset int) ([]Flag, error) {
 	const q = `
 SELECT
-    *
+    f.id,
+    f.key,
+    f.name,
+    f.type,
+    f.default_value,
+    f.description,
+    f.created_by,
+    f.updated_by,
+    f.deleted_at,
+    f.created_at,
+    f.updated_at
 FROM
-    flags
+    flags f
 WHERE
-    deleted_at IS NULL
+    f.deleted_at IS NULL
 ORDER BY
-    id
+    f.id
 LIMIT $1 OFFSET $2`
 
 	rows, err := r.db.Query(ctx, q, limit, offset)
@@ -184,10 +231,30 @@ LIMIT $1 OFFSET $2`
 	}
 	defer rows.Close()
 
-	return pgx.CollectRows(rows, pgx.RowToStructByName[Flag])
+	var result []Flag
+	for rows.Next() {
+		var f Flag
+		if err := rows.Scan(
+			&f.ID,
+			&f.Key,
+			&f.Name,
+			&f.Type,
+			&f.DefaultValue,
+			&f.Description,
+			&f.CreatedBy,
+			&f.UpdatedBy,
+			&f.DeletedAt,
+			&f.CreatedAt,
+			&f.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		result = append(result, f)
+	}
+	return result, rows.Err()
 }
 
-func (r *Repository) Update(ctx context.Context, id int64, key string, name string, defaultValue ValueFlag, description string) (FlagWithOwner, error) {
+func (r *Repository) Update(ctx context.Context, id int64, key string, name string, defaultValue ValueFlag, description string, updatedBy int64) (FlagWithCreatorAndUpdater, error) {
 	var dv any
 	if len(defaultValue) > 0 {
 		dv = string(defaultValue)
@@ -199,26 +266,27 @@ SET
     key = COALESCE(NULLIF($2, ''), key),
     name = COALESCE(NULLIF($3, ''), name),
     default_value = COALESCE($4, default_value),
-    description = COALESCE(NULLIF($5, ''), description)
+    description = COALESCE(NULLIF($5, ''), description),
+    updated_by = $6
 WHERE
     id = $1
     AND deleted_at IS NULL`
 
-	tag, err := r.db.Exec(ctx, q, id, key, name, dv, description)
+	tag, err := r.db.Exec(ctx, q, id, key, name, dv, description, updatedBy)
 	if err != nil {
 		if pgconnutils.IsUniqueViolation(err) {
 			if strings.Contains(err.Error(), "flags_key_key") {
-				return FlagWithOwner{}, ErrConflictKeys
+				return FlagWithCreatorAndUpdater{}, ErrConflictKeys
 			}
 			if strings.Contains(err.Error(), "flags_name_key") {
-				return FlagWithOwner{}, ErrConflictNames
+				return FlagWithCreatorAndUpdater{}, ErrConflictNames
 			}
-			return FlagWithOwner{}, ErrConflictKeys
+			return FlagWithCreatorAndUpdater{}, ErrConflictKeys
 		}
-		return FlagWithOwner{}, err
+		return FlagWithCreatorAndUpdater{}, err
 	}
 	if tag.RowsAffected() == 0 {
-		return FlagWithOwner{}, ErrNotFound
+		return FlagWithCreatorAndUpdater{}, ErrNotFound
 	}
 	return r.GetByID(ctx, id)
 }

@@ -43,11 +43,20 @@ func TestCreateFlag_String(t *testing.T) {
 	if result.Data.Description == nil || *result.Data.Description != "A test string flag" {
 		t.Errorf("description: got %v, want 'A test string flag'", result.Data.Description)
 	}
-	if result.Data.Owner == nil {
-		t.Error("owner should be present")
+	if result.Data.CreatedBy == nil {
+		t.Error("created_by should be present")
 	}
-	if result.Data.Owner.ID < 1 {
-		t.Error("owner ID should be positive")
+	if result.Data.CreatedBy.ID < 1 {
+		t.Error("created_by ID should be positive")
+	}
+	if result.Data.UpdatedBy == nil {
+		t.Error("updated_by should be present")
+	}
+	if result.Data.UpdatedBy.ID < 1 {
+		t.Error("updated_by ID should be positive")
+	}
+	if result.Data.CreatedBy.ID != result.Data.UpdatedBy.ID {
+		t.Error("created_by and updated_by should be the same on create")
 	}
 	if result.Data.CreatedAt == "" || result.Data.UpdatedAt == "" {
 		t.Error("created_at and updated_at should be set")
@@ -74,6 +83,9 @@ func TestCreateFlag_Number(t *testing.T) {
 	}
 	if result.Data.Name != "Test Number Flag" {
 		t.Errorf("name: got %q, want %q", result.Data.Name, "Test Number Flag")
+	}
+	if result.Data.CreatedBy == nil || result.Data.UpdatedBy == nil {
+		t.Error("created_by and updated_by should be present")
 	}
 	var num float64
 	json.Unmarshal(result.Data.DefaultValue, &num)
@@ -103,6 +115,9 @@ func TestCreateFlag_Bool(t *testing.T) {
 	if result.Data.Name != "Test Bool Flag" {
 		t.Errorf("name: got %q, want %q", result.Data.Name, "Test Bool Flag")
 	}
+	if result.Data.CreatedBy == nil || result.Data.UpdatedBy == nil {
+		t.Error("created_by and updated_by should be present")
+	}
 	var b bool
 	json.Unmarshal(result.Data.DefaultValue, &b)
 	if !b {
@@ -129,7 +144,7 @@ func TestCreateFlag_RejectsInvalidRequests(t *testing.T) {
 		{"string type with number value", map[string]any{"key": "test-flag", "type": "string", "default_value": 123}, http.StatusBadRequest},
 		{"number type with string value", map[string]any{"key": "test-flag", "type": "number", "default_value": "not-a-number"}, http.StatusBadRequest},
 		{"bool type with string value", map[string]any{"key": "test-flag", "type": "bool", "default_value": "not-a-bool"}, http.StatusBadRequest},
-		{"empty description", map[string]any{"key": "test-flag", "type": "string", "default_value": "test", "description": ""}, http.StatusOK},
+		{"empty description", map[string]any{"key": "test-flag", "name": "Test Flag", "type": "string", "default_value": "test", "description": ""}, http.StatusOK},
 	}
 
 	for _, tc := range cases {
@@ -199,6 +214,9 @@ func TestGetFlag(t *testing.T) {
 	if result.Data.Type != "string" {
 		t.Errorf("type: got %q, want %q", result.Data.Type, "string")
 	}
+	if result.Data.CreatedBy == nil || result.Data.UpdatedBy == nil {
+		t.Error("created_by and updated_by should be present")
+	}
 }
 
 func TestGetFlag_Nonexistent(t *testing.T) {
@@ -248,6 +266,15 @@ func TestListFlags(t *testing.T) {
 	}
 	if !foundB {
 		t.Errorf("%s not found in list", keyB)
+	}
+
+	for _, f := range result.Data.Data {
+		if f.CreatedBy != nil {
+			t.Error("list items should not have created_by")
+		}
+		if f.UpdatedBy != nil {
+			t.Error("list items should not have updated_by")
+		}
 	}
 
 	if result.Data.Meta.Limit != 100 {
@@ -360,6 +387,12 @@ func TestUpdateFlag(t *testing.T) {
 	if result.Data.Name != "Update Flag" {
 		t.Errorf("name should remain unchanged: got %q, want %q", result.Data.Name, "Update Flag")
 	}
+	if result.Data.CreatedBy == nil || result.Data.UpdatedBy == nil {
+		t.Error("created_by and updated_by should be present")
+	}
+	if result.Data.CreatedBy.ID != result.Data.UpdatedBy.ID {
+		t.Error("created_by and updated_by should be the same (admin user) on update")
+	}
 }
 
 func TestUpdateFlag_ChangeKey(t *testing.T) {
@@ -377,6 +410,9 @@ func TestUpdateFlag_ChangeKey(t *testing.T) {
 
 	if result.Data.Key != "new-key-name-"+runID {
 		t.Errorf("key: got %q, want %q", result.Data.Key, "new-key-name-"+runID)
+	}
+	if result.Data.CreatedBy == nil || result.Data.UpdatedBy == nil {
+		t.Error("created_by and updated_by should be present")
 	}
 }
 
@@ -444,7 +480,7 @@ func TestFlags_NoSecretsInResponse(t *testing.T) {
 		}
 	}
 
-	for _, field := range []string{"id", "key", "type", "default_value", "created_at", "updated_at"} {
+	for _, field := range []string{"id", "key", "name", "type", "default_value", "created_by", "updated_by", "created_at", "updated_at"} {
 		if _, exists := flagFields[field]; !exists {
 			t.Errorf("response missing %s field", field)
 		}

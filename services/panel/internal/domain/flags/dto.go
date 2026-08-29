@@ -10,14 +10,14 @@ type CreateFlagRequest struct {
 	Name         string    `json:"name" binding:"required,min=1,max=256"`
 	Type         TypeFlag  `json:"type" binding:"required,oneof=string number bool"`
 	DefaultValue ValueFlag `json:"default_value" binding:"required"`
-	Description  string    `json:"description" binding:"omitempty,min=1,max=4096"`
+	Description  string    `json:"description"`
 }
 
 type UpdateFlagRequest struct {
 	Key          string    `json:"key" binding:"omitempty,min=3,max=128"`
 	Name         string    `json:"name" binding:"omitempty,min=1,max=256"`
 	DefaultValue ValueFlag `json:"default_value" binding:"omitempty"`
-	Description  string    `json:"description" binding:"omitempty,min=1,max=4096"`
+	Description  string    `json:"description"`
 }
 
 type FlagResponse struct {
@@ -27,7 +27,8 @@ type FlagResponse struct {
 	Type         TypeFlag            `json:"type"`
 	DefaultValue ValueFlag           `json:"default_value"`
 	Description  *string             `json:"description"`
-	Owner        *users.UserResponse `json:"owner"`
+	CreatedBy    *users.UserResponse `json:"created_by"`
+	UpdatedBy    *users.UserResponse `json:"updated_by"`
 }
 
 type PaginatedFlagResponse struct {
@@ -35,21 +36,27 @@ type PaginatedFlagResponse struct {
 	Meta api.PaginationMeta `json:"meta"`
 }
 
-func ToResponse(fwo FlagWithOwner) FlagResponse {
-	var owner *users.UserResponse
-	if fwo.Owner != nil {
-		resp := users.ToResponse(*fwo.Owner)
-		owner = &resp
+func ToResponse(f FlagWithCreatorAndUpdater) FlagResponse {
+	var createdBy *users.UserResponse
+	if f.CreatedBy != nil {
+		resp := users.ToResponse(*f.CreatedBy)
+		createdBy = &resp
+	}
+	var updatedBy *users.UserResponse
+	if f.UpdatedBy != nil {
+		resp := users.ToResponse(*f.UpdatedBy)
+		updatedBy = &resp
 	}
 	return FlagResponse{
-		ID:           fwo.Flag.ID,
-		CreatedAt:    fwo.Flag.CreatedAt,
-		UpdatedAt:    fwo.Flag.UpdatedAt,
-		Key:          fwo.Flag.Key,
-		Name:         fwo.Flag.Name,
-		Type:         fwo.Flag.Type,
-		DefaultValue: fwo.Flag.DefaultValue,
-		Description:  fwo.Flag.Description,
-		Owner:        owner,
+		ID:           f.Flag.ID,
+		CreatedAt:    f.Flag.CreatedAt,
+		UpdatedAt:    f.Flag.UpdatedAt,
+		Key:          f.Flag.Key,
+		Name:         f.Flag.Name,
+		Type:         f.Flag.Type,
+		DefaultValue: f.Flag.DefaultValue,
+		Description:  f.Flag.Description,
+		CreatedBy:    createdBy,
+		UpdatedBy:    updatedBy,
 	}
 }

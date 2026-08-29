@@ -33,7 +33,8 @@ type flagResponseData struct {
 	Type         string            `json:"type"`
 	DefaultValue json.RawMessage   `json:"default_value"`
 	Description  *string           `json:"description"`
-	Owner        *userResponseData `json:"owner"`
+	CreatedBy    *userResponseData `json:"created_by"`
+	UpdatedBy    *userResponseData `json:"updated_by"`
 	CreatedAt    string            `json:"created_at"`
 	UpdatedAt    string            `json:"updated_at"`
 }
