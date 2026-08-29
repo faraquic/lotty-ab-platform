@@ -104,10 +104,16 @@ WHERE
 	return result, nil
 }
 
-func (r *Repository) List(ctx context.Context, limit, offset int) ([]FlagWithOwner, error) {
-	q := selectFlagWithOwner + `
-WHERE f.deleted_at IS NULL
-ORDER BY f.id
+func (r *Repository) List(ctx context.Context, limit, offset int) ([]Flag, error) {
+	q := `
+SELECT
+    *
+FROM
+    flags
+WHERE
+    deleted_at IS NULL
+ORDER BY
+    id
 LIMIT $1 OFFSET $2`
 
 	rows, err := r.db.Query(ctx, q, limit, offset)
@@ -116,28 +122,11 @@ LIMIT $1 OFFSET $2`
 	}
 	defer rows.Close()
 
-	result := make([]FlagWithOwner, 0, limit)
+	result := make([]Flag, 0, limit)
 
 	for rows.Next() {
-		var item FlagWithOwner
-		err := rows.Scan(
-			&item.Flag.ID,
-			&item.Flag.Key,
-			&item.Flag.Type,
-			&item.Flag.DefaultValue,
-			&item.Flag.Description,
-			&item.Flag.Owner,
-			&item.Flag.DeletedAt,
-			&item.Flag.CreatedAt,
-			&item.Flag.UpdatedAt,
-			&item.Owner.ID,
-			&item.Owner.Username,
-			&item.Owner.Email,
-			&item.Owner.Role,
-			&item.Owner.AvatarURL,
-			&item.Owner.CreatedAt,
-			&item.Owner.UpdatedAt,
-		)
+		var item Flag
+		err := rows.Scan(&item)
 		if err != nil {
 			return nil, err
 		}

@@ -19,11 +19,11 @@ type UpdateFlagRequest struct {
 
 type FlagResponse struct {
 	api.ResourceResponse
-	Key          string             `json:"key"`
-	Type         TypeFlag           `json:"type"`
-	DefaultValue ValueFlag          `json:"default_value"`
-	Description  string             `json:"description"`
-	Owner        users.UserResponse `json:"owner"`
+	Key          string              `json:"key"`
+	Type         TypeFlag            `json:"type"`
+	DefaultValue ValueFlag           `json:"default_value"`
+	Description  string              `json:"description"`
+	Owner        *users.UserResponse `json:"owner"`
 }
 
 type PaginatedFlagResponse struct {
@@ -32,6 +32,11 @@ type PaginatedFlagResponse struct {
 }
 
 func ToResponse(fwo FlagWithOwner) FlagResponse {
+	var owner *users.UserResponse
+	if fwo.Owner != nil {
+		resp := users.ToResponse(*fwo.Owner)
+		owner = &resp
+	}
 	return FlagResponse{
 		ID:           fwo.Flag.ID,
 		CreatedAt:    fwo.Flag.CreatedAt,
@@ -40,14 +45,6 @@ func ToResponse(fwo FlagWithOwner) FlagResponse {
 		Type:         fwo.Flag.Type,
 		DefaultValue: fwo.Flag.DefaultValue,
 		Description:  fwo.Flag.Description,
-		Owner:        users.ToResponse(fwo.Owner),
+		Owner:        owner,
 	}
-}
-
-func toFlagResponseList(list []FlagWithOwner) []FlagResponse {
-	resp := make([]FlagResponse, 0, len(list))
-	for _, fwo := range list {
-		resp = append(resp, ToResponse(fwo))
-	}
-	return resp
 }

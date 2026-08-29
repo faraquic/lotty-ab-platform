@@ -16,7 +16,7 @@ var (
 type FlagRepo interface {
 	Create(ctx context.Context, f Flag) (int64, error)
 	GetByID(ctx context.Context, id int64) (FlagWithOwner, error)
-	List(ctx context.Context, limit, offset int) ([]FlagWithOwner, error)
+	List(ctx context.Context, limit, offset int) ([]Flag, error)
 	Update(ctx context.Context, id int64, key string, description string) (FlagWithOwner, error)
 	Delete(ctx context.Context, id int64) error
 	Count(ctx context.Context) (int64, error)
@@ -86,7 +86,10 @@ func (s *Service) List(ctx context.Context, limit, offset int) (PaginatedFlagRes
 		return PaginatedFlagResponse{}, err
 	}
 
-	resp := toFlagResponseList(flagsList)
+	resp := make([]FlagResponse, 0, len(flagsList))
+	for _, f := range flagsList {
+		resp = append(resp, ToResponse(FlagWithOwner{Flag: f, Owner: nil}))
+	}
 
 	count := len(resp)
 	hasNext := int64(offset)+int64(count) < total

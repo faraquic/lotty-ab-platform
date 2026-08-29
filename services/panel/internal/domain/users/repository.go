@@ -50,6 +50,7 @@ SELECT
     password_hash,
     ROLE,
     COALESCE(avatar_url, ''),
+    deleted_at,
     created_at,
     updated_at
 FROM
@@ -60,7 +61,7 @@ WHERE
 
 	var u User
 	err := r.db.QueryRow(ctx, q, id).
-		Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role, &u.AvatarURL, &u.CreatedAt, &u.UpdatedAt)
+		Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role, &u.AvatarURL, &u.DeletedAt, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrNotFound
@@ -80,6 +81,7 @@ SELECT
     password_hash,
     ROLE,
     COALESCE(avatar_url, ''),
+    deleted_at,
     created_at,
     updated_at
 FROM
@@ -99,7 +101,7 @@ LIMIT $1 OFFSET $2`
 	usersList := make([]User, 0, limit)
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role, &u.AvatarURL, &u.CreatedAt, &u.UpdatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role, &u.AvatarURL, &u.DeletedAt, &u.CreatedAt, &u.UpdatedAt); err != nil {
 			return nil, err
 		}
 		usersList = append(usersList, u)
@@ -125,12 +127,13 @@ RETURNING
     password_hash,
     role,
     COALESCE(avatar_url, ''),
+    deleted_at,
     created_at,
     updated_at`
 
 	var u User
 	err := r.db.QueryRow(ctx, q, id, email, role).
-		Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role, &u.AvatarURL, &u.CreatedAt, &u.UpdatedAt)
+		Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role, &u.AvatarURL, &u.DeletedAt, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrNotFound

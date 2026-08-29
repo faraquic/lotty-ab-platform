@@ -66,5 +66,5 @@ type Flag struct {
 
 type FlagWithOwner struct {
 	Flag  Flag
-	Owner users.User
+	Owner *users.User
 }
