@@ -522,6 +522,16 @@ func decodeAvatarResponse(t *testing.T, resp *http.Response) avatarResponse {
 	return r
 }
 
+func decodeFlagResponse(t *testing.T, resp *http.Response) apiResponse[flagResponseData] {
+	t.Helper()
+	return decodeResponse[apiResponse[flagResponseData]](t, resp)
+}
+
+func decodePaginatedFlagsResponse(t *testing.T, resp *http.Response) apiResponse[paginatedFlagData] {
+	t.Helper()
+	return decodeResponse[apiResponse[paginatedFlagData]](t, resp)
+}
+
 // --- assertion helpers ---
 
 func requireStatus(t *testing.T, resp *http.Response, want int) {
