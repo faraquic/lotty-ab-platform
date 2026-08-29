@@ -7,6 +7,7 @@ import (
 
 type CreateFlagRequest struct {
 	Key          string    `json:"key" binding:"required,min=3,max=128"`
+	Name         string    `json:"name" binding:"required,min=1,max=256"`
 	Type         TypeFlag  `json:"type" binding:"required,oneof=string number bool"`
 	DefaultValue ValueFlag `json:"default_value" binding:"required"`
 	Description  string    `json:"description" binding:"omitempty,min=1,max=4096"`
@@ -14,6 +15,7 @@ type CreateFlagRequest struct {
 
 type UpdateFlagRequest struct {
 	Key          string    `json:"key" binding:"omitempty,min=3,max=128"`
+	Name         string    `json:"name" binding:"omitempty,min=1,max=256"`
 	DefaultValue ValueFlag `json:"default_value" binding:"omitempty"`
 	Description  string    `json:"description" binding:"omitempty,min=1,max=4096"`
 }
@@ -21,6 +23,7 @@ type UpdateFlagRequest struct {
 type FlagResponse struct {
 	api.ResourceResponse
 	Key          string              `json:"key"`
+	Name         string              `json:"name"`
 	Type         TypeFlag            `json:"type"`
 	DefaultValue ValueFlag           `json:"default_value"`
 	Description  *string             `json:"description"`
@@ -43,6 +46,7 @@ func ToResponse(fwo FlagWithOwner) FlagResponse {
 		CreatedAt:    fwo.Flag.CreatedAt,
 		UpdatedAt:    fwo.Flag.UpdatedAt,
 		Key:          fwo.Flag.Key,
+		Name:         fwo.Flag.Name,
 		Type:         fwo.Flag.Type,
 		DefaultValue: fwo.Flag.DefaultValue,
 		Description:  fwo.Flag.Description,

@@ -29,6 +29,7 @@ type paginationMetaResponse struct {
 type flagResponseData struct {
 	ID           int64             `json:"id"`
 	Key          string            `json:"key"`
+	Name         string            `json:"name"`
 	Type         string            `json:"type"`
 	DefaultValue json.RawMessage   `json:"default_value"`
 	Description  *string           `json:"description"`

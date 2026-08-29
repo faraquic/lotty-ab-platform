@@ -4,7 +4,7 @@ import "github.com/faraquic/lotty-ab-platform/pkg/api"
 
 type CreateUserRequest struct {
 	Username string `json:"username" binding:"required,min=3,max=64"`
-	Email    string `json:"email" binding:"required,email"`
+	Email    string `json:"email" binding:"required,email,min=5,max=96"`
 	Password string `json:"password" binding:"required,min=8"`
 	Role     string `json:"role" binding:"required,oneof=admin experimenter approver viewer"`
 }

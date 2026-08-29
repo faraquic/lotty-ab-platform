@@ -132,6 +132,8 @@ func (h *Handler) respondError(w http.ResponseWriter, err error) {
 		api.Error(w, http.StatusNotFound, api.NotFound, err.Error())
 	case errors.Is(err, ErrConflictKeys):
 		api.Error(w, http.StatusConflict, api.Conflict, err.Error())
+	case errors.Is(err, ErrConflictNames):
+		api.Error(w, http.StatusConflict, api.Conflict, err.Error())
 	case errors.Is(err, ErrInvalidTypeFlag), errors.Is(err, ErrInvalidValue):
 		api.Error(w, http.StatusBadRequest, api.BadRequest, err.Error())
 	default:

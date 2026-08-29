@@ -1,10 +1,11 @@
 -- +goose Up
 CREATE TABLE flags(
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    key TEXT NOT NULL UNIQUE CHECK (length(trim(key)) > 0),
-    type TEXT NOT NULL CHECK (type IN ('string', 'number', 'bool')),
+    key TEXT(128) NOT NULL UNIQUE CHECK (length(trim(key)) > 0),
+    name TEXT(256) NOT NULL UNIQUE CHECK (length(trim(name)) > 0),
+    type TEXT(8) NOT NULL CHECK (type IN ('string', 'number', 'bool')),
     default_value jsonb NOT NULL,
-    description text NULL,
+    description text(4096) NULL,
     owner BIGINT NOT NULL,
     deleted_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),

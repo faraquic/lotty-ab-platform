@@ -7,6 +7,6 @@ CREATE TRIGGER users_updated_at
     EXECUTE FUNCTION update_updated_at();
 
 -- +goose Down
-DROP TRIGGER IF EXISTS users_updated_at ON users;
+DROP TRIGGER users_updated_at ON users;
 
-DROP FUNCTION IF EXISTS update_updated_at();
+DROP FUNCTION update_updated_at();

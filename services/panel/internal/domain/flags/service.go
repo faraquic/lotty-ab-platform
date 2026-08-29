@@ -17,7 +17,7 @@ type FlagRepo interface {
 	Create(ctx context.Context, f Flag) (int64, error)
 	GetByID(ctx context.Context, id int64) (FlagWithOwner, error)
 	List(ctx context.Context, limit, offset int) ([]Flag, error)
-	Update(ctx context.Context, id int64, key string, defaultValue ValueFlag, description string) (FlagWithOwner, error)
+	Update(ctx context.Context, id int64, key, name string, defaultValue ValueFlag, description string) (FlagWithOwner, error)
 	Delete(ctx context.Context, id int64) error
 	Count(ctx context.Context) (int64, error)
 }
@@ -49,6 +49,7 @@ func (s *Service) Create(ctx context.Context, callerID int64, req CreateFlagRequ
 
 	f := Flag{
 		Key:          req.Key,
+		Name:         req.Name,
 		Type:         typeFlag,
 		DefaultValue: dv,
 		Description:  desc,
@@ -125,7 +126,7 @@ func (s *Service) Update(ctx context.Context, callerID, id int64, req UpdateFlag
 		}
 	}
 
-	fwo, err := s.repo.Update(ctx, id, req.Key, req.DefaultValue, req.Description)
+	fwo, err := s.repo.Update(ctx, id, req.Key, req.Name, req.DefaultValue, req.Description)
 	if err != nil {
 		return FlagResponse{}, err
 	}

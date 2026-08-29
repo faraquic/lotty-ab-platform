@@ -739,6 +739,10 @@ components:
           type: string
           minLength: 3
           maxLength: 128
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
         type:
           $ref: '#/components/schemas/FlagType'
         default_value:
@@ -759,7 +763,7 @@ components:
         updated_at:
           type: string
           format: date-time
-      required: [id, key, type, default_value, created_at, updated_at]
+      required: [id, key, name, type, default_value, created_at, updated_at]
 
     CreateFlagRequest:
       type: object
@@ -768,6 +772,10 @@ components:
           type: string
           minLength: 3
           maxLength: 128
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
         type:
           $ref: '#/components/schemas/FlagType'
         default_value:
@@ -780,7 +788,7 @@ components:
           type: string
           minLength: 1
           maxLength: 4096
-      required: [key, type, default_value]
+      required: [key, name, type, default_value]
 
     UpdateFlagRequest:
       type: object
@@ -789,6 +797,10 @@ components:
           type: string
           minLength: 3
           maxLength: 128
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
         default_value:
           description: JSON value matching the flag type
           oneOf:

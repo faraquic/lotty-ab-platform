@@ -13,6 +13,7 @@ func TestCreateFlag_String(t *testing.T) {
 	resp := doRequest(http.MethodPost, "/api/panel/v1/flags", adminToken,
 		jsonBody(map[string]any{
 			"key":           "test-string-flag",
+			"name":          "Test String Flag",
 			"type":          "string",
 			"default_value": "hello world",
 			"description":   "A test string flag",
@@ -29,6 +30,9 @@ func TestCreateFlag_String(t *testing.T) {
 	}
 	if result.Data.Key != "test-string-flag" {
 		t.Errorf("key: got %q, want %q", result.Data.Key, "test-string-flag")
+	}
+	if result.Data.Name != "Test String Flag" {
+		t.Errorf("name: got %q, want %q", result.Data.Name, "Test String Flag")
 	}
 	if result.Data.Type != "string" {
 		t.Errorf("type: got %q, want %q", result.Data.Type, "string")
@@ -54,6 +58,7 @@ func TestCreateFlag_Number(t *testing.T) {
 	resp := doRequest(http.MethodPost, "/api/panel/v1/flags", adminToken,
 		jsonBody(map[string]any{
 			"key":           "test-number-flag",
+			"name":          "Test Number Flag",
 			"type":          "number",
 			"default_value": 42,
 			"description":   "A test number flag",
@@ -67,6 +72,9 @@ func TestCreateFlag_Number(t *testing.T) {
 	if result.Data.Type != "number" {
 		t.Errorf("type: got %q, want %q", result.Data.Type, "number")
 	}
+	if result.Data.Name != "Test Number Flag" {
+		t.Errorf("name: got %q, want %q", result.Data.Name, "Test Number Flag")
+	}
 	var num float64
 	json.Unmarshal(result.Data.DefaultValue, &num)
 	if num != 42 {
@@ -78,6 +86,7 @@ func TestCreateFlag_Bool(t *testing.T) {
 	resp := doRequest(http.MethodPost, "/api/panel/v1/flags", adminToken,
 		jsonBody(map[string]any{
 			"key":           "test-bool-flag",
+			"name":          "Test Bool Flag",
 			"type":          "bool",
 			"default_value": true,
 			"description":   "A test bool flag",
@@ -90,6 +99,9 @@ func TestCreateFlag_Bool(t *testing.T) {
 
 	if result.Data.Type != "bool" {
 		t.Errorf("type: got %q, want %q", result.Data.Type, "bool")
+	}
+	if result.Data.Name != "Test Bool Flag" {
+		t.Errorf("name: got %q, want %q", result.Data.Name, "Test Bool Flag")
 	}
 	var b bool
 	json.Unmarshal(result.Data.DefaultValue, &b)
@@ -106,11 +118,14 @@ func TestCreateFlag_RejectsInvalidRequests(t *testing.T) {
 	}{
 		{"empty body", map[string]any{}, http.StatusBadRequest},
 		{"missing key", map[string]any{"type": "string", "default_value": "test"}, http.StatusBadRequest},
+		{"missing name", map[string]any{"key": "test-flag", "type": "string", "default_value": "test"}, http.StatusBadRequest},
 		{"missing type", map[string]any{"key": "test-flag", "default_value": "test"}, http.StatusBadRequest},
 		{"missing default_value", map[string]any{"key": "test-flag", "type": "string"}, http.StatusBadRequest},
 		{"invalid type", map[string]any{"key": "test-flag", "type": "invalid", "default_value": "test"}, http.StatusBadRequest},
 		{"key too short", map[string]any{"key": "ab", "type": "string", "default_value": "test"}, http.StatusBadRequest},
 		{"key too long", map[string]any{"key": strings.Repeat("a", 129), "type": "string", "default_value": "test"}, http.StatusBadRequest},
+		{"name too short", map[string]any{"key": "test-flag", "name": "", "type": "string", "default_value": "test"}, http.StatusBadRequest},
+		{"name too long", map[string]any{"key": "test-flag", "name": strings.Repeat("a", 257), "type": "string", "default_value": "test"}, http.StatusBadRequest},
 		{"string type with number value", map[string]any{"key": "test-flag", "type": "string", "default_value": 123}, http.StatusBadRequest},
 		{"number type with string value", map[string]any{"key": "test-flag", "type": "number", "default_value": "not-a-number"}, http.StatusBadRequest},
 		{"bool type with string value", map[string]any{"key": "test-flag", "type": "bool", "default_value": "not-a-bool"}, http.StatusBadRequest},
@@ -132,11 +147,28 @@ func TestCreateFlag_RejectsInvalidRequests(t *testing.T) {
 
 func TestCreateFlag_DuplicateKey(t *testing.T) {
 	key := "duplicate-key"
-	createFlag(t, key, "string", "first")
+	createFlag(t, key, "string", "first", "First Flag")
 
 	resp := doRequest(http.MethodPost, "/api/panel/v1/flags", adminToken,
 		jsonBody(map[string]any{
 			"key":           key + "-" + runID,
+			"name":          "First Flag",
+			"type":          "string",
+			"default_value": "second",
+		}))
+	defer resp.Body.Close()
+
+	requireErrorResponse(t, resp, http.StatusConflict, "CONFLICT")
+}
+
+func TestCreateFlag_DuplicateName(t *testing.T) {
+	key := "duplicate-name"
+	createFlag(t, key, "string", "first", "Unique Name")
+
+	resp := doRequest(http.MethodPost, "/api/panel/v1/flags", adminToken,
+		jsonBody(map[string]any{
+			"key":           "different-key-" + runID,
+			"name":          "Unique Name",
 			"type":          "string",
 			"default_value": "second",
 		}))
@@ -146,7 +178,7 @@ func TestCreateFlag_DuplicateKey(t *testing.T) {
 }
 
 func TestGetFlag(t *testing.T) {
-	id, key := createFlag(t, "get-flag", "string", "test-value")
+	id, key := createFlag(t, "get-flag", "string", "test-value", "Get Flag")
 
 	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/flags/%d", id), adminToken, nil)
 	defer resp.Body.Close()
@@ -160,6 +192,9 @@ func TestGetFlag(t *testing.T) {
 	}
 	if result.Data.Key != key {
 		t.Errorf("key: got %q, want %q", result.Data.Key, key)
+	}
+	if result.Data.Name != "Get Flag" {
+		t.Errorf("name: got %q, want %q", result.Data.Name, "Get Flag")
 	}
 	if result.Data.Type != "string" {
 		t.Errorf("type: got %q, want %q", result.Data.Type, "string")
@@ -181,8 +216,8 @@ func TestGetFlag_InvalidID(t *testing.T) {
 }
 
 func TestListFlags(t *testing.T) {
-	_, keyA := createFlag(t, "list-flag-a", "string", "value-a")
-	_, keyB := createFlag(t, "list-flag-b", "number", 123)
+	_, keyA := createFlag(t, "list-flag-a", "string", "value-a", "List Flag A")
+	_, keyB := createFlag(t, "list-flag-b", "number", 123, "List Flag B")
 
 	resp := doRequest(http.MethodGet, "/api/panel/v1/flags?limit=100", adminToken, nil)
 	defer resp.Body.Close()
@@ -234,9 +269,9 @@ func TestListFlags_Pagination(t *testing.T) {
 	defer baseResp.Body.Close()
 	base := decodePaginatedFlagsResponse(t, baseResp)
 
-	_, _ = createFlag(t, "page-flag-a", "string", "a")
-	_, _ = createFlag(t, "page-flag-b", "string", "b")
-	_, _ = createFlag(t, "page-flag-c", "string", "c")
+	_, _ = createFlag(t, "page-flag-a", "string", "a", "Page Flag A")
+	_, _ = createFlag(t, "page-flag-b", "string", "b", "Page Flag B")
+	_, _ = createFlag(t, "page-flag-c", "string", "c", "Page Flag C")
 
 	resp := doRequest(http.MethodGet, "/api/panel/v1/flags?limit=2&offset=0", adminToken, nil)
 	defer resp.Body.Close()
@@ -275,8 +310,8 @@ func TestListFlags_OffsetBeyondTotal(t *testing.T) {
 	defer baseResp.Body.Close()
 	base := decodePaginatedFlagsResponse(t, baseResp)
 
-	_, _ = createFlag(t, "beyond-flag-a", "string", "a")
-	_, _ = createFlag(t, "beyond-flag-b", "string", "b")
+	_, _ = createFlag(t, "beyond-flag-a", "string", "a", "Beyond Flag A")
+	_, _ = createFlag(t, "beyond-flag-b", "string", "b", "Beyond Flag B")
 
 	resp := doRequest(http.MethodGet, "/api/panel/v1/flags?limit=1&offset=100000", adminToken, nil)
 	defer resp.Body.Close()
@@ -299,7 +334,7 @@ func TestListFlags_OffsetBeyondTotal(t *testing.T) {
 }
 
 func TestUpdateFlag(t *testing.T) {
-	id, _ := createFlag(t, "update-flag", "string", "original")
+	id, _ := createFlag(t, "update-flag", "string", "original", "Update Flag")
 
 	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/flags/%d", id), adminToken,
 		jsonBody(map[string]any{
@@ -322,10 +357,13 @@ func TestUpdateFlag(t *testing.T) {
 	if result.Data.Description == nil || *result.Data.Description != "Updated description" {
 		t.Errorf("description: got %v, want 'Updated description'", result.Data.Description)
 	}
+	if result.Data.Name != "Update Flag" {
+		t.Errorf("name should remain unchanged: got %q, want %q", result.Data.Name, "Update Flag")
+	}
 }
 
 func TestUpdateFlag_ChangeKey(t *testing.T) {
-	id, _ := createFlag(t, "update-key-flag", "string", "test")
+	id, _ := createFlag(t, "update-key-flag", "string", "test", "Update Key Flag")
 
 	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/flags/%d", id), adminToken,
 		jsonBody(map[string]any{
@@ -343,7 +381,7 @@ func TestUpdateFlag_ChangeKey(t *testing.T) {
 }
 
 func TestUpdateFlag_InvalidValueForType(t *testing.T) {
-	id, _ := createFlag(t, "invalid-update-flag", "number", 100)
+	id, _ := createFlag(t, "invalid-update-flag", "number", 100, "Invalid Update Flag")
 
 	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/flags/%d", id), adminToken,
 		jsonBody(map[string]any{
@@ -363,7 +401,7 @@ func TestUpdateFlag_Nonexistent(t *testing.T) {
 }
 
 func TestDeleteFlag(t *testing.T) {
-	id, _ := createFlag(t, "delete-flag", "string", "to-delete")
+	id, _ := createFlag(t, "delete-flag", "string", "to-delete", "Delete Flag")
 
 	resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/flags/%d", id), adminToken, nil)
 	defer resp.Body.Close()
@@ -384,7 +422,7 @@ func TestDeleteFlag_Nonexistent(t *testing.T) {
 }
 
 func TestFlags_NoSecretsInResponse(t *testing.T) {
-	id, _ := createFlag(t, "no-secrets-flag", "string", "test")
+	id, _ := createFlag(t, "no-secrets-flag", "string", "test", "No Secrets Flag")
 
 	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/flags/%d", id), adminToken, nil)
 	defer resp.Body.Close()
@@ -421,7 +459,7 @@ func TestListFlags_JSONContentType(t *testing.T) {
 }
 
 func TestUnauthenticatedFlag_RejectedFromAllEndpoints(t *testing.T) {
-	id, _ := createFlag(t, "unauth-flag", "string", "test")
+	id, _ := createFlag(t, "unauth-flag", "string", "test", "Unauth Flag")
 
 	t.Run("GET /flags", func(t *testing.T) {
 		resp := doRequest(http.MethodGet, "/api/panel/v1/flags", "", nil)
@@ -479,12 +517,13 @@ func TestViewerCannotManageFlags(t *testing.T) {
 		t.Skip("could not login as viewer")
 	}
 
-	targetID, _ := createFlag(t, "viewer-target-flag", "string", "test")
+	targetID, _ := createFlag(t, "viewer-target-flag", "string", "test", "Viewer Target Flag")
 
 	t.Run("can create flag", func(t *testing.T) {
 		resp := doRequest(http.MethodPost, "/api/panel/v1/flags", viewerToken,
 			jsonBody(map[string]any{
 				"key":           "viewer-create-" + runID,
+				"name":          "Viewer Create Flag",
 				"type":          "string",
 				"default_value": "test",
 			}))
@@ -518,12 +557,17 @@ func TestViewerCannotManageFlags(t *testing.T) {
 	})
 }
 
-func createFlag(t *testing.T, key, flagType string, defaultValue any) (int64, string) {
+func createFlag(t *testing.T, key, flagType string, defaultValue any, name ...string) (int64, string) {
 	t.Helper()
 	uniqueKey := key + "-" + runID
+	flagName := uniqueKey
+	if len(name) > 0 {
+		flagName = name[0]
+	}
 	resp := doRequest(http.MethodPost, "/api/panel/v1/flags", adminToken,
 		jsonBody(map[string]any{
 			"key":           uniqueKey,
+			"name":          flagName,
 			"type":          flagType,
 			"default_value": defaultValue,
 		}))

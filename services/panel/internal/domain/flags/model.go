@@ -86,6 +86,7 @@ func (v ValueFlag) Value() (driver.Value, error) {
 type Flag struct {
 	ID           int64      `db:"id"`
 	Key          string     `db:"key"`
+	Name         string     `db:"name"`
 	Type         TypeFlag   `db:"type"`
 	DefaultValue ValueFlag  `db:"default_value"`
 	Description  *string    `db:"description"`

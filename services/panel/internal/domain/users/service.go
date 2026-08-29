@@ -11,6 +11,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+const BcryptCost int = 13
+
 var (
 	ErrInvalidRole        = errors.New("invalid role")
 	ErrSelfRoleChange     = errors.New("cannot change your own role")
@@ -55,7 +57,7 @@ func (s *Service) Create(ctx context.Context, req CreateUserRequest) (UserRespon
 		return UserResponse{}, ErrInvalidRole
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), BcryptCost)
 	if err != nil {
 		return UserResponse{}, fmt.Errorf("hash password: %w", err)
 	}

@@ -3,6 +3,7 @@ package flags
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/faraquic/lotty-ab-platform/services/panel/internal/domain/users"
@@ -12,8 +13,9 @@ import (
 )
 
 var (
-	ErrNotFound     = errors.New("flag not found")
-	ErrConflictKeys = errors.New("flag with this key already exists")
+	ErrNotFound      = errors.New("flag not found")
+	ErrConflictKeys  = errors.New("flag with this key already exists")
+	ErrConflictNames = errors.New("flag with this name already exists")
 )
 
 type Repository struct {
@@ -26,8 +28,8 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 
 func (r *Repository) Create(ctx context.Context, f Flag) (int64, error) {
 	const q = `
-INSERT INTO flags(key, type, default_value, description, owner)
-    VALUES ($1, $2, $3, $4, $5)
+INSERT INTO flags(key, name, type, default_value, description, owner)
+    VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING
     id`
 
@@ -36,9 +38,15 @@ RETURNING
 	if f.Description != nil {
 		desc = *f.Description
 	}
-	err := r.db.QueryRow(ctx, q, f.Key, f.Type, f.DefaultValue, desc, f.Owner).Scan(&id)
+	err := r.db.QueryRow(ctx, q, f.Key, f.Name, f.Type, f.DefaultValue, desc, f.Owner).Scan(&id)
 	if err != nil {
 		if pgconnutils.IsUniqueViolation(err) {
+			if strings.Contains(err.Error(), "flags_key_key") {
+				return 0, ErrConflictKeys
+			}
+			if strings.Contains(err.Error(), "flags_name_key") {
+				return 0, ErrConflictNames
+			}
 			return 0, ErrConflictKeys
 		}
 		return 0, err
@@ -48,15 +56,31 @@ RETURNING
 
 const selectFlagWithOwner = `
 SELECT
-    f.id, f.key, f.type, f.default_value, f.description,
-    f.owner, f.deleted_at, f.created_at, f.updated_at,
-    u.id, u.username, u.email, u.role, u.avatar_url,
-    u.created_at, u.updated_at
-FROM flags f JOIN users u ON f.owner = u.id`
+    f.id,
+    f.key,
+    f.name,
+    f.type,
+    f.default_value,
+    f.description,
+    f.owner,
+    f.deleted_at,
+    f.created_at,
+    f.updated_at,
+    u.id,
+    u.username,
+    u.email,
+    u.role,
+    u.avatar_url,
+    u.created_at,
+    u.updated_at
+FROM
+    flags f
+    JOIN users u ON f.owner = u.id`
 
 type flagWithOwnerRow struct {
 	FlagID       int64
 	Key          string
+	Name         string
 	Type         TypeFlag
 	DefaultValue ValueFlag
 	Description  string
@@ -82,6 +106,7 @@ func (r flagWithOwnerRow) toFlagWithOwner() FlagWithOwner {
 		Flag: Flag{
 			ID:           r.FlagID,
 			Key:          r.Key,
+			Name:         r.Name,
 			Type:         r.Type,
 			DefaultValue: r.DefaultValue,
 			Description:  desc,
@@ -111,6 +136,7 @@ WHERE
 	err := r.db.QueryRow(ctx, q, id).Scan(
 		&row.FlagID,
 		&row.Key,
+		&row.Name,
 		&row.Type,
 		&row.DefaultValue,
 		&row.Description,
@@ -161,7 +187,7 @@ LIMIT $1 OFFSET $2`
 	return pgx.CollectRows(rows, pgx.RowToStructByName[Flag])
 }
 
-func (r *Repository) Update(ctx context.Context, id int64, key string, defaultValue ValueFlag, description string) (FlagWithOwner, error) {
+func (r *Repository) Update(ctx context.Context, id int64, key string, name string, defaultValue ValueFlag, description string) (FlagWithOwner, error) {
 	var dv any
 	if len(defaultValue) > 0 {
 		dv = string(defaultValue)
@@ -171,15 +197,22 @@ UPDATE
     flags
 SET
     key = COALESCE(NULLIF($2, ''), key),
-    default_value = COALESCE($3, default_value),
-    description = COALESCE(NULLIF($4, ''), description)
+    name = COALESCE(NULLIF($3, ''), name),
+    default_value = COALESCE($4, default_value),
+    description = COALESCE(NULLIF($5, ''), description)
 WHERE
     id = $1
     AND deleted_at IS NULL`
 
-	tag, err := r.db.Exec(ctx, q, id, key, dv, description)
+	tag, err := r.db.Exec(ctx, q, id, key, name, dv, description)
 	if err != nil {
 		if pgconnutils.IsUniqueViolation(err) {
+			if strings.Contains(err.Error(), "flags_key_key") {
+				return FlagWithOwner{}, ErrConflictKeys
+			}
+			if strings.Contains(err.Error(), "flags_name_key") {
+				return FlagWithOwner{}, ErrConflictNames
+			}
 			return FlagWithOwner{}, ErrConflictKeys
 		}
 		return FlagWithOwner{}, err
