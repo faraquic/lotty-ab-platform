@@ -44,6 +44,27 @@ type paginatedFlagData struct {
 	Meta paginationMetaResponse `json:"meta"`
 }
 
+type metricResponseData struct {
+	ID          int64             `json:"id"`
+	Key         string            `json:"key"`
+	Name        string            `json:"name"`
+	Description *string           `json:"description"`
+	MetricType  string            `json:"metric_type"`
+	Aggregation json.RawMessage   `json:"aggregation"`
+	Attribution json.RawMessage   `json:"attribution"`
+	IsBuiltin   bool              `json:"is_builtin"`
+	Status      string            `json:"status"`
+	CreatedBy   *userResponseData `json:"created_by"`
+	UpdatedBy   *userResponseData `json:"updated_by"`
+	CreatedAt   string            `json:"created_at"`
+	UpdatedAt   string            `json:"updated_at"`
+}
+
+type paginatedMetricData struct {
+	Data []metricResponseData   `json:"data"`
+	Meta paginationMetaResponse `json:"meta"`
+}
+
 type apiResponse[T any] struct {
 	Success bool `json:"success"`
 	Data    T    `json:"data"`
@@ -57,4 +78,14 @@ func decodeResponse[T any](t *testing.T, resp *http.Response) T {
 		t.Fatalf("decode response: %v", err)
 	}
 	return result
+}
+
+func decodeMetricResponse(t *testing.T, resp *http.Response) apiResponse[metricResponseData] {
+	t.Helper()
+	return decodeResponse[apiResponse[metricResponseData]](t, resp)
+}
+
+func decodePaginatedMetricsResponse(t *testing.T, resp *http.Response) apiResponse[paginatedMetricData] {
+	t.Helper()
+	return decodeResponse[apiResponse[paginatedMetricData]](t, resp)
 }

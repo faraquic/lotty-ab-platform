@@ -253,7 +253,7 @@ func cleanupTestState() error {
 	}
 	defer pool.Close()
 
-	_, err = pool.Exec(ctx, "TRUNCATE flags, users RESTART IDENTITY CASCADE")
+	_, err = pool.Exec(ctx, "TRUNCATE metrics, flags, users RESTART IDENTITY CASCADE")
 	if err != nil {
 		return fmt.Errorf("truncate tables: %w", err)
 	}

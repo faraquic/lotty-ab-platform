@@ -17,6 +17,7 @@ import (
 	authdomain "github.com/faraquic/lotty-ab-platform/services/panel/internal/domain/auth"
 	flagsdomain "github.com/faraquic/lotty-ab-platform/services/panel/internal/domain/flags"
 	healthdomain "github.com/faraquic/lotty-ab-platform/services/panel/internal/domain/health"
+	metricsdomain "github.com/faraquic/lotty-ab-platform/services/panel/internal/domain/metrics"
 	usersdomain "github.com/faraquic/lotty-ab-platform/services/panel/internal/domain/users"
 )
 
@@ -62,6 +63,11 @@ func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisCli
 	usersHandler.RegisterRoutes(adminGroup)
 
 	flagsHandler.RegisterRoutes(anyAuthGroup)
+
+	metricsRepo := metricsdomain.NewRepository(pool)
+	metricsSvc := metricsdomain.NewService(metricsRepo, log)
+	metricsHandler := metricsdomain.NewHandler(metricsSvc, log)
+	metricsHandler.RegisterRoutes(anyAuthGroup)
 
 	return r
 }

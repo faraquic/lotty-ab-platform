@@ -2,83 +2,93 @@
 
 ## Session Summary
 
-This session added the feature flags domain with a human-readable `name` field, replaced the `owner` audit field with separate `created_by`/`updated_by` foreign keys, and refined the list/detail endpoint response shapes: `GET /flags` omits user objects (serializes `created_by`/`updated_by` as `null`), while `GET /flags/:id` returns full user objects. All changes backed by migrations, OpenAPI spec updates, and e2e tests.
+This session added the feature flags domain with a human-readable `name` field, replaced the `owner` audit field with separate `created_by`/`updated_by` foreign keys, and refined the list/detail endpoint response shapes: `GET /flags` omits user objects (serializes `created_by`/`updated_by` as `null`), while `GET /flags/:id` returns full user objects. Additionally, the metrics domain was implemented as a configuration entity for future A/B-test analytics.
 
 ## What Was Completed
 
 ### Flags Domain (`services/panel/internal/domain/flags/`)
 - **Model** (`model.go`): `Flag` struct has `CreatedBy`/`UpdatedBy` (bigint, NOT NULL); `FlagWithCreatorAndUpdater` wraps flag + full user objects
 - **Repository** (`repository.go`): 
-  - `GetByID`/`Update` join `users` twice (creator + updater) → return `FlagWithCreatorAndUpdater`
-  - `List` queries **only** `flags` table (no joins) → returns `[]Flag` for performance
+  - `GetByID`/`Update` join `users` twice (creator + updater) -> return `FlagWithCreatorAndUpdater`
+  - `List` queries **only** `flags` table (no joins) -> returns `[]Flag` for performance
 - **DTO** (`dto.go`): Single `FlagResponse` type; `ToResponse` populates `CreatedBy`/`UpdatedBy` from `FlagWithCreatorAndUpdater`; list uses `FlagWithCreatorAndUpdater{Flag: f}` with nil users so JSON omits them
 - **Service** (`service.go`): `List` returns `PaginatedFlagResponse` with `FlagResponse` items where `CreatedBy`/`UpdatedBy` are `null`
 - **Handler** (`handler.go`): Standard CRUD + list with pagination; 409 Conflict on duplicate key/name
 
+### Metrics Domain (`services/panel/internal/domain/metrics/`)
+- **Model** (`model.go`): `MetricConfig` (byte-slice type with JSON marshal/unmarshal/Scan/Value); `MetricType` (count/sum/unique_count/ratio/percentile/average); `MetricStatus` (active/archived); `Metric` struct; `MetricWithCreatorAndUpdater`
+- **Repository** (`repository.go`):
+  - `GetByID`/`Update` join `users` twice (creator + updater) -> return `MetricWithCreatorAndUpdater`
+  - `List` queries **only** `metrics` table (no joins) -> returns `[]Metric` for performance
+  - All queries filter `status = 'active'` (no `deleted_at` column)
+  - DELETE sets `status = 'archived'` (soft delete via status)
+- **DTO** (`dto.go`): `CreateMetricRequest`, `UpdateMetricRequest`, `MetricResponse`, `PaginatedMetricResponse`, `ToResponse`
+- **Service** (`service.go`): Validates metric type, status, config JSON objects; enforces built-in protections; immutable `metric_type` after creation
+- **Handler** (`handler.go`): Standard CRUD + list with pagination; 409 Conflict on duplicate key/name; 403 Forbidden for built-in metric violations
+
 ### Database Migrations
 - `00001_users.sql`: Combined users table (username, email unique, role enum, avatar_url nullable, soft delete, `update_updated_at` trigger)
-- `00002_flags.sql`: `flags` table with `key` (unique), `name` (unique, max 256), `type` (string/number/bool), `default_value` (jsonb), `description` (nullable), `created_by`/`updated_by` FK → `users(id)`, soft delete, updated_at trigger
-- `00003_metrics.sql`: (untracked — excluded from commit)
+- `00002_flags.sql`: `flags` table with `key` (unique), `name` (unique, max 256), `type` (string/number/bool), `default_value` (jsonb), `description` (nullable), `created_by`/`updated_by` FK -> `users(id)`, soft delete, updated_at trigger
+- `00003_metrics.sql`: `metrics` table with `key` (unique), `name` (unique, max 256), `metric_type` (enum), `aggregation`/`attribution` (jsonb), `is_builtin`, `status` (active/archived), `created_by`/`updated_by` FK -> `users(id)`, updated_at trigger. No `deleted_at` column -- soft delete uses `status = 'archived'`.
 
 ### E2E Tests (`tests/e2e/panel/`)
 - `flags_test.go`: All create/get/list/update/delete tests; list tests assert `CreatedBy`/`UpdatedBy` are `null`
-- `response_types_test.go`: `flagResponseData` has `CreatedBy`/`UpdatedBy` as `*userResponseData` (nil for list)
-- `suite_test.go`: `decodePaginatedFlagsResponse` helper reused for list/detail
+- `metrics_test.go`: Full E2E coverage for metrics: create (all types), validation, get, list/pagination, update, delete, auth/RBAC, audit field verification, secrets check, repeated delete, negative IDs
+- `response_types_test.go`: `metricResponseData` and `paginatedMetricData` types; `decodeMetricResponse` and `decodePaginatedMetricsResponse` helpers
+- `suite_test.go`: `cleanupTestState` truncates `metrics, flags, users`
 
 ### OpenAPI Spec (`docs/openapi/panel.yaml`)
 - `Flag` schema: `created_by`/`updated_by` reference `User` (required, present on detail)
 - **New `FlagListItem` schema**: identical to `Flag` but **omits** `created_by`/`updated_by`/`description`
 - `FlagListResponse` references `FlagListItem` (array)
-- `CreateFlagRequest`/`UpdateFlagRequest` include `name` (required, 1–256)
+- **New `Metric` schema**: full detail with `created_by`/`updated_by` as `User` refs
+- **New `MetricListItem` schema**: omits `created_by`/`updated_by` for list performance
+- `MetricListResponse` references `MetricListItem` (array)
+- `CreateMetricRequest`/`UpdateMetricRequest` with `metric_type` immutability documented
+- `MetricType` enum, `MetricStatus` enum
+
+## Design Decisions
+
+### Metrics Domain
+
+| Decision | Rationale |
+|----------|-----------|
+| Soft delete via `status = 'archived'` (no `deleted_at`) | Simpler schema; `status` field already exists for business lifecycle; archive = delete |
+| `metric_type` immutable after creation | Aggregation/attribution semantics depend on type; changing type breaks historical meaning |
+| `key`/`name` permanently unique (even after archive) | May be referenced by experiments/events/reporting; prevents confusion |
+| Built-in metrics cannot be modified or deleted | Protects system-defined metrics from accidental changes |
+| `aggregation`/`attribution` validated as non-empty JSON objects | Type-specific schema validation deferred to future work |
+| List omits user objects (same as flags) | Performance: avoids 2 JOINs per row |
+| Authorization matches flags (any authenticated user) | Consistent with existing RBAC policy |
+| `MetricConfig` custom byte-slice type | Prevents base64 encoding in JSON; implements `json.Marshaler`/`json.Unmarshaler`/`sql.Scanner`/`driver.Valuer` |
 
 ## Files Changed
 
 | File | Action | Why |
 |------|--------|-----|
-| `migrations/00001_users.sql` | Modified | Combined users migrations, added email UNIQUE, avatar_url nullable |
-| `migrations/00002_flags.sql` | Modified | Flags table with name, created_by, updated_by, triggers, FKs |
-| `services/panel/internal/domain/flags/model.go` | Modified | Flag, FlagWithCreatorAndUpdater |
-| `services/panel/internal/domain/flags/repository.go` | Modified | List without user joins; GetByID/Update with double join |
-| `services/panel/internal/domain/flags/dto.go` | Modified | FlagResponse, ToResponse (single type for list + detail) |
-| `services/panel/internal/domain/flags/service.go` | Modified | List returns PaginatedFlagResponse with nil users |
-| `services/panel/internal/domain/flags/handler.go` | Modified | Error handling for ErrConflictNames |
-| `tests/e2e/panel/flags_test.go` | Modified | List tests verify null CreatedBy/UpdatedBy |
-| `tests/e2e/panel/response_types_test.go` | Modified | Reused flagResponseData for list |
-| `tests/e2e/panel/suite_test.go` | No change | decodePaginatedFlagsResponse reused |
-| `docs/openapi/panel.yaml` | Modified | FlagListItem schema; FlagListResponse uses it |
+| `migrations/00003_metrics.sql` | Modified | Normalized: added `updated_by` FK, removed untracked status |
+| `services/panel/internal/domain/metrics/model.go` | Created | MetricConfig, MetricType, MetricStatus, Metric, MetricWithCreatorAndUpdater |
+| `services/panel/internal/domain/metrics/dto.go` | Modified | CreateMetricRequest, UpdateMetricRequest, MetricResponse, PaginatedMetricResponse, ToResponse |
+| `services/panel/internal/domain/metrics/repository.go` | Created | CRUD, soft delete via status, pagination, audit joins |
+| `services/panel/internal/domain/metrics/service.go` | Created | Validation, business logic, built-in protections |
+| `services/panel/internal/domain/metrics/handler.go` | Created | HTTP handlers, route registration, error mapping |
+| `services/panel/cmd/router.go` | Modified | Registered metrics domain on `anyAuthGroup` |
+| `tests/e2e/panel/metrics_test.go` | Created | Full E2E test coverage |
+| `tests/e2e/panel/response_types_test.go` | Modified | Added metric response types and decode helpers |
+| `tests/e2e/panel/suite_test.go` | Modified | Added `metrics` to TRUNCATE statement |
+| `docs/openapi/panel.yaml` | Modified | Added metrics tag, paths, schemas |
+| `docs/ai/AI_HANDOFF.md` | Modified | Updated session summary and decisions |
 
-## Git Commits (this session)
+## Unimplemented / Future Work
 
-```
-a65f8a6 feat(flags): list endpoint omits created_by/updated_by user objects
-<previous commits from earlier session>
-```
-
-## Current Unfinished Tasks
-
-- S3 is initialized and available but no domain logic uses it yet (no upload/download endpoints)
-- Metrics/experiments domains not implemented
-- No avatar upload endpoint implementation (S3 integration pending)
-
-## Known Issues & Technical Debt
-
-1. **MinIO health check** uses `mc ready local` — requires `mc` inside the container.
-2. **S3 bucket provisioning** is explicit via `make dev-up` / `make test-e2e`.
-3. **No S3 CORS config** — browser uploads will fail without it.
-4. **`config.ServiceVersion`** is a `var`, not `const` — intentional (ldflags override).
-5. **JWT secret defaults to `"change-me"`** — must override in production.
-6. **Migration `00003_metrics.sql` and `00006_experiments.sql.~`** are untracked (excluded from commit).
-
-## Important Decisions & Rationale
-
-| Decision | Rationale |
-|----------|-----------|
-| List endpoint omits user objects | Performance: avoids 2 JOINs per row; list often returns many rows |
-| Single `FlagResponse` type with nil users | Simpler than separate types; `omitempty` on pointers serializes as absent/null |
-| `FlagListItem` in OpenAPI without user refs | Documents actual list response shape; detail endpoint uses `Flag` |
-| `name` unique + max 256 | Human-readable identifier; separate from machine `key` |
-| `created_by`/`updated_by` NOT NULL + FK | Audit trail integrity; every flag has creator/updater |
-| Soft delete (`deleted_at`) on users/flags | Referential integrity for audit fields; no cascade deletes |
+- Event ingestion
+- Metric calculation and aggregation workers
+- Experiment linkage and assignments
+- Type-specific metric configuration schemas (e.g., `ratio` numerator/denominator)
+- Metric unarchiving endpoint
+- Dashboards and reporting
+- Asynchronous jobs
+- Metrics collection SDKs
 
 ## Commands to Verify the Project
 
@@ -95,30 +105,8 @@ make test-e2e
 # Format check
 gofmt -l pkg/ services/ tests/ | grep -v '^$' || echo 'clean'
 
-# Start dev containers
-make dev-up
-
-# Apply migrations (dev DB: labp on localhost:5432)
-make pg-migrate-up
-
-# Apply migrations (e2e DB: labp_e2e on localhost:5433)
+# Apply migrations (e2e DB)
 go tool goose -dir migrations postgres "postgres://lotty:lottypassword@localhost:5433/labp_e2e?sslmode=disable" up
-
-# Build with version
-make build
-
-# Run the service
-./bin/panel
-
-# Health check
-curl http://localhost:8080/api/panel/v1/health
-curl http://localhost:8080/api/panel/v1/ready
-
-# Flags list (no user objects)
-curl -H "Authorization: Bearer <token>" http://localhost:8080/api/panel/v1/flags
-
-# Flag detail (with user objects)
-curl -H "Authorization: Bearer <token>" http://localhost:8080/api/panel/v1/flags/1
 ```
 
 ## What to Read Before Making Changes
@@ -129,5 +117,7 @@ curl -H "Authorization: Bearer <token>" http://localhost:8080/api/panel/v1/flags
 4. **`services/panel/cmd/router.go`** — how domains are wired together
 5. **`services/panel/cmd/main.go`** — bootstrap order and dependency initialization
 6. **`services/panel/internal/domain/flags/`** — flags domain (model, repo, dto, service, handler)
-7. **`pkg/api/response.go`** — response helpers and `ValidateRequest` pattern
-8. **`tests/e2e/panel/flags_test.go`** — expected API behavior
+7. **`services/panel/internal/domain/metrics/`** — metrics domain (model, repo, dto, service, handler)
+8. **`pkg/api/response.go`** — response helpers and `ValidateRequest` pattern
+9. **`tests/e2e/panel/flags_test.go`** — expected API behavior for flags
+10. **`tests/e2e/panel/metrics_test.go`** — expected API behavior for metrics

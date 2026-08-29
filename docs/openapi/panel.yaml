@@ -21,6 +21,8 @@ tags:
     description: Liveness and readiness probes
   - name: flags
     description: Feature flags
+  - name: metrics
+    description: Metrics configuration for A/B test analytics
 
 paths:
   /login:
@@ -443,6 +445,135 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /metrics:
+    post:
+      tags: [metrics]
+      summary: Create a metric
+      operationId: createMetric
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMetricRequest"
+      responses:
+        "200":
+          description: Metric created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetricResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    get:
+      tags: [metrics]
+      summary: List metrics
+      operationId: listMetrics
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of metrics to return (1-100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of metrics to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: archived
+          in: query
+          description: Include archived metrics in results
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: List of metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetricListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /metrics/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Metric ID
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+
+    get:
+      tags: [metrics]
+      summary: Get a metric by ID
+      operationId: getMetric
+      parameters:
+        - name: archived
+          in: query
+          description: Include archived metrics
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Metric found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetricResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    patch:
+      tags: [metrics]
+      summary: Partially update a metric
+      description: |
+        Updates mutable fields of a metric. The `metric_type` field is immutable after creation.
+        Omitted fields remain unchanged. Aggregation and attribution must be valid non-empty JSON objects when provided.
+        To archive a metric, set `status` to `archived`.
+      operationId: updateMetric
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMetricRequest"
+      responses:
+        "200":
+          description: Metric updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetricResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -890,3 +1021,171 @@ components:
           format: date-time
       required:
         [id, key, name, type, default_value, created_at, updated_at]
+
+    MetricType:
+      type: string
+      enum: [count, sum, unique_count, ratio, percentile, average]
+
+    MetricStatus:
+      type: string
+      enum: [active, archived]
+
+    Metric:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        key:
+          type: string
+          minLength: 3
+          maxLength: 128
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+        description:
+          type: string
+          maxLength: 4096
+          nullable: true
+        metric_type:
+          $ref: "#/components/schemas/MetricType"
+        aggregation:
+          type: object
+          additionalProperties: true
+          description: Aggregation configuration (must be a non-empty JSON object)
+        attribution:
+          type: object
+          additionalProperties: true
+          description: Attribution configuration (must be a non-empty JSON object)
+        is_builtin:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/MetricStatus"
+        created_by:
+          $ref: "#/components/schemas/User"
+        updated_by:
+          $ref: "#/components/schemas/User"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        [id, key, name, metric_type, aggregation, attribution, is_builtin, status, created_by, updated_by, created_at, updated_at]
+
+    CreateMetricRequest:
+      type: object
+      properties:
+        key:
+          type: string
+          minLength: 3
+          maxLength: 128
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+        description:
+          type: string
+          maxLength: 4096
+        metric_type:
+          $ref: "#/components/schemas/MetricType"
+        aggregation:
+          type: object
+          additionalProperties: true
+          description: Aggregation configuration (must be a non-empty JSON object)
+        attribution:
+          type: object
+          additionalProperties: true
+          description: Attribution configuration (must be a non-empty JSON object)
+      required: [key, name, metric_type, aggregation, attribution]
+
+    UpdateMetricRequest:
+      type: object
+      properties:
+        key:
+          type: string
+          minLength: 3
+          maxLength: 128
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+        description:
+          type: string
+          maxLength: 4096
+        aggregation:
+          type: object
+          additionalProperties: true
+          description: Aggregation configuration (must be a non-empty JSON object when provided)
+        attribution:
+          type: object
+          additionalProperties: true
+          description: Attribution configuration (must be a non-empty JSON object when provided)
+        status:
+          $ref: "#/components/schemas/MetricStatus"
+      minProperties: 1
+
+    MetricResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/Metric"
+      required: [success, data]
+
+    MetricListResponse:
+      type: object
+      required: [success, data, meta]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MetricListItem"
+        meta:
+          $ref: "#/components/schemas/PaginationMeta"
+
+    MetricListItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        key:
+          type: string
+          minLength: 3
+          maxLength: 128
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+        description:
+          type: string
+          maxLength: 4096
+          nullable: true
+        metric_type:
+          $ref: "#/components/schemas/MetricType"
+        aggregation:
+          type: object
+          additionalProperties: true
+        attribution:
+          type: object
+          additionalProperties: true
+        is_builtin:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/MetricStatus"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        [id, key, name, metric_type, aggregation, attribution, is_builtin, status, created_at, updated_at]
