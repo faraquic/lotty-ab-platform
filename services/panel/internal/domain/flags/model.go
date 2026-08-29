@@ -1,6 +1,7 @@
 package flags
 
 import (
+	"database/sql/driver"
 	"time"
 
 	"github.com/faraquic/lotty-ab-platform/services/panel/internal/domain/users"
@@ -9,7 +10,7 @@ import (
 
 type (
 	TypeFlag  string
-	ValueFlag json.RawMessage
+	ValueFlag []byte
 )
 
 const (
@@ -28,6 +29,10 @@ func (t TypeFlag) Valid() bool {
 }
 
 func (v ValueFlag) Valid(flagType TypeFlag) bool {
+	if len(v) == 0 {
+		return false
+	}
+
 	if !json.Valid(v) {
 		return false
 	}
@@ -52,16 +57,42 @@ func (v ValueFlag) Valid(flagType TypeFlag) bool {
 	}
 }
 
+func (v ValueFlag) MarshalJSON() ([]byte, error) {
+	return v, nil
+}
+
+func (v *ValueFlag) UnmarshalJSON(data []byte) error {
+	out := make([]byte, len(data))
+	copy(out, data)
+	*v = out
+	return nil
+}
+
+func (v *ValueFlag) Scan(src any) error {
+	switch s := src.(type) {
+	case []byte:
+		return v.UnmarshalJSON(s)
+	case string:
+		*v = []byte(s)
+		return nil
+	}
+	return ErrInvalidValue
+}
+
+func (v ValueFlag) Value() (driver.Value, error) {
+	return string(v), nil
+}
+
 type Flag struct {
-	ID           int64
-	Key          string
-	Type         TypeFlag
-	DefaultValue ValueFlag
-	Description  string
-	Owner        int64
-	DeletedAt    *time.Time
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID           int64      `db:"id"`
+	Key          string     `db:"key"`
+	Type         TypeFlag   `db:"type"`
+	DefaultValue ValueFlag  `db:"default_value"`
+	Description  *string    `db:"description"`
+	Owner        int64      `db:"owner"`
+	DeletedAt    *time.Time `db:"deleted_at"`
+	CreatedAt    time.Time  `db:"created_at"`
+	UpdatedAt    time.Time  `db:"updated_at"`
 }
 
 type FlagWithOwner struct {

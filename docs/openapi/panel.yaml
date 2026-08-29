@@ -789,6 +789,12 @@ components:
           type: string
           minLength: 3
           maxLength: 128
+        default_value:
+          description: JSON value matching the flag type
+          oneOf:
+            - type: string
+            - type: number
+            - type: boolean
         description:
           type: string
           minLength: 1

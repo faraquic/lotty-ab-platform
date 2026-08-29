@@ -17,7 +17,7 @@ type FlagRepo interface {
 	Create(ctx context.Context, f Flag) (int64, error)
 	GetByID(ctx context.Context, id int64) (FlagWithOwner, error)
 	List(ctx context.Context, limit, offset int) ([]Flag, error)
-	Update(ctx context.Context, id int64, key string, description string) (FlagWithOwner, error)
+	Update(ctx context.Context, id int64, key string, defaultValue ValueFlag, description string) (FlagWithOwner, error)
 	Delete(ctx context.Context, id int64) error
 	Count(ctx context.Context) (int64, error)
 }
@@ -37,15 +37,21 @@ func (s *Service) Create(ctx context.Context, callerID int64, req CreateFlagRequ
 		return FlagResponse{}, ErrInvalidTypeFlag
 	}
 
-	if !req.DefaultValue.Valid(typeFlag) {
+	dv := ValueFlag(req.DefaultValue)
+	if !dv.Valid(typeFlag) {
 		return FlagResponse{}, ErrInvalidValue
+	}
+
+	var desc *string
+	if req.Description != "" {
+		desc = &req.Description
 	}
 
 	f := Flag{
 		Key:          req.Key,
 		Type:         typeFlag,
-		DefaultValue: req.DefaultValue,
-		Description:  req.Description,
+		DefaultValue: dv,
+		Description:  desc,
 		Owner:        callerID,
 	}
 
@@ -107,7 +113,19 @@ func (s *Service) List(ctx context.Context, limit, offset int) (PaginatedFlagRes
 }
 
 func (s *Service) Update(ctx context.Context, callerID, id int64, req UpdateFlagRequest) (FlagResponse, error) {
-	fwo, err := s.repo.Update(ctx, id, req.Key, req.Description)
+	existing, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return FlagResponse{}, err
+	}
+
+	if len(req.DefaultValue) > 0 {
+		dv := ValueFlag(req.DefaultValue)
+		if !dv.Valid(existing.Flag.Type) {
+			return FlagResponse{}, ErrInvalidValue
+		}
+	}
+
+	fwo, err := s.repo.Update(ctx, id, req.Key, req.DefaultValue, req.Description)
 	if err != nil {
 		return FlagResponse{}, err
 	}

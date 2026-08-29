@@ -13,8 +13,9 @@ type CreateFlagRequest struct {
 }
 
 type UpdateFlagRequest struct {
-	Key         string `json:"key" binding:"omitempty,min=3,max=128"`
-	Description string `json:"description" binding:"omitempty,min=1,max=4096"`
+	Key          string    `json:"key" binding:"omitempty,min=3,max=128"`
+	DefaultValue ValueFlag `json:"default_value" binding:"omitempty"`
+	Description  string    `json:"description" binding:"omitempty,min=1,max=4096"`
 }
 
 type FlagResponse struct {
@@ -22,7 +23,7 @@ type FlagResponse struct {
 	Key          string              `json:"key"`
 	Type         TypeFlag            `json:"type"`
 	DefaultValue ValueFlag           `json:"default_value"`
-	Description  string              `json:"description"`
+	Description  *string             `json:"description"`
 	Owner        *users.UserResponse `json:"owner"`
 }
 
