@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/faraquic/lotty-ab-platform/pkg/logger"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 )
@@ -40,10 +42,15 @@ func NewPostgres(ctx context.Context, dsn string, maxConns int32, minConns int32
 
 	log.Info(
 		"connected to postgres",
-		zap.String("host", cfg.ConnConfig.Host),
-		zap.Uint16("port", cfg.ConnConfig.Port),
-		zap.String("database", cfg.ConnConfig.Database),
+		zap.String(logger.FieldDBHost, cfg.ConnConfig.Host),
+		zap.Uint16(logger.FieldDBPort, cfg.ConnConfig.Port),
+		zap.String(logger.FieldDBName, cfg.ConnConfig.Database),
 	)
 
 	return pool, nil
+}
+
+func IsUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }

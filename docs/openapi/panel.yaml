@@ -1019,8 +1019,7 @@ components:
         updated_at:
           type: string
           format: date-time
-      required:
-        [id, key, name, type, default_value, created_at, updated_at]
+      required: [id, key, name, type, default_value, created_at, updated_at]
 
     MetricType:
       type: string
@@ -1073,7 +1072,20 @@ components:
           type: string
           format: date-time
       required:
-        [id, key, name, metric_type, aggregation, attribution, is_builtin, status, created_by, updated_by, created_at, updated_at]
+        [
+          id,
+          key,
+          name,
+          metric_type,
+          aggregation,
+          attribution,
+          is_builtin,
+          status,
+          created_by,
+          updated_by,
+          created_at,
+          updated_at,
+        ]
 
     CreateMetricRequest:
       type: object
@@ -1188,4 +1200,15 @@ components:
           type: string
           format: date-time
       required:
-        [id, key, name, metric_type, aggregation, attribution, is_builtin, status, created_at, updated_at]
+        [
+          id,
+          key,
+          name,
+          metric_type,
+          aggregation,
+          attribution,
+          is_builtin,
+          status,
+          created_at,
+          updated_at,
+        ]

@@ -47,13 +47,14 @@ type PaginationMeta struct {
 const (
 	StatusOK            = "OK"
 	BadRequest          = "BAD_REQUEST"
+	Unauthorized        = "UNAUTHORIZED"
 	Forbidden           = "FORBIDDEN"
 	NotFound            = "NOT_FOUND"
 	Conflict            = "CONFLICT"
 	PayloadTooLarge     = "PAYLOAD_TOO_LARGE"
 	InternalServerError = "INTERNAL_SERVER_ERROR"
 
-	internalServerMessage = "internal server error"
+	InternalServerMessage = "internal server error"
 )
 
 func OK(w http.ResponseWriter, data any) {
@@ -79,7 +80,7 @@ func Error(w http.ResponseWriter, status int, code, message string) {
 }
 
 func InternalError(w http.ResponseWriter) {
-	Error(w, http.StatusInternalServerError, InternalServerError, internalServerMessage)
+	Error(w, http.StatusInternalServerError, InternalServerError, InternalServerMessage)
 }
 
 // maxBodyBytes caps request bodies to protect against oversized payloads.

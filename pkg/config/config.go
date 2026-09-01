@@ -6,27 +6,32 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"text/template"
 	"time"
 
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
 )
 
-const ServiceName = "labp-panel"
+var ServiceName = "labp-"
 
 // ServiceVersion is the build version, overridable at link time via:
 //
 //	-ldflags "-X github.com/faraquic/lotty-ab-platform/pkg/config.ServiceVersion=v1.12.4+abc1234"
 //
 // When not injected it defaults to a dev marker.
-var ServiceVersion = "v0.0.0_dev"
+var ServiceVersion = "dev"
 
 type Config struct {
-	Environment string         `mapstructure:"environment"`
-	Auth        AuthConfig     `mapstructure:"auth"`
-	Database    DatabaseConfig `mapstructure:"database"`
-	Panel       PanelConfig    `mapstructure:"panel"`
+	Environment string          `mapstructure:"environment"`
+	LogLevel    string          `mapstructure:"log_level"`
+	Auth        AuthConfig      `mapstructure:"auth"`
+	Database    DatabaseConfig  `mapstructure:"database"`
+	Panel       PanelConfig     `mapstructure:"panel"`
+	Runtime     RuntimeConfig   `mapstructure:"runtime"`
+	Analytics   AnalyticsConfig `mapstructure:"analytics"`
 }
 
 type AuthConfig struct {
@@ -41,9 +46,9 @@ type JWTConfig struct {
 
 // BootstrapConfig seeds the first admin when the users table is empty.
 type BootstrapConfig struct {
-	Username string `mapstructure:"username"`
-	Email    string `mapstructure:"email"`
-	Password string `mapstructure:"password"`
+	Username     string `mapstructure:"username"`
+	Email        string `mapstructure:"email"`
+	PasswordHash string `mapstructure:"password_hash"`
 }
 
 type DatabaseConfig struct {
@@ -77,6 +82,14 @@ type PanelConfig struct {
 	HTTP HTTPConfig `mapstructure:"http"`
 }
 
+type RuntimeConfig struct {
+	HTTP HTTPConfig `mapstructure:"http"`
+}
+
+type AnalyticsConfig struct {
+	HTTP HTTPConfig `mapstructure:"http"`
+}
+
 type HTTPConfig struct {
 	Address         string        `mapstructure:"address"`
 	CORS            CORSConfig    `mapstructure:"cors"`
@@ -94,7 +107,9 @@ type CORSConfig struct {
 	MaxAge           time.Duration `mapstructure:"max_age"`
 }
 
-func MustLoad() *Config {
+func MustLoad(serviceName string) *Config {
+	ServiceName += serviceName
+
 	path := findConfigFile()
 	if path == "" {
 		log.Fatalf(`fatal error config file: not found (looked for $CONFIG_NAME, config.local.json, config.json in "." and "/labp")`)
@@ -138,7 +153,6 @@ func defaultConfig() *Config {
 			Bootstrap: BootstrapConfig{
 				Username: "admin",
 				Email:    "admin@lotty.local",
-				Password: "",
 			},
 		},
 		Database: DatabaseConfig{
@@ -162,7 +176,7 @@ func defaultConfig() *Config {
 		},
 		Panel: PanelConfig{
 			HTTP: HTTPConfig{
-				Address: "0.0.0.0:8080",
+				Address: "0.0.0.0:8081",
 				CORS: CORSConfig{
 					AllowedOrigins:   []string{"*"},
 					AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
@@ -172,6 +186,38 @@ func defaultConfig() *Config {
 					MaxAge:           12 * time.Hour,
 				},
 				Timeout:         5 * time.Second,
+				IdleTimeout:     60 * time.Second,
+				ShutdownTimeout: 30 * time.Second,
+			},
+		},
+		Runtime: RuntimeConfig{
+			HTTP: HTTPConfig{
+				Address: "0.0.0.0:8082",
+				CORS: CORSConfig{
+					AllowedOrigins:   []string{"*"},
+					AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
+					AllowedHeaders:   []string{"Content-Type", "Authorization", "X-Request-ID"},
+					ExposeHeaders:    []string{"X-Request-ID"},
+					AllowCredentials: false,
+					MaxAge:           12 * time.Hour,
+				},
+				Timeout:         5 * time.Second,
+				IdleTimeout:     60 * time.Second,
+				ShutdownTimeout: 30 * time.Second,
+			},
+		},
+		Analytics: AnalyticsConfig{
+			HTTP: HTTPConfig{
+				Address: "0.0.0.0:8083",
+				CORS: CORSConfig{
+					AllowedOrigins:   []string{"*"},
+					AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
+					AllowedHeaders:   []string{"Content-Type", "Authorization", "X-Request-ID"},
+					ExposeHeaders:    []string{"X-Request-ID"},
+					AllowCredentials: false,
+					MaxAge:           12 * time.Hour,
+				},
+				Timeout:         10 * time.Second,
 				IdleTimeout:     60 * time.Second,
 				ShutdownTimeout: 30 * time.Second,
 			},
@@ -232,4 +278,27 @@ func renderEnvTemplate(path string) ([]byte, error) {
 	}
 
 	return buf.Bytes(), nil
+}
+
+func ValidateSecurity(cfg *Config, log *zap.Logger) {
+	secret := cfg.Auth.JWT.SecretKey
+
+	if cfg.Environment == "prod" && insecureSecret(secret) {
+		log.Error(
+			"insecure JWT secret: set auth.jwt.secret_key in config or via ENV template before running in prod",
+		)
+		os.Exit(1)
+	}
+
+	if insecureSecret(secret) {
+		log.Warn("insecure JWT secret in use; acceptable only for local development")
+	}
+
+	if slices.Contains(cfg.Panel.HTTP.CORS.AllowedOrigins, "*") {
+		log.Warn("CORS allowed_origins contains '*': any site can call the API; restrict it in production")
+	}
+}
+
+func insecureSecret(secret string) bool {
+	return secret == "" || strings.HasPrefix(secret, "change-me")
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/faraquic/lotty-ab-platform/pkg/logger"
 	"go.uber.org/zap"
 )
 
@@ -63,9 +64,9 @@ func NewS3(ctx context.Context, cfg S3Config, log *zap.Logger) (*s3.Client, erro
 
 	log.Info(
 		"connected to s3",
-		zap.String("bucket", cfg.Bucket),
-		zap.String("region", cfg.Region),
-		zap.String("endpoint", cfg.Endpoint),
+		zap.String(logger.FieldBucket, cfg.Bucket),
+		zap.String(logger.FieldRegion, cfg.Region),
+		zap.String(logger.FieldEndpoint, cfg.Endpoint),
 	)
 
 	return client, nil

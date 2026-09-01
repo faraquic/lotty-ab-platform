@@ -6,16 +6,25 @@ import (
 )
 
 const (
-	envLocal = "local"
-	envDev   = "dev"
-	envProd  = "prod"
+	EnvLocal = "local"
+	EnvDev   = "dev"
+	EnvProd  = "prod"
 )
 
-func SetupLogger(env string) *zap.Logger {
+func SetupLogger(env string, level string) *zap.Logger {
+	if level == "" {
+		switch env {
+		case EnvLocal, EnvDev:
+			level = "debug"
+		default:
+			level = "info"
+		}
+	}
+
 	var log *zap.Logger
 
 	switch env {
-	case envLocal:
+	case EnvLocal:
 		cfg := zap.NewDevelopmentConfig()
 		cfg.EncoderConfig = zapcore.EncoderConfig{
 			TimeKey:        "T",
@@ -31,27 +40,37 @@ func SetupLogger(env string) *zap.Logger {
 			EncodeCaller:   zapcore.ShortCallerEncoder,
 		}
 		cfg.OutputPaths = []string{"stdout"}
+		applyLevel(&cfg.Level, level)
 		log = mustBuild(cfg)
-	case envDev:
+	case EnvDev:
 		cfg := zap.NewProductionConfig()
-		cfg.Level = zap.NewAtomicLevelAt(zapcore.DebugLevel)
 		cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 		cfg.OutputPaths = []string{"stdout"}
+		applyLevel(&cfg.Level, level)
 		log = mustBuild(cfg)
-	case envProd:
+	case EnvProd:
 		fallthrough
-	default: // If env config is invalid, set prod settings by default due to security
+	default:
 		cfg := zap.NewProductionConfig()
 		cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 		cfg.OutputPaths = []string{"stdout"}
+		applyLevel(&cfg.Level, level)
 		log = mustBuild(cfg)
 	}
 
 	return log
 }
 
+func applyLevel(al *zap.AtomicLevel, level string) {
+	var lvl zapcore.Level
+	if err := lvl.UnmarshalText([]byte(level)); err != nil {
+		return
+	}
+	*al = zap.NewAtomicLevelAt(lvl)
+}
+
 func mustBuild(cfg zap.Config) *zap.Logger {
-	log, err := cfg.Build()
+	log, err := cfg.Build(zap.AddCallerSkip(0))
 	if err != nil {
 		panic(err)
 	}

@@ -1,6 +1,5 @@
-# task notes
-task.md
-todo.md
+# dir for task notes
+docs/task
 
 # environment / secrets
 .env

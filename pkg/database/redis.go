@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/faraquic/lotty-ab-platform/pkg/logger"
 	"github.com/redis/rueidis"
 	"go.uber.org/zap"
 )
@@ -35,8 +36,8 @@ func NewRedis(ctx context.Context, url string, log *zap.Logger) (*rueidis.Client
 
 	log.Info(
 		"connected to redis",
-		zap.Any("addrs", opt.InitAddress),
-		zap.Int("db", opt.SelectDB),
+		zap.Any(logger.FieldCacheAddrs, opt.InitAddress),
+		zap.Int(logger.FieldCacheDB, opt.SelectDB),
 	)
 
 	return &client, nil

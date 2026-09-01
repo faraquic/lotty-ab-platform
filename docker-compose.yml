@@ -1,0 +1,130 @@
+services:
+  postgres:
+    image: docker.io/library/postgres:18-alpine
+    container_name: labp-postgres
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: labp
+      POSTGRES_USER: lotty
+      POSTGRES_PASSWORD: lottypassword
+    volumes:
+      - lotty-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lotty -d labp"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: docker.io/library/redis:8-alpine
+    container_name: labp-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - lotty-redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  s3:
+    image: docker.io/minio/minio:latest
+    container_name: labp-s3
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - lotty-s3data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  panel:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: panel
+        PORT: ${PANEL_PORT:-8081}
+        VERSION: ${SERVICE_VERSION:-dev}
+    container_name: labp-panel
+    ports:
+      - "${PANEL_PORT:-8081}:${PANEL_PORT:-8081}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      s3:
+        condition: service_healthy
+    environment:
+      CONFIG_NAME: config.docker.json
+    volumes:
+      - ./config.docker.json:/labp/config.docker.json:ro
+    restart: unless-stopped
+
+  runtime:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: runtime
+        PORT: ${RUNTIME_PORT:-8082}
+        VERSION: ${SERVICE_VERSION:-dev}
+    container_name: labp-runtime
+    ports:
+      - "${RUNTIME_PORT:-8082}:${RUNTIME_PORT:-8082}"
+    depends_on:
+      panel:
+        condition: service_started
+    environment:
+      CONFIG_NAME: config.docker.json
+    volumes:
+      - ./config.docker.json:/labp/config.docker.json:ro
+    restart: unless-stopped
+
+  analytics:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: analytics
+        PORT: ${ANALYTICS_PORT:-8083}
+        VERSION: ${SERVICE_VERSION:-dev}
+    container_name: labp-analytics
+    ports:
+      - "${ANALYTICS_PORT:-8083}:${ANALYTICS_PORT:-8083}"
+    depends_on:
+      panel:
+        condition: service_started
+    environment:
+      CONFIG_NAME: config.docker.json
+    volumes:
+      - ./config.docker.json:/labp/config.docker.json:ro
+    restart: unless-stopped
+
+  nginx:
+    image: docker.io/library/nginx:alpine
+    container_name: labp-nginx
+    ports:
+      - "${NGINX_PORT:-8080}:8080"
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - panel
+      - runtime
+      - analytics
+    restart: unless-stopped
+
+volumes:
+  lotty-pgdata:
+  lotty-redisdata:
+  lotty-s3data:
