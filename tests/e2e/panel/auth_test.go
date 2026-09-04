@@ -48,7 +48,7 @@ func TestAuth_Login_TokenUsableOnProtectedEndpoint(t *testing.T) {
 	result := decodeMeResponse(t, resp)
 
 	requireStatus(t, resp, http.StatusOK)
-	if result.Data.ID < 1 {
+	if result.Data.ID == "" {
 		t.Error("expected positive user id")
 	}
 	if result.Data.Email != "root@labp.net" {
@@ -200,7 +200,7 @@ func TestAuth_Session_RevokedTokenNoUserLeakage(t *testing.T) {
 		t.Error("revoked token response must not contain user email")
 	}
 	if strings.Contains(s, "leak-test") {
-		t.Error("revoked token response must not contain username")
+		t.Error("revoked token response must not contain full_name")
 	}
 }
 
@@ -325,14 +325,14 @@ func deleteSessionFromRedis(email, token string) error {
 	}
 	defer pool.Close()
 
-	var userID int64
+	var userID string
 	err = pool.QueryRow(ctx, "SELECT id FROM users WHERE email = $1", email).Scan(&userID)
 	if err != nil {
 		return fmt.Errorf("lookup user: %w", err)
 	}
 
 	sum := sha256.Sum256([]byte(token))
-	key := fmt.Sprintf("labp:panel:auth:jwt:%d:%s", userID, hex.EncodeToString(sum[:]))
+	key := fmt.Sprintf("labp:panel:auth:jwt:%s:%s", userID, hex.EncodeToString(sum[:]))
 
 	redisClient, err := rueidis.NewClient(rueidis.ClientOption{
 		InitAddress: []string{"localhost:6379"},

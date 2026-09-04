@@ -317,7 +317,7 @@ func TestAvatar_RejectsInvalidOrNonexistentUserIDs(t *testing.T) {
 		wantStatus int
 		wantCode   string
 	}{
-		{"nonexistent user", "/api/panel/v1/users/999999999/avatar", http.StatusNotFound, "NOT_FOUND"},
+		{"nonexistent user", "/api/panel/v1/users/0198f4c0-dead-7000-8000-000000000001/avatar", http.StatusNotFound, "NOT_FOUND"},
 		{"non-numeric id", "/api/panel/v1/users/abc/avatar", http.StatusBadRequest, "BAD_REQUEST"},
 		{"negative id", "/api/panel/v1/users/-1/avatar", http.StatusBadRequest, "BAD_REQUEST"},
 	}
@@ -342,7 +342,7 @@ func TestAvatar_ResponseSchema(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	s := string(body)
 
-	required := []string{`"id"`, `"username"`, `"email"`, `"role"`, `"avatar_url"`, `"created_at"`, `"updated_at"`, `"success"`}
+	required := []string{`"id"`, `"full_name"`, `"email"`, `"role"`, `"avatar_url"`, `"created_at"`, `"updated_at"`, `"success"`}
 	for _, field := range required {
 		if !strings.Contains(s, field) {
 			t.Errorf("response missing required field %s", field)

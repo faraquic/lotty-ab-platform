@@ -9,8 +9,8 @@ import (
 )
 
 type userResponseData struct {
-	ID        int64   `json:"id"`
-	Username  string  `json:"username"`
+	ID        string  `json:"id"`
+	FullName  string  `json:"full_name"`
 	Email     string  `json:"email"`
 	Role      string  `json:"role"`
 	AvatarURL *string `json:"avatar_url"`
@@ -27,7 +27,7 @@ type paginationMetaResponse struct {
 }
 
 type flagResponseData struct {
-	ID           int64             `json:"id"`
+	ID           string             `json:"id"`
 	Key          string            `json:"key"`
 	Name         string            `json:"name"`
 	Type         string            `json:"type"`
@@ -45,7 +45,7 @@ type paginatedFlagData struct {
 }
 
 type metricResponseData struct {
-	ID          int64             `json:"id"`
+	ID          string             `json:"id"`
 	Key         string            `json:"key"`
 	Name        string            `json:"name"`
 	Description *string           `json:"description"`

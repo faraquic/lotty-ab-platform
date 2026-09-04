@@ -8,6 +8,7 @@ import (
 
 	"github.com/faraquic/lotty-ab-platform/pkg/database"
 	"github.com/faraquic/lotty-ab-platform/services/panel/domain/users"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -26,33 +27,38 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{db}
 }
 
-func (r *Repository) Create(ctx context.Context, m Metric) (int64, error) {
+func (r *Repository) Create(ctx context.Context, m Metric) (string, error) {
+	uid, err := uuid.NewV7()
+	if err != nil {
+		return "", err
+	}
+	id := uid.String()
 	const q = `
-INSERT INTO metrics(key, name, description, metric_type, aggregation, attribution, is_builtin, status, created_by, updated_by)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+INSERT INTO metrics(id, key, name, description, metric_type, aggregation, attribution, is_builtin, status, created_by, updated_by)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 RETURNING
     id`
 
-	var id int64
-	err := r.db.QueryRow(
+	var outID string
+	err = r.db.QueryRow(
 		ctx, q,
-		m.Key, m.Name, m.Description, string(m.MetricType),
+		id, m.Key, m.Name, m.Description, string(m.MetricType),
 		m.Aggregation, m.Attribution, m.IsBuiltin, string(m.Status),
 		m.CreatedBy, m.UpdatedBy,
-	).Scan(&id)
+	).Scan(&outID)
 	if err != nil {
 		if database.IsUniqueViolation(err) {
 			if strings.Contains(err.Error(), "metrics_key_key") {
-				return 0, ErrConflictKeys
+				return "", ErrConflictKeys
 			}
 			if strings.Contains(err.Error(), "metrics_name_key") {
-				return 0, ErrConflictNames
+				return "", ErrConflictNames
 			}
-			return 0, ErrConflictKeys
+			return "", ErrConflictKeys
 		}
-		return 0, err
+		return "", err
 	}
-	return id, nil
+	return outID, nil
 }
 
 const selectMetricWithCreatorAndUpdater = `
@@ -71,14 +77,14 @@ SELECT
     m.created_at,
     m.updated_at,
     cb.id,
-    cb.username,
+    cb.full_name,
     cb.email,
     cb.role,
     cb.avatar_url,
     cb.created_at,
     cb.updated_at,
     ub.id,
-    ub.username,
+    ub.full_name,
     ub.email,
     ub.role,
     ub.avatar_url,
@@ -90,7 +96,7 @@ FROM
     JOIN users ub ON m.updated_by = ub.id`
 
 type metricWithCreatorAndUpdaterRow struct {
-	MetricID        int64
+	MetricID        string
 	Key             string
 	Name            string
 	Description     *string
@@ -99,19 +105,19 @@ type metricWithCreatorAndUpdaterRow struct {
 	Attribution     MetricConfig
 	IsBuiltin       bool
 	Status          string
-	CreatedByID     int64
-	UpdatedByID     int64
+	CreatedByID     string
+	UpdatedByID     string
 	MetricCreated   time.Time
 	MetricUpdated   time.Time
-	CreatorID       int64
-	CreatorUsername string
+	CreatorID       string
+	CreatorFullName string
 	CreatorEmail    string
 	CreatorRole     string
 	CreatorAvatar   *string
 	CreatorCreated  time.Time
 	CreatorUpdated  time.Time
-	UpdaterID       int64
-	UpdaterUsername string
+	UpdaterID       string
+	UpdaterFullName string
 	UpdaterEmail    string
 	UpdaterRole     string
 	UpdaterAvatar   *string
@@ -138,7 +144,7 @@ func (r metricWithCreatorAndUpdaterRow) toMetricWithCreatorAndUpdater() MetricWi
 		},
 		CreatedBy: &users.User{
 			ID:        r.CreatorID,
-			Username:  r.CreatorUsername,
+			FullName:  r.CreatorFullName,
 			Email:     r.CreatorEmail,
 			Role:      users.Role(r.CreatorRole),
 			CreatedAt: r.CreatorCreated,
@@ -146,7 +152,7 @@ func (r metricWithCreatorAndUpdaterRow) toMetricWithCreatorAndUpdater() MetricWi
 		},
 		UpdatedBy: &users.User{
 			ID:        r.UpdaterID,
-			Username:  r.UpdaterUsername,
+			FullName:  r.UpdaterFullName,
 			Email:     r.UpdaterEmail,
 			Role:      users.Role(r.UpdaterRole),
 			CreatedAt: r.UpdaterCreated,
@@ -155,7 +161,7 @@ func (r metricWithCreatorAndUpdaterRow) toMetricWithCreatorAndUpdater() MetricWi
 	}
 }
 
-func (r *Repository) GetByID(ctx context.Context, id int64, includeArchived bool) (MetricWithCreatorAndUpdater, error) {
+func (r *Repository) GetByID(ctx context.Context, id string, includeArchived bool) (MetricWithCreatorAndUpdater, error) {
 	q := selectMetricWithCreatorAndUpdater + `
 WHERE
     m.id = $1`
@@ -180,14 +186,14 @@ WHERE
 		&row.MetricCreated,
 		&row.MetricUpdated,
 		&row.CreatorID,
-		&row.CreatorUsername,
+		&row.CreatorFullName,
 		&row.CreatorEmail,
 		&row.CreatorRole,
 		&row.CreatorAvatar,
 		&row.CreatorCreated,
 		&row.CreatorUpdated,
 		&row.UpdaterID,
-		&row.UpdaterUsername,
+		&row.UpdaterFullName,
 		&row.UpdaterEmail,
 		&row.UpdaterRole,
 		&row.UpdaterAvatar,
@@ -263,7 +269,7 @@ LIMIT $1 OFFSET $2`
 	return result, rows.Err()
 }
 
-func (r *Repository) Update(ctx context.Context, id int64, key, name, description string, aggregation MetricConfig, attribution MetricConfig, status MetricStatus, updatedBy int64) (MetricWithCreatorAndUpdater, error) {
+func (r *Repository) Update(ctx context.Context, id string, key, name, description string, aggregation MetricConfig, attribution MetricConfig, status MetricStatus, updatedBy string) (MetricWithCreatorAndUpdater, error) {
 	var agg any
 	if len(aggregation) > 0 {
 		agg = string(aggregation)

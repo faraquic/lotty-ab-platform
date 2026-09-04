@@ -200,20 +200,20 @@ _ensure-infra:
 
 # ─── Build ───────────────────────────────────────────────────────────────────
 
-.PHONY: build
-build:
-	go build -ldflags "$(LDFLAGS)" -o $(PANEL_BIN) ./services/panel
+.PHONY: build-panel
+build-panel:
+	go build -v -ldflags "$(LDFLAGS)" -o $(PANEL_BIN) ./services/panel
 
 .PHONY: build-runtime
 build-runtime:
-	go build -ldflags "$(LDFLAGS)" -o $(RUNTIME_BIN) ./services/runtime
+	go build -v -ldflags "$(LDFLAGS)" -o $(RUNTIME_BIN) ./services/runtime
 
 .PHONY: build-analytics
 build-analytics:
-	go build -ldflags "$(LDFLAGS)" -o $(ANALYTICS_BIN) ./services/analytics
+	go build -v -ldflags "$(LDFLAGS)" -o $(ANALYTICS_BIN) ./services/analytics
 
 .PHONY: build-all
-build-all: build build-runtime build-analytics
+build-all: build-panel build-runtime build-analytics
 
 .PHONY: vet
 vet:

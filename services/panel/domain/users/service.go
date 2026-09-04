@@ -9,10 +9,8 @@ import (
 	"github.com/faraquic/lotty-ab-platform/pkg/api"
 	"github.com/faraquic/lotty-ab-platform/pkg/logger"
 	"go.uber.org/zap"
-	"golang.org/x/crypto/bcrypt"
+	"github.com/alexedwards/argon2id"
 )
-
-const BcryptCost int = 13
 
 var (
 	ErrInvalidRole        = errors.New("invalid role")
@@ -25,12 +23,12 @@ var (
 )
 
 type UserRepo interface {
-	Create(ctx context.Context, u User) (int64, error)
-	GetByID(ctx context.Context, id int64) (User, error)
+	Create(ctx context.Context, u User) (string, error)
+	GetByID(ctx context.Context, id string) (User, error)
 	List(ctx context.Context, limit, offset int) ([]User, error)
-	Update(ctx context.Context, id int64, email *string, role *Role) (User, error)
-	Delete(ctx context.Context, id int64) error
-	UpdateAvatarURL(ctx context.Context, id int64, avatarURL string) error
+	Update(ctx context.Context, id string, email *string, role *Role) (User, error)
+	Delete(ctx context.Context, id string) error
+	UpdateAvatarURL(ctx context.Context, id string, avatarURL string) error
 	Count(ctx context.Context) (int64, error)
 	CountAdmins(ctx context.Context) (int64, error)
 }
@@ -38,7 +36,7 @@ type UserRepo interface {
 // SessionRevoker invalidates a user's auth sessions (implemented by
 // the auth domain). Optional; nil means tokens stay valid until expiry.
 type SessionRevoker interface {
-	RevokeUserSessions(ctx context.Context, userID int64) error
+	RevokeUserSessions(ctx context.Context, userID string) error
 }
 
 type Service struct {
@@ -58,15 +56,15 @@ func (s *Service) Create(ctx context.Context, req CreateUserRequest) (UserRespon
 		return UserResponse{}, ErrInvalidRole
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), BcryptCost)
+	hash, err := argon2id.CreateHash(req.Password, argon2id.DefaultParams)
 	if err != nil {
 		return UserResponse{}, fmt.Errorf("hash password: %w", err)
 	}
 
 	u := User{
-		Username:     req.Username,
+		FullName:     req.FullName,
 		Email:        req.Email,
-		PasswordHash: string(hash),
+		PasswordHash: hash,
 		Role:         role,
 	}
 
@@ -76,14 +74,14 @@ func (s *Service) Create(ctx context.Context, req CreateUserRequest) (UserRespon
 	}
 
 	s.log.Info("user created",
-		zap.Int64(logger.FieldUserID, id),
+		zap.String(logger.FieldUserID, id),
 		zap.String(logger.FieldUserRole, string(role)),
 	)
 
 	return s.GetByID(ctx, id)
 }
 
-func (s *Service) GetByID(ctx context.Context, id int64) (UserResponse, error) {
+func (s *Service) GetByID(ctx context.Context, id string) (UserResponse, error) {
 	u, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return UserResponse{}, err
@@ -116,7 +114,7 @@ func (s *Service) List(ctx context.Context, limit, offset int) (PaginatedUserRes
 	}
 
 	count := len(resp)
-	hasNext := int64(offset)+int64(count) < total
+	hasNext := int64(offset+count) < total
 
 	return PaginatedUserResponse{
 		Data: resp,
@@ -130,7 +128,7 @@ func (s *Service) List(ctx context.Context, limit, offset int) (PaginatedUserRes
 	}, nil
 }
 
-func (s *Service) Update(ctx context.Context, callerID, id int64, req UpdateUserRequest) (UserResponse, error) {
+func (s *Service) Update(ctx context.Context, callerID, id string, req UpdateUserRequest) (UserResponse, error) {
 	var role *Role
 	if req.Role != nil {
 		r := Role(*req.Role)
@@ -173,7 +171,7 @@ func (s *Service) Update(ctx context.Context, callerID, id int64, req UpdateUser
 	// the old role until expiry, so stale tokens would keep old permissions
 	if role != nil && current.Role != u.Role {
 		s.log.Info("user role changed",
-			zap.Int64(logger.FieldUserID, id),
+			zap.String(logger.FieldUserID, id),
 			zap.String(logger.FieldUserOldRole, string(current.Role)),
 			zap.String(logger.FieldUserNewRole, string(u.Role)),
 		)
@@ -183,7 +181,7 @@ func (s *Service) Update(ctx context.Context, callerID, id int64, req UpdateUser
 	return ToResponse(u), nil
 }
 
-func (s *Service) Delete(ctx context.Context, callerID, id int64) error {
+func (s *Service) Delete(ctx context.Context, callerID, id string) error {
 	current, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return err
@@ -208,7 +206,7 @@ func (s *Service) Delete(ctx context.Context, callerID, id int64) error {
 	}
 
 	s.log.Info("user deleted",
-		zap.Int64(logger.FieldUserID, id),
+		zap.String(logger.FieldUserID, id),
 		zap.String(logger.FieldUserRole, string(current.Role)),
 	)
 
@@ -217,7 +215,7 @@ func (s *Service) Delete(ctx context.Context, callerID, id int64) error {
 	return nil
 }
 
-func (s *Service) EnsureBootstrapAdmin(ctx context.Context, username, email, passwordHash string) (bool, error) {
+func (s *Service) EnsureBootstrapAdmin(ctx context.Context, fullName, email, passwordHash string) (bool, error) {
 	if passwordHash == "" {
 		return false, errors.New("bootstrap.password_hash is required")
 	}
@@ -231,7 +229,7 @@ func (s *Service) EnsureBootstrapAdmin(ctx context.Context, username, email, pas
 	}
 
 	u := User{
-		Username:     username,
+		FullName:     fullName,
 		Email:        email,
 		PasswordHash: passwordHash,
 		Role:         RoleAdmin,
@@ -243,7 +241,7 @@ func (s *Service) EnsureBootstrapAdmin(ctx context.Context, username, email, pas
 	}
 
 	s.log.Info("bootstrap admin created",
-		zap.Int64(logger.FieldUserID, id),
+		zap.String(logger.FieldUserID, id),
 		zap.String(logger.FieldUserRole, string(RoleAdmin)),
 	)
 
@@ -259,7 +257,7 @@ var allowedAvatarTypes = map[string]bool{
 	".webp": true,
 }
 
-func (s *Service) UploadAvatar(ctx context.Context, userID int64, file *multipart.FileHeader) (UserResponse, error) {
+func (s *Service) UploadAvatar(ctx context.Context, userID string, file *multipart.FileHeader) (UserResponse, error) {
 	if s.storage == nil {
 		return UserResponse{}, ErrStorageUnavailable
 	}
@@ -296,7 +294,7 @@ func (s *Service) UploadAvatar(ctx context.Context, userID int64, file *multipar
 	if user.AvatarURL != "" {
 		if err := s.storage.DeleteAvatar(ctx, user.AvatarURL); err != nil {
 			s.log.Warn("old avatar deletion failed",
-				zap.Int64(logger.FieldUserID, userID),
+				zap.String(logger.FieldUserID, userID),
 				zap.Error(err),
 			)
 		}
@@ -312,7 +310,7 @@ func (s *Service) UploadAvatar(ctx context.Context, userID int64, file *multipar
 	}
 
 	s.log.Debug("avatar uploaded",
-		zap.Int64(logger.FieldUserID, userID),
+		zap.String(logger.FieldUserID, userID),
 		zap.String(logger.FieldStorageOperation, "put_object"),
 		zap.String(logger.FieldStoragePrefix, "avatars"),
 	)
@@ -320,7 +318,7 @@ func (s *Service) UploadAvatar(ctx context.Context, userID int64, file *multipar
 	return s.GetByID(ctx, userID)
 }
 
-func (s *Service) DeleteAvatar(ctx context.Context, userID int64) (UserResponse, error) {
+func (s *Service) DeleteAvatar(ctx context.Context, userID string) (UserResponse, error) {
 	user, err := s.repo.GetByID(ctx, userID)
 	if err != nil {
 		return UserResponse{}, err
@@ -333,7 +331,7 @@ func (s *Service) DeleteAvatar(ctx context.Context, userID int64) (UserResponse,
 	if s.storage != nil {
 		if err := s.storage.DeleteAvatar(ctx, user.AvatarURL); err != nil {
 			s.log.Warn("avatar deletion from storage failed",
-				zap.Int64(logger.FieldUserID, userID),
+				zap.String(logger.FieldUserID, userID),
 				zap.Error(err),
 			)
 		}
@@ -344,7 +342,7 @@ func (s *Service) DeleteAvatar(ctx context.Context, userID int64) (UserResponse,
 	}
 
 	s.log.Debug("avatar deleted",
-		zap.Int64(logger.FieldUserID, userID),
+		zap.String(logger.FieldUserID, userID),
 		zap.String(logger.FieldStorageOperation, "delete_object"),
 		zap.String(logger.FieldStoragePrefix, "avatars"),
 	)
@@ -352,14 +350,14 @@ func (s *Service) DeleteAvatar(ctx context.Context, userID int64) (UserResponse,
 	return s.GetByID(ctx, userID)
 }
 
-func (s *Service) revokeSessions(ctx context.Context, userID int64) error {
+func (s *Service) revokeSessions(ctx context.Context, userID string) error {
 	if s.revoker == nil {
 		return nil
 	}
 
 	if err := s.revoker.RevokeUserSessions(ctx, userID); err != nil {
 		s.log.Warn("session revocation failed",
-			zap.Int64(logger.FieldUserID, userID),
+			zap.String(logger.FieldUserID, userID),
 			zap.Error(err),
 		)
 	}

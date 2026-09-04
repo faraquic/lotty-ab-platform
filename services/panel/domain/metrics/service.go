@@ -14,10 +14,10 @@ var (
 )
 
 type MetricRepo interface {
-	Create(ctx context.Context, m Metric) (int64, error)
-	GetByID(ctx context.Context, id int64, includeArchived bool) (MetricWithCreatorAndUpdater, error)
+	Create(ctx context.Context, m Metric) (string, error)
+	GetByID(ctx context.Context, id string, includeArchived bool) (MetricWithCreatorAndUpdater, error)
 	List(ctx context.Context, limit, offset int, includeArchived bool) ([]Metric, error)
-	Update(ctx context.Context, id int64, key, name, description string, aggregation MetricConfig, attribution MetricConfig, status MetricStatus, updatedBy int64) (MetricWithCreatorAndUpdater, error)
+	Update(ctx context.Context, id string, key, name, description string, aggregation MetricConfig, attribution MetricConfig, status MetricStatus, updatedBy string) (MetricWithCreatorAndUpdater, error)
 	Count(ctx context.Context, includeArchived bool) (int64, error)
 }
 
@@ -30,7 +30,7 @@ func NewService(repo MetricRepo, log *zap.Logger) *Service {
 	return &Service{repo, log}
 }
 
-func (s *Service) Create(ctx context.Context, callerID int64, req CreateMetricRequest) (MetricResponse, error) {
+func (s *Service) Create(ctx context.Context, callerID string, req CreateMetricRequest) (MetricResponse, error) {
 	metricType := MetricType(req.MetricType)
 	if !metricType.Valid() {
 		return MetricResponse{}, ErrInvalidMetricType
@@ -70,16 +70,16 @@ func (s *Service) Create(ctx context.Context, callerID int64, req CreateMetricRe
 	}
 
 	s.log.Info("metric created",
-		zap.Int64(logger.FieldMetricID, id),
+		zap.String(logger.FieldMetricID, id),
 		zap.String(logger.FieldMetricKey, m.Key),
 		zap.String(logger.FieldMetricType, string(metricType)),
-		zap.Int64(logger.FieldActorID, callerID),
+		zap.String(logger.FieldActorID, callerID),
 	)
 
 	return s.GetByID(ctx, id, false)
 }
 
-func (s *Service) GetByID(ctx context.Context, id int64, includeArchived bool) (MetricResponse, error) {
+func (s *Service) GetByID(ctx context.Context, id string, includeArchived bool) (MetricResponse, error) {
 	mwo, err := s.repo.GetByID(ctx, id, includeArchived)
 	if err != nil {
 		return MetricResponse{}, err
@@ -126,7 +126,7 @@ func (s *Service) List(ctx context.Context, limit, offset int, includeArchived b
 	}, nil
 }
 
-func (s *Service) Update(ctx context.Context, callerID, id int64, req UpdateMetricRequest) (MetricResponse, error) {
+func (s *Service) Update(ctx context.Context, callerID, id string, req UpdateMetricRequest) (MetricResponse, error) {
 	existing, err := s.repo.GetByID(ctx, id, true)
 	if err != nil {
 		return MetricResponse{}, err
@@ -165,9 +165,9 @@ func (s *Service) Update(ctx context.Context, callerID, id int64, req UpdateMetr
 	}
 
 	s.log.Debug("metric updated",
-		zap.Int64(logger.FieldMetricID, id),
+		zap.String(logger.FieldMetricID, id),
 		zap.String(logger.FieldMetricKey, fwo.Metric.Key),
-		zap.Int64(logger.FieldActorID, callerID),
+		zap.String(logger.FieldActorID, callerID),
 	)
 
 	return ToResponse(fwo), nil

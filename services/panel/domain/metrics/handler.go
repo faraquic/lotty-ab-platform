@@ -10,6 +10,7 @@ import (
 	"github.com/faraquic/lotty-ab-platform/pkg/logger"
 	"github.com/faraquic/lotty-ab-platform/pkg/middleware"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -104,14 +105,14 @@ func (h *Handler) update(c *gin.Context) {
 	api.OK(c.Writer, resp)
 }
 
-func parseID(c *gin.Context) (int64, bool) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil || id < 1 {
+func parseID(c *gin.Context) (string, bool) {
+	idStr := c.Param("id")
+	if _, err := uuid.Parse(idStr); err != nil {
 		api.Error(c.Writer, http.StatusBadRequest, api.BadRequest, "invalid metric id")
-		return 0, false
+		return "", false
 	}
 
-	return id, true
+	return idStr, true
 }
 
 func (h *Handler) respondError(c *gin.Context, err error) {

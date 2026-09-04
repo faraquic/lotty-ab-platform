@@ -49,8 +49,8 @@ type errorResponse struct {
 type meResponse struct {
 	Success bool `json:"success"`
 	Data    struct {
-		ID        int64   `json:"id"`
-		Username  string  `json:"username"`
+		ID        string  `json:"id"`
+		FullName  string  `json:"full_name"`
 		Email     string  `json:"email"`
 		Role      string  `json:"role"`
 		AvatarURL *string `json:"avatar_url"`
@@ -60,8 +60,8 @@ type meResponse struct {
 type userResponse struct {
 	Success bool `json:"success"`
 	Data    struct {
-		ID        int64   `json:"id"`
-		Username  string  `json:"username"`
+		ID        string  `json:"id"`
+		FullName  string  `json:"full_name"`
 		Email     string  `json:"email"`
 		Role      string  `json:"role"`
 		AvatarURL *string `json:"avatar_url"`
@@ -73,7 +73,7 @@ type userResponse struct {
 type usersResponse struct {
 	Success bool `json:"success"`
 	Data    []struct {
-		ID    int64  `json:"id"`
+		ID    string `json:"id"`
 		Email string `json:"email"`
 	} `json:"data"`
 }
@@ -81,8 +81,8 @@ type usersResponse struct {
 type paginatedUsersResponse struct {
 	Success bool `json:"success"`
 	Data    []struct {
-		ID        int64   `json:"id"`
-		Username  string  `json:"username"`
+		ID        string  `json:"id"`
+		FullName  string  `json:"full_name"`
 		Email     string  `json:"email"`
 		Role      string  `json:"role"`
 		AvatarURL *string `json:"avatar_url"`
@@ -161,7 +161,7 @@ func runSuite(m *testing.M) int {
 		"environment": "local",
 		"auth": {
 			"jwt": {"secret_key": "e2e-test-secret-not-for-prod", "ttl": "1h"},
-			"bootstrap": {"username": "root", "email": "root@labp.net", "password": "root!@#$"}
+			"bootstrap": {"full_name": "root", "email": "root@labp.net", "password": "root!@#$"}
 		},
 		"database": {
 			"postgres": {"dsn": %q},
@@ -176,7 +176,7 @@ func runSuite(m *testing.M) int {
 	}
 
 	binaryPath = filepath.Join(tmpDir, "panel")
-	build := exec.Command("go", "build", "-o", binaryPath, "./services/panel/cmd")
+	build := exec.Command("go", "build", "-o", binaryPath, "./services/panel")
 	build.Dir = mustProjectRoot()
 	build.Env = append(os.Environ(), "CONFIG_NAME="+cfgPath)
 	if out, err := build.CombinedOutput(); err != nil {
@@ -253,7 +253,7 @@ func cleanupTestState() error {
 	}
 	defer pool.Close()
 
-	_, err = pool.Exec(ctx, "TRUNCATE metrics, flags, users RESTART IDENTITY CASCADE")
+	_, err = pool.Exec(ctx, "TRUNCATE metrics, flags, users CASCADE")
 	if err != nil {
 		return fmt.Errorf("truncate tables: %w", err)
 	}
@@ -279,7 +279,7 @@ func testEmail(prefix string) string {
 	return fmt.Sprintf("%s-%s@test.local", prefix, runID)
 }
 
-func testUsername(prefix string) string {
+func testFullName(prefix string) string {
 	return fmt.Sprintf("%s-%s", prefix, runID)
 }
 
@@ -382,19 +382,19 @@ func getMe(t *testing.T, token string) *http.Response {
 	return doRequest(http.MethodGet, "/api/panel/v1/me", token, nil)
 }
 
-func getUser(t *testing.T, id int64) *http.Response {
+func getUser(t *testing.T, id string) *http.Response {
 	t.Helper()
-	return doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/users/%d", id), adminToken, nil)
+	return doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/users/%s", id), adminToken, nil)
 }
 
-func updateUser(t *testing.T, id int64, body io.Reader) *http.Response {
+func updateUser(t *testing.T, id string, body io.Reader) *http.Response {
 	t.Helper()
-	return doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/users/%d", id), adminToken, body)
+	return doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/users/%s", id), adminToken, body)
 }
 
-func deleteUser(t *testing.T, id int64) *http.Response {
+func deleteUser(t *testing.T, id string) *http.Response {
 	t.Helper()
-	return doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/users/%d", id), adminToken, nil)
+	return doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/users/%s", id), adminToken, nil)
 }
 
 func uploadAvatar(t *testing.T, token, filename string, data []byte) *http.Response {
@@ -407,23 +407,23 @@ func deleteAvatar(t *testing.T, token string) *http.Response {
 	return doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "", nil)
 }
 
-func uploadUserAvatar(t *testing.T, token string, userID int64, filename string, data []byte) *http.Response {
+func uploadUserAvatar(t *testing.T, token string, userID string, filename string, data []byte) *http.Response {
 	t.Helper()
-	return doMultipartRequest(fmt.Sprintf("/api/panel/v1/users/%d/avatar", userID), token, "avatar", filename, data)
+	return doMultipartRequest(fmt.Sprintf("/api/panel/v1/users/%s/avatar", userID), token, "avatar", filename, data)
 }
 
-func deleteUserAvatar(t *testing.T, token string, userID int64) *http.Response {
+func deleteUserAvatar(t *testing.T, token string, userID string) *http.Response {
 	t.Helper()
-	return doMultipartRequest(fmt.Sprintf("/api/panel/v1/users/%d/avatar", userID), token, "avatar", "", nil)
+	return doMultipartRequest(fmt.Sprintf("/api/panel/v1/users/%s/avatar", userID), token, "avatar", "", nil)
 }
 
 // --- setup helpers ---
 
-func createUser(t *testing.T, role, prefix string) (int64, string) {
+func createUser(t *testing.T, role, prefix string) (string, string) {
 	t.Helper()
 	email := testEmail(prefix)
 	body := jsonBody(map[string]string{
-		"username": testUsername(prefix),
+		"full_name": testFullName(prefix),
 		"email":    email,
 		"password": "testpass123",
 		"role":     role,
@@ -437,7 +437,7 @@ func createUser(t *testing.T, role, prefix string) (int64, string) {
 
 	var result struct {
 		Data struct {
-			ID int64 `json:"id"`
+			ID string `json:"id"`
 		} `json:"data"`
 	}
 	decodeJSON(resp, &result)
@@ -445,7 +445,7 @@ func createUser(t *testing.T, role, prefix string) (int64, string) {
 	return result.Data.ID, email
 }
 
-func createAndLoginUser(t *testing.T, role, prefix string) (int64, string, string) {
+func createAndLoginUser(t *testing.T, role, prefix string) (string, string, string) {
 	t.Helper()
 	id, email := createUser(t, role, prefix)
 	token := login(email, "testpass123")

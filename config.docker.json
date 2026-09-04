@@ -5,9 +5,9 @@
             "secret_key": "change-me-in-production"
         },
         "bootstrap": {
-            "username": "root",
+            "full_name": "root",
             "email": "root@labp.net",
-            "password_hash": "$2a$13$4jKY.TbtcimyE5lEpxIFiu04Pm/jo9E7WStcnwVElWerYlW.NzPlq"
+            "password_hash": "$argon2id$v=19$m=65536,t=1,p=4$6lGItC3BN+vvxDF42RRw2g$svLMZu6udCWh8/bjOlpP1S3syNanEwiQO17cbUaDvck"
         }
     },
     "database": {

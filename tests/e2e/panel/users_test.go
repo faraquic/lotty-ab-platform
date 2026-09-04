@@ -21,7 +21,7 @@ func TestGetMe(t *testing.T) {
 	if !result.Success {
 		t.Error("expected success=true")
 	}
-	if result.Data.ID < 1 {
+	if result.Data.ID == "" {
 		t.Error("expected positive user id")
 	}
 	if result.Data.Role != "admin" {
@@ -95,7 +95,7 @@ func TestCreateAndListUser(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("created user (id=%d, email=%s) not found in list", id, email)
+		t.Errorf("created user (id=%s, email=%s) not found in list", id, email)
 	}
 }
 
@@ -227,7 +227,7 @@ func TestCreateUser_AllValidRoles(t *testing.T) {
 	for _, role := range roles {
 		t.Run(role, func(t *testing.T) {
 			id, _ := createUser(t, role, "role-"+role)
-			if id < 1 {
+			if id == "" {
 				t.Errorf("expected positive id for role %s", role)
 			}
 		})
@@ -245,7 +245,7 @@ func TestGetUserByID(t *testing.T) {
 	result := decodeUserResponse(t, resp)
 
 	if result.Data.ID != id {
-		t.Errorf("id: got %d, want %d", result.Data.ID, id)
+		t.Errorf("id: got %s, want %s", result.Data.ID, id)
 	}
 	if result.Data.Email != email {
 		t.Errorf("email: got %q, want %q", result.Data.Email, email)
@@ -261,7 +261,7 @@ func TestUsers_RejectsInvalidOrNonexistentIDs(t *testing.T) {
 	}{
 		{"non-numeric id", "/api/panel/v1/users/abc", http.StatusBadRequest, "BAD_REQUEST"},
 		{"negative id", "/api/panel/v1/users/-1", http.StatusBadRequest, "BAD_REQUEST"},
-		{"nonexistent id", "/api/panel/v1/users/999999999", http.StatusNotFound, "NOT_FOUND"},
+		{"nonexistent id", "/api/panel/v1/users/0198f4c0-dead-7000-8000-000000000001", http.StatusNotFound, "NOT_FOUND"},
 	}
 
 	for _, tc := range cases {
@@ -305,7 +305,7 @@ func TestUpdateUserRole(t *testing.T) {
 }
 
 func TestUpdateUser_NonexistentID(t *testing.T) {
-	resp := doRequest(http.MethodPatch, "/api/panel/v1/users/999999999", adminToken,
+	resp := doRequest(http.MethodPatch, "/api/panel/v1/users/0198f4c0-dead-7000-8000-000000000001", adminToken,
 		jsonBody(map[string]string{"email": "new@test.local"}))
 	defer resp.Body.Close()
 
@@ -327,7 +327,7 @@ func TestDeleteUser(t *testing.T) {
 }
 
 func TestDeleteUser_NonexistentID(t *testing.T) {
-	resp := deleteUser(t, 999999999)
+	resp := deleteUser(t, "0198f4c0-dead-7000-8000-000000000001")
 	defer resp.Body.Close()
 
 	requireStatus(t, resp, http.StatusNotFound)
@@ -382,7 +382,7 @@ func TestCreateUser_DuplicateEmail(t *testing.T) {
 
 	resp := doRequest(http.MethodPost, "/api/panel/v1/users", adminToken,
 		jsonBody(map[string]string{
-			"username": testUsername("dup-email-2"),
+			"full_name": testFullName("dup-email-2"),
 			"email":    email,
 			"password": "testpass123",
 			"role":     "viewer",
@@ -392,13 +392,13 @@ func TestCreateUser_DuplicateEmail(t *testing.T) {
 	requireErrorResponse(t, resp, http.StatusConflict, "CONFLICT")
 }
 
-func TestCreateUser_DuplicateUsername(t *testing.T) {
-	username := testUsername("dup-user")
+func TestCreateUser_DuplicateFullName(t *testing.T) {
+	fullName := testFullName("dup-user")
 	createUser(t, "viewer", "dup-user")
 
 	resp := doRequest(http.MethodPost, "/api/panel/v1/users", adminToken,
 		jsonBody(map[string]string{
-			"username": username,
+			"full_name": fullName,
 			"email":    testEmail("dup-user-diff"),
 			"password": "testpass123",
 			"role":     "viewer",
@@ -412,7 +412,7 @@ func TestViewerCannotManageUsers(t *testing.T) {
 	viewerEmail := testEmail("viewer-cant-manage")
 	createResp := doRequest(http.MethodPost, "/api/panel/v1/users", adminToken,
 		jsonBody(map[string]string{
-			"username": testUsername("viewer-cant-manage"),
+			"full_name": testFullName("viewer-cant-manage"),
 			"email":    viewerEmail,
 			"password": "testpass123",
 			"role":     "viewer",
@@ -432,7 +432,7 @@ func TestViewerCannotManageUsers(t *testing.T) {
 	t.Run("cannot create user", func(t *testing.T) {
 		resp := doRequest(http.MethodPost, "/api/panel/v1/users", viewerToken,
 			jsonBody(map[string]string{
-				"username": testUsername("should-not-exist"),
+				"full_name": testFullName("should-not-exist"),
 				"email":    testEmail("should-not-exist"),
 				"password": "testpass123",
 				"role":     "viewer",
@@ -448,20 +448,20 @@ func TestViewerCannotManageUsers(t *testing.T) {
 	})
 
 	t.Run("cannot get user by id", func(t *testing.T) {
-		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/users/%d", targetID), viewerToken, nil)
+		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/users/%s", targetID), viewerToken, nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusForbidden)
 	})
 
 	t.Run("cannot update user", func(t *testing.T) {
-		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/users/%d", targetID), viewerToken,
+		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/users/%s", targetID), viewerToken,
 			jsonBody(map[string]string{"email": "hacker@test.local"}))
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusForbidden)
 	})
 
 	t.Run("cannot delete user", func(t *testing.T) {
-		resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/users/%d", targetID), viewerToken, nil)
+		resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/users/%s", targetID), viewerToken, nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusForbidden)
 	})
@@ -477,7 +477,7 @@ func TestUnauthenticatedUser_RejectedFromAllEndpoints(t *testing.T) {
 	})
 
 	t.Run("GET /users/:id", func(t *testing.T) {
-		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/users/%d", id), "", nil)
+		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/users/%s", id), "", nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusUnauthorized)
 	})
@@ -485,7 +485,7 @@ func TestUnauthenticatedUser_RejectedFromAllEndpoints(t *testing.T) {
 	t.Run("POST /users", func(t *testing.T) {
 		resp := doRequest(http.MethodPost, "/api/panel/v1/users", "",
 			jsonBody(map[string]string{
-				"username": testUsername("should-not-work"),
+				"full_name": testFullName("should-not-work"),
 				"email":    testEmail("should-not-work"),
 				"password": "testpass123",
 				"role":     "viewer",
@@ -495,14 +495,14 @@ func TestUnauthenticatedUser_RejectedFromAllEndpoints(t *testing.T) {
 	})
 
 	t.Run("PATCH /users/:id", func(t *testing.T) {
-		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/users/%d", id), "",
+		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/users/%s", id), "",
 			jsonBody(map[string]string{"email": "hacker@test.local"}))
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusUnauthorized)
 	})
 
 	t.Run("DELETE /users/:id", func(t *testing.T) {
-		resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/users/%d", id), "", nil)
+		resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/users/%s", id), "", nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusUnauthorized)
 	})
@@ -514,18 +514,18 @@ func TestCreateUser_RejectsInvalidRequests(t *testing.T) {
 		payload map[string]string
 	}{
 		{"empty body", map[string]string{}},
-		{"missing email", map[string]string{"username": "valid-user", "password": "testpass123", "role": "viewer"}},
-		{"missing password", map[string]string{"username": "valid-user", "email": "valid@test.local", "role": "viewer"}},
-		{"missing role", map[string]string{"username": "valid-user", "email": "valid@test.local", "password": "testpass123"}},
-		{"missing username", map[string]string{"email": "valid@test.local", "password": "testpass123", "role": "viewer"}},
-		{"invalid email format", map[string]string{"username": "valid-user", "email": "not-an-email", "password": "testpass123", "role": "viewer"}},
-		{"empty role", map[string]string{"username": testUsername("bad-role"), "email": testEmail("bad-role"), "password": "testpass123", "role": ""}},
-		{"unknown role", map[string]string{"username": testUsername("bad-role"), "email": testEmail("bad-role"), "password": "testpass123", "role": "superadmin"}},
-		{"capitalized role", map[string]string{"username": testUsername("bad-role"), "email": testEmail("bad-role"), "password": "testpass123", "role": "Admin"}},
-		{"username too short", map[string]string{"username": "ab", "email": testEmail("short-username"), "password": "testpass123", "role": "viewer"}},
-		{"username too long", map[string]string{"username": strings.Repeat("a", 65), "email": testEmail("long-username"), "password": "testpass123", "role": "viewer"}},
-		{"password too short", map[string]string{"username": testUsername("short-pass"), "email": testEmail("short-pass"), "password": "short", "role": "viewer"}},
-		{"all fields invalid", map[string]string{"username": "x", "email": "not-an-email", "password": "short", "role": "bogus"}},
+		{"missing email", map[string]string{"full_name": "valid-user", "password": "testpass123", "role": "viewer"}},
+		{"missing password", map[string]string{"full_name": "valid-user", "email": "valid@test.local", "role": "viewer"}},
+		{"missing role", map[string]string{"full_name": "valid-user", "email": "valid@test.local", "password": "testpass123"}},
+		{"missing full_name", map[string]string{"email": "valid@test.local", "password": "testpass123", "role": "viewer"}},
+		{"invalid email format", map[string]string{"full_name": "valid-user", "email": "not-an-email", "password": "testpass123", "role": "viewer"}},
+		{"empty role", map[string]string{"full_name": testFullName("bad-role"), "email": testEmail("bad-role"), "password": "testpass123", "role": ""}},
+		{"unknown role", map[string]string{"full_name": testFullName("bad-role"), "email": testEmail("bad-role"), "password": "testpass123", "role": "superadmin"}},
+		{"capitalized role", map[string]string{"full_name": testFullName("bad-role"), "email": testEmail("bad-role"), "password": "testpass123", "role": "Admin"}},
+		{"empty full_name", map[string]string{"full_name": "", "email": testEmail("short-username"), "password": "testpass123", "role": "viewer"}},
+		{"full_name too long", map[string]string{"full_name": strings.Repeat("a", 257), "email": testEmail("long-username"), "password": "testpass123", "role": "viewer"}},
+		{"password too short", map[string]string{"full_name": testFullName("short-pass"), "email": testEmail("short-pass"), "password": "short", "role": "viewer"}},
+		{"all fields invalid", map[string]string{"full_name": "", "email": "not-an-email", "password": "short", "role": "bogus"}},
 	}
 
 	for _, tc := range cases {
@@ -569,7 +569,7 @@ func TestCreateUser_NoSecretsInResponse(t *testing.T) {
 		t.Error("response must not contain password")
 	}
 
-	for _, field := range []string{"id", "username", "email", "role", "created_at", "updated_at"} {
+	for _, field := range []string{"id", "full_name", "email", "role", "created_at", "updated_at"} {
 		if _, exists := userFields[field]; !exists {
 			t.Errorf("response missing %s field", field)
 		}

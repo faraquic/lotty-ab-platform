@@ -9,6 +9,7 @@ import (
 	"github.com/faraquic/lotty-ab-platform/pkg/logger"
 	"github.com/faraquic/lotty-ab-platform/pkg/middleware"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -144,7 +145,7 @@ func (h *Handler) uploadMyAvatar(c *gin.Context) {
 	h.handleAvatarUpload(c, middleware.CallerIDGin(c))
 }
 
-func (h *Handler) handleAvatarUpload(c *gin.Context, userID int64) {
+func (h *Handler) handleAvatarUpload(c *gin.Context, userID string) {
 	file, err := c.FormFile("avatar")
 	if err != nil || file.Size == 0 {
 		resp, err := h.svc.DeleteAvatar(c.Request.Context(), userID)
@@ -165,14 +166,15 @@ func (h *Handler) handleAvatarUpload(c *gin.Context, userID int64) {
 	api.OK(c.Writer, resp)
 }
 
-func parseID(c *gin.Context) (int64, bool) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil || id < 1 {
+func parseID(c *gin.Context) (string, bool) {
+	idStr := c.Param("id")
+	_, err := uuid.Parse(idStr)
+	if err != nil {
 		api.Error(c.Writer, http.StatusBadRequest, api.BadRequest, "invalid user id")
-		return 0, false
+		return "", false
 	}
 
-	return id, true
+	return idStr, true
 }
 
 func (h *Handler) respondError(c *gin.Context, err error) {

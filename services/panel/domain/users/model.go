@@ -25,8 +25,8 @@ func (r Role) Valid() bool {
 }
 
 type User struct {
-	ID           int64
-	Username     string
+	ID           string
+	FullName     string
 	Email        string
 	PasswordHash string
 	Role         Role

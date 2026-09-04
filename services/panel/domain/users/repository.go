@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/faraquic/lotty-ab-platform/pkg/database"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -22,30 +23,35 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{db: db}
 }
 
-func (r *Repository) Create(ctx context.Context, u User) (int64, error) {
+func (r *Repository) Create(ctx context.Context, u User) (string, error) {
+	uid, err := uuid.NewV7()
+	if err != nil {
+		return "", err
+	}
+	id := uid.String()
 	const q = `
-INSERT INTO users(username, email, password_hash, role)
-    VALUES ($1, $2, $3, $4)
+INSERT INTO users(id, full_name, email, password_hash, role)
+    VALUES ($1, $2, $3, $4, $5)
 RETURNING
     id`
 
-	var id int64
-	err := r.db.QueryRow(ctx, q, u.Username, u.Email, u.PasswordHash, u.Role).Scan(&id)
+	var outID string
+	err = r.db.QueryRow(ctx, q, id, u.FullName, u.Email, u.PasswordHash, u.Role).Scan(&outID)
 	if err != nil {
 		if database.IsUniqueViolation(err) {
-			return 0, ErrConflict
+			return "", ErrConflict
 		}
-		return 0, err
+		return "", err
 	}
 
-	return id, nil
+	return outID, nil
 }
 
-func (r *Repository) GetByID(ctx context.Context, id int64) (User, error) {
+func (r *Repository) GetByID(ctx context.Context, id string) (User, error) {
 	const q = `
 SELECT
     id,
-    username,
+    full_name,
     email,
     password_hash,
     ROLE,
@@ -61,7 +67,7 @@ WHERE
 
 	var u User
 	err := r.db.QueryRow(ctx, q, id).
-		Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role, &u.AvatarURL, &u.DeletedAt, &u.CreatedAt, &u.UpdatedAt)
+		Scan(&u.ID, &u.FullName, &u.Email, &u.PasswordHash, &u.Role, &u.AvatarURL, &u.DeletedAt, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrNotFound
@@ -76,7 +82,7 @@ func (r *Repository) List(ctx context.Context, limit, offset int) ([]User, error
 	const q = `
 SELECT
     id,
-    username,
+    full_name,
     email,
     password_hash,
     ROLE,
@@ -101,7 +107,7 @@ LIMIT $1 OFFSET $2`
 	usersList := make([]User, 0, limit)
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role, &u.AvatarURL, &u.DeletedAt, &u.CreatedAt, &u.UpdatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.FullName, &u.Email, &u.PasswordHash, &u.Role, &u.AvatarURL, &u.DeletedAt, &u.CreatedAt, &u.UpdatedAt); err != nil {
 			return nil, err
 		}
 		usersList = append(usersList, u)
@@ -110,7 +116,7 @@ LIMIT $1 OFFSET $2`
 	return usersList, rows.Err()
 }
 
-func (r *Repository) Update(ctx context.Context, id int64, email *string, role *Role) (User, error) {
+func (r *Repository) Update(ctx context.Context, id string, email *string, role *Role) (User, error) {
 	const q = `
 UPDATE
     users
@@ -122,7 +128,7 @@ WHERE
     AND deleted_at IS NULL
 RETURNING
     id,
-    username,
+    full_name,
     email,
     password_hash,
     role,
@@ -133,7 +139,7 @@ RETURNING
 
 	var u User
 	err := r.db.QueryRow(ctx, q, id, email, role).
-		Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role, &u.AvatarURL, &u.DeletedAt, &u.CreatedAt, &u.UpdatedAt)
+		Scan(&u.ID, &u.FullName, &u.Email, &u.PasswordHash, &u.Role, &u.AvatarURL, &u.DeletedAt, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrNotFound
@@ -147,7 +153,7 @@ RETURNING
 	return u, nil
 }
 
-func (r *Repository) Delete(ctx context.Context, id int64) error {
+func (r *Repository) Delete(ctx context.Context, id string) error {
 	const q = `
 UPDATE
     users
@@ -168,7 +174,7 @@ WHERE
 	return nil
 }
 
-func (r *Repository) UpdateAvatarURL(ctx context.Context, id int64, avatarURL string) error {
+func (r *Repository) UpdateAvatarURL(ctx context.Context, id string, avatarURL string) error {
 	const q = `
 UPDATE
     users

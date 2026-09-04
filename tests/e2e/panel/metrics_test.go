@@ -65,7 +65,7 @@ func TestCreateMetric(t *testing.T) {
 			if result.Data.CreatedBy == nil {
 				t.Error("created_by should be present")
 			}
-			if result.Data.CreatedBy != nil && result.Data.CreatedBy.ID < 1 {
+			if result.Data.CreatedBy != nil && result.Data.CreatedBy.ID == "" {
 				t.Error("created_by ID should be positive")
 			}
 			if result.Data.UpdatedBy == nil {
@@ -199,7 +199,7 @@ func TestCreateMetric_RejectsInvalidRequests(t *testing.T) {
 func TestGetMetric(t *testing.T) {
 	id, key := createMetric(t, "get-metric", "Get Metric", "count")
 
-	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%d", id), adminToken, nil)
+	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken, nil)
 	defer resp.Body.Close()
 
 	requireStatus(t, resp, http.StatusOK)
@@ -207,7 +207,7 @@ func TestGetMetric(t *testing.T) {
 	result := decodeMetricResponse(t, resp)
 
 	if result.Data.ID != id {
-		t.Errorf("id: got %d, want %d", result.Data.ID, id)
+		t.Errorf("id: got %s, want %s", result.Data.ID, id)
 	}
 	if result.Data.Key != key {
 		t.Errorf("key: got %q, want %q", result.Data.Key, key)
@@ -228,7 +228,7 @@ func TestGetMetric_InvalidID(t *testing.T) {
 }
 
 func TestGetMetric_Nonexistent(t *testing.T) {
-	resp := doRequest(http.MethodGet, "/api/panel/v1/metrics/999999999", adminToken, nil)
+	resp := doRequest(http.MethodGet, "/api/panel/v1/metrics/0198f4c0-dead-7000-8000-000000000001", adminToken, nil)
 	defer resp.Body.Close()
 
 	requireErrorResponse(t, resp, http.StatusNotFound, "NOT_FOUND")
@@ -237,22 +237,22 @@ func TestGetMetric_Nonexistent(t *testing.T) {
 func TestGetMetric_Archived(t *testing.T) {
 	id, _ := createMetric(t, "get-archived", "Get Archived Metric", "count")
 
-	archiveResp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%d", id), adminToken,
+	archiveResp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken,
 		jsonBody(map[string]any{"status": "archived"}))
 	defer archiveResp.Body.Close()
 	requireStatus(t, archiveResp, http.StatusOK)
 
-	defaultResp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%d", id), adminToken, nil)
+	defaultResp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken, nil)
 	defer defaultResp.Body.Close()
 	requireErrorResponse(t, defaultResp, http.StatusNotFound, "NOT_FOUND")
 
-	archivedResp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%d?archived=true", id), adminToken, nil)
+	archivedResp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%s?archived=true", id), adminToken, nil)
 	defer archivedResp.Body.Close()
 	requireStatus(t, archivedResp, http.StatusOK)
 
 	result := decodeMetricResponse(t, archivedResp)
 	if result.Data.ID != id {
-		t.Errorf("id: got %d, want %d", result.Data.ID, id)
+		t.Errorf("id: got %s, want %s", result.Data.ID, id)
 	}
 	if result.Data.Status != "archived" {
 		t.Errorf("status: got %q, want %q", result.Data.Status, "archived")
@@ -359,14 +359,14 @@ func TestListMetrics_ExcludesArchived(t *testing.T) {
 	_, keyActive := createMetric(t, "list-active-metric", "List Active Metric", "count")
 	_, keyArchived := createMetric(t, "list-archived-metric", "List Archived Metric", "sum")
 
-	archiveResp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%d", func() int64 {
+	archiveResp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%s", func() string {
 		id, _ := createMetric(t, "temp-archived-metric", "Temp Archived", "count")
 		return id
 	}()), adminToken, jsonBody(map[string]any{"status": "archived"}))
 	archiveResp.Body.Close()
 
 	idToArchive, _ := createMetric(t, "list-archive-target", "List Archive Target", "count")
-	archiveResp2 := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%d", idToArchive), adminToken,
+	archiveResp2 := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%s", idToArchive), adminToken,
 		jsonBody(map[string]any{"status": "archived"}))
 	archiveResp2.Body.Close()
 
@@ -409,7 +409,7 @@ func TestUpdateMetric(t *testing.T) {
 	id, _ := createMetric(t, "update-metric", "Update Metric", "count")
 
 	newName := "Updated Metric Name"
-	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%d", id), adminToken,
+	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken,
 		jsonBody(map[string]any{
 			"name":        newName,
 			"description": "Updated description",
@@ -438,7 +438,7 @@ func TestUpdateMetric(t *testing.T) {
 func TestUpdateMetric_Archive(t *testing.T) {
 	id, _ := createMetric(t, "archive-metric", "Archive Metric", "count")
 
-	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%d", id), adminToken,
+	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken,
 		jsonBody(map[string]any{"status": "archived"}))
 	defer resp.Body.Close()
 
@@ -449,11 +449,11 @@ func TestUpdateMetric_Archive(t *testing.T) {
 		t.Errorf("status: got %q, want %q", result.Data.Status, "archived")
 	}
 
-	getDefault := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%d", id), adminToken, nil)
+	getDefault := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken, nil)
 	defer getDefault.Body.Close()
 	requireErrorResponse(t, getDefault, http.StatusNotFound, "NOT_FOUND")
 
-	getArchived := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%d?archived=true", id), adminToken, nil)
+	getArchived := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%s?archived=true", id), adminToken, nil)
 	defer getArchived.Body.Close()
 	requireStatus(t, getArchived, http.StatusOK)
 }
@@ -461,17 +461,17 @@ func TestUpdateMetric_Archive(t *testing.T) {
 func TestUpdateMetric_UpdateArchived(t *testing.T) {
 	id, _ := createMetric(t, "update-archived", "Update Archived Metric", "count")
 
-	archiveResp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%d", id), adminToken,
+	archiveResp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken,
 		jsonBody(map[string]any{"status": "archived"}))
 	defer archiveResp.Body.Close()
 	requireStatus(t, archiveResp, http.StatusOK)
 
-	updateResp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%d", id), adminToken,
+	updateResp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken,
 		jsonBody(map[string]any{"name": "Re-archived Name"}))
 	defer updateResp.Body.Close()
 	requireStatus(t, updateResp, http.StatusOK)
 
-	getResp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%d?archived=true", id), adminToken, nil)
+	getResp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%s?archived=true", id), adminToken, nil)
 	defer getResp.Body.Close()
 	result := decodeMetricResponse(t, getResp)
 	if result.Data.Name != "Re-archived Name" {
@@ -482,11 +482,11 @@ func TestUpdateMetric_UpdateArchived(t *testing.T) {
 func TestUpdateMetric_PreservesCreatedBy(t *testing.T) {
 	id, _ := createMetric(t, "preserve-audit", "Preserve Audit", "count")
 
-	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%d", id), adminToken, nil)
+	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken, nil)
 	defer resp.Body.Close()
 	before := decodeMetricResponse(t, resp)
 
-	updateResp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%d", id), adminToken,
+	updateResp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken,
 		jsonBody(map[string]any{"name": "Preserve Audit Updated"}))
 	defer updateResp.Body.Close()
 
@@ -499,7 +499,7 @@ func TestUpdateMetric_PreservesCreatedBy(t *testing.T) {
 }
 
 func TestUpdateMetric_Nonexistent(t *testing.T) {
-	resp := doRequest(http.MethodPatch, "/api/panel/v1/metrics/999999999", adminToken,
+	resp := doRequest(http.MethodPatch, "/api/panel/v1/metrics/0198f4c0-dead-7000-8000-000000000001", adminToken,
 		jsonBody(map[string]any{"name": "test"}))
 	defer resp.Body.Close()
 
@@ -509,7 +509,7 @@ func TestUpdateMetric_Nonexistent(t *testing.T) {
 func TestUpdateMetric_InvalidAggregation(t *testing.T) {
 	id, _ := createMetric(t, "invalid-agg-update", "Invalid Agg Update", "count")
 
-	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%d", id), adminToken,
+	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken,
 		jsonBody(map[string]any{"aggregation": "not-json"}))
 	defer resp.Body.Close()
 
@@ -519,7 +519,7 @@ func TestUpdateMetric_InvalidAggregation(t *testing.T) {
 func TestUpdateMetric_EmptyAggregation(t *testing.T) {
 	id, _ := createMetric(t, "empty-agg-update", "Empty Agg Update", "count")
 
-	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%d", id), adminToken,
+	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken,
 		jsonBody(map[string]any{"aggregation": map[string]any{}}))
 	defer resp.Body.Close()
 
@@ -529,7 +529,7 @@ func TestUpdateMetric_EmptyAggregation(t *testing.T) {
 func TestMetrics_NoSecretsInResponse(t *testing.T) {
 	id, _ := createMetric(t, "no-secrets-metric", "No Secrets Metric", "count")
 
-	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%d", id), adminToken, nil)
+	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken, nil)
 	defer resp.Body.Close()
 
 	var raw map[string]json.RawMessage
@@ -567,7 +567,7 @@ func TestUnauthenticatedMetric_RejectedFromAllEndpoints(t *testing.T) {
 	})
 
 	t.Run("GET /metrics/:id", func(t *testing.T) {
-		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%d", id), "", nil)
+		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%s", id), "", nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusUnauthorized)
 	})
@@ -585,7 +585,7 @@ func TestUnauthenticatedMetric_RejectedFromAllEndpoints(t *testing.T) {
 	})
 
 	t.Run("PATCH /metrics/:id", func(t *testing.T) {
-		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%d", id), "",
+		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%s", id), "",
 			jsonBody(map[string]any{"name": "hack"}))
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusUnauthorized)
@@ -596,7 +596,7 @@ func TestViewerCanManageMetrics(t *testing.T) {
 	viewerEmail := testEmail("viewer-metrics")
 	createResp := doRequest(http.MethodPost, "/api/panel/v1/users", adminToken,
 		jsonBody(map[string]string{
-			"username": testUsername("viewer-metrics"),
+			"full_name": testFullName("viewer-metrics"),
 			"email":    viewerEmail,
 			"password": "testpass123",
 			"role":     "viewer",
@@ -633,13 +633,13 @@ func TestViewerCanManageMetrics(t *testing.T) {
 	})
 
 	t.Run("can get metric by id", func(t *testing.T) {
-		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%d", targetID), viewerToken, nil)
+		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%s", targetID), viewerToken, nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusOK)
 	})
 
 	t.Run("can update metric", func(t *testing.T) {
-		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%d", targetID), viewerToken,
+		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%s", targetID), viewerToken,
 			jsonBody(map[string]any{"name": "Viewer Target Metric Updated"}))
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusOK)
@@ -661,7 +661,7 @@ func TestGetMetric_NegativeID(t *testing.T) {
 	requireErrorResponse(t, resp, http.StatusBadRequest, "BAD_REQUEST")
 }
 
-func createMetric(t *testing.T, key, name, metricType string, extra ...map[string]any) (int64, string) {
+func createMetric(t *testing.T, key, name, metricType string, extra ...map[string]any) (string, string) {
 	t.Helper()
 	uniqueKey := key + "-" + runID
 
@@ -687,7 +687,7 @@ func createMetric(t *testing.T, key, name, metricType string, extra ...map[strin
 
 	var result struct {
 		Data struct {
-			ID int64 `json:"id"`
+			ID string `json:"id"`
 		} `json:"data"`
 	}
 	decodeJSON(resp, &result)

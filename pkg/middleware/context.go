@@ -6,14 +6,20 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-func CallerIDGin(c *gin.Context) int64 {
+func CallerIDGin(c *gin.Context) string {
 	id, _ := c.Get(logger.FieldUserID)
-	v, _ := id.(int64)
-	return v
+	if id == nil {
+		return ""
+	}
+	uid, _ := id.(string)
+	return uid
 }
 
-func CallerIDFiber(c fiber.Ctx) int64 {
+func CallerIDFiber(c fiber.Ctx) string {
 	id := c.Locals(logger.FieldUserID)
-	v, _ := id.(int64)
-	return v
+	if id == nil {
+		return ""
+	}
+	uid, _ := id.(string)
+	return uid
 }

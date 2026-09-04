@@ -11,7 +11,7 @@ import (
 var ErrNotFound = errors.New("user not found")
 
 type AuthRepo interface {
-	GetCredentialsByEmail(ctx context.Context, email string) (id int64, role string, passwordHash string, err error)
+	GetCredentialsByEmail(ctx context.Context, email string) (id string, role string, passwordHash string, err error)
 }
 
 type Repository struct {
@@ -33,9 +33,9 @@ WHERE
     email = $1
     AND deleted_at IS NULL`
 
-func (r *Repository) GetCredentialsByEmail(ctx context.Context, email string) (int64, string, string, error) {
+func (r *Repository) GetCredentialsByEmail(ctx context.Context, email string) (string, string, string, error) {
 	var (
-		id   int64
+		id   string
 		role string
 		hash string
 	)
@@ -43,9 +43,9 @@ func (r *Repository) GetCredentialsByEmail(ctx context.Context, email string) (i
 	err := r.db.QueryRow(ctx, selectCredentialsByEmail, email).Scan(&id, &role, &hash)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return 0, "", "", ErrNotFound
+			return "", "", "", ErrNotFound
 		}
-		return 0, "", "", err
+		return "", "", "", err
 	}
 
 	return id, role, hash, nil

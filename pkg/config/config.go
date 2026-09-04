@@ -46,7 +46,7 @@ type JWTConfig struct {
 
 // BootstrapConfig seeds the first admin when the users table is empty.
 type BootstrapConfig struct {
-	Username     string `mapstructure:"username"`
+	FullName     string `mapstructure:"full_name"`
 	Email        string `mapstructure:"email"`
 	PasswordHash string `mapstructure:"password_hash"`
 }
@@ -151,7 +151,7 @@ func defaultConfig() *Config {
 				TTL:       18 * time.Hour,
 			},
 			Bootstrap: BootstrapConfig{
-				Username: "admin",
+				FullName: "admin",
 				Email:    "admin@lotty.local",
 			},
 		},

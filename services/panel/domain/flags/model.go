@@ -68,6 +68,10 @@ func (v *ValueFlag) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+func (v ValueFlag) Value() (driver.Value, error) {
+	return string(v), nil
+}
+
 func (v *ValueFlag) Scan(src any) error {
 	switch s := src.(type) {
 	case []byte:
@@ -79,19 +83,15 @@ func (v *ValueFlag) Scan(src any) error {
 	return ErrInvalidValue
 }
 
-func (v ValueFlag) Value() (driver.Value, error) {
-	return string(v), nil
-}
-
 type Flag struct {
-	ID           int64      `db:"id"`
+	ID           string     `db:"id"`
 	Key          string     `db:"key"`
 	Name         string     `db:"name"`
 	Type         TypeFlag   `db:"type"`
 	DefaultValue ValueFlag  `db:"default_value"`
 	Description  *string    `db:"description"`
-	CreatedBy    int64      `db:"created_by"`
-	UpdatedBy    int64      `db:"updated_by"`
+	CreatedBy    string     `db:"created_by"`
+	UpdatedBy    string     `db:"updated_by"`
 	DeletedAt    *time.Time `db:"deleted_at"`
 	CreatedAt    time.Time  `db:"created_at"`
 	UpdatedAt    time.Time  `db:"updated_at"`

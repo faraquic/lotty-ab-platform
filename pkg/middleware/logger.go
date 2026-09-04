@@ -26,8 +26,8 @@ func LoggerGin(log *zap.Logger) gin.HandlerFunc {
 			}
 
 			if userID, exists := c.Get(logger.FieldUserID); exists {
-				if uid, ok := userID.(int64); ok && uid > 0 {
-					fields = append(fields, zap.Int64(logger.FieldUserID, uid))
+				if uid, ok := userID.(string); ok && uid != "" {
+					fields = append(fields, zap.String(logger.FieldUserID, uid))
 				}
 			}
 
@@ -69,8 +69,8 @@ func LoggerFiber(log *zap.Logger) fiber.Handler {
 		}
 
 		if userID := c.Locals(logger.FieldUserID); userID != nil {
-			if uid, ok := userID.(int64); ok && uid > 0 {
-				fields = append(fields, zap.Int64(logger.FieldUserID, uid))
+			if uid, ok := userID.(string); ok && uid != "" {
+				fields = append(fields, zap.String(logger.FieldUserID, uid))
 			}
 		}
 

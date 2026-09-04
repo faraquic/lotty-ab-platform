@@ -15,11 +15,11 @@ var (
 )
 
 type FlagRepo interface {
-	Create(ctx context.Context, f Flag) (int64, error)
-	GetByID(ctx context.Context, id int64) (FlagWithCreatorAndUpdater, error)
+	Create(ctx context.Context, f Flag) (string, error)
+	GetByID(ctx context.Context, id string) (FlagWithCreatorAndUpdater, error)
 	List(ctx context.Context, limit, offset int) ([]Flag, error)
-	Update(ctx context.Context, id int64, key, name string, defaultValue ValueFlag, description string, updatedBy int64) (FlagWithCreatorAndUpdater, error)
-	Delete(ctx context.Context, id int64) error
+	Update(ctx context.Context, id string, key, name string, defaultValue ValueFlag, description string, updatedBy string) (FlagWithCreatorAndUpdater, error)
+	Delete(ctx context.Context, id string) error
 	Count(ctx context.Context) (int64, error)
 }
 
@@ -32,7 +32,7 @@ func NewService(repo FlagRepo, log *zap.Logger) *Service {
 	return &Service{repo, log}
 }
 
-func (s *Service) Create(ctx context.Context, callerID int64, req CreateFlagRequest) (FlagResponse, error) {
+func (s *Service) Create(ctx context.Context, callerID string, req CreateFlagRequest) (FlagResponse, error) {
 	typeFlag := TypeFlag(req.Type)
 	if !typeFlag.Valid() {
 		return FlagResponse{}, ErrInvalidTypeFlag
@@ -64,16 +64,16 @@ func (s *Service) Create(ctx context.Context, callerID int64, req CreateFlagRequ
 	}
 
 	s.log.Info("flag created",
-		zap.Int64(logger.FieldFlagID, id),
+		zap.String(logger.FieldFlagID, id),
 		zap.String(logger.FieldFlagKey, f.Key),
 		zap.String(logger.FieldFlagType, string(typeFlag)),
-		zap.Int64(logger.FieldActorID, callerID),
+		zap.String(logger.FieldActorID, callerID),
 	)
 
 	return s.GetByID(ctx, id)
 }
 
-func (s *Service) GetByID(ctx context.Context, id int64) (FlagResponse, error) {
+func (s *Service) GetByID(ctx context.Context, id string) (FlagResponse, error) {
 	fwo, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return FlagResponse{}, err
@@ -120,7 +120,7 @@ func (s *Service) List(ctx context.Context, limit, offset int) (PaginatedFlagRes
 	}, nil
 }
 
-func (s *Service) Update(ctx context.Context, callerID, id int64, req UpdateFlagRequest) (FlagResponse, error) {
+func (s *Service) Update(ctx context.Context, callerID, id string, req UpdateFlagRequest) (FlagResponse, error) {
 	existing, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return FlagResponse{}, err
@@ -139,22 +139,22 @@ func (s *Service) Update(ctx context.Context, callerID, id int64, req UpdateFlag
 	}
 
 	s.log.Debug("flag updated",
-		zap.Int64(logger.FieldFlagID, id),
+		zap.String(logger.FieldFlagID, id),
 		zap.String(logger.FieldFlagKey, fwo.Flag.Key),
-		zap.Int64(logger.FieldActorID, callerID),
+		zap.String(logger.FieldActorID, callerID),
 	)
 
 	return ToResponse(fwo), nil
 }
 
-func (s *Service) Delete(ctx context.Context, callerID, id int64) error {
+func (s *Service) Delete(ctx context.Context, callerID, id string) error {
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return err
 	}
 
 	s.log.Info("flag deleted",
-		zap.Int64(logger.FieldFlagID, id),
-		zap.Int64(logger.FieldActorID, callerID),
+		zap.String(logger.FieldFlagID, id),
+		zap.String(logger.FieldActorID, callerID),
 	)
 
 	return nil

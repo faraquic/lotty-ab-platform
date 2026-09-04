@@ -12,7 +12,7 @@ import (
 )
 
 type Storage interface {
-	UploadAvatar(ctx context.Context, userID int64, ext string, data []byte) (string, error)
+	UploadAvatar(ctx context.Context, userID string, ext string, data []byte) (string, error)
 	DeleteAvatar(ctx context.Context, avatarURL string) error
 }
 
@@ -26,8 +26,8 @@ func NewS3Storage(client *s3.Client, bucket, endpoint string) *S3Storage {
 	return &S3Storage{client: client, bucket: bucket, endpoint: endpoint}
 }
 
-func (s *S3Storage) UploadAvatar(ctx context.Context, userID int64, ext string, data []byte) (string, error) {
-	key := fmt.Sprintf("avatars/%d%s", userID, ext)
+func (s *S3Storage) UploadAvatar(ctx context.Context, userID string, ext string, data []byte) (string, error) {
+	key := fmt.Sprintf("avatars/%s%s", userID, ext)
 
 	contentType := mimeFromExt(ext)
 

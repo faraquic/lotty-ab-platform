@@ -93,7 +93,7 @@ func (s MetricStatus) Valid() bool {
 }
 
 type Metric struct {
-	ID          int64
+	ID          string
 	Key         string
 	Name        string
 	Description *string
@@ -102,8 +102,8 @@ type Metric struct {
 	Attribution MetricConfig
 	IsBuiltin   bool
 	Status      MetricStatus
-	CreatedBy   int64
-	UpdatedBy   int64
+	CreatedBy   string
+	UpdatedBy   string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }

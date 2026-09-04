@@ -2,7 +2,6 @@ package auth
 
 import (
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -44,16 +43,15 @@ func NewMiddleware(cfg *config.Config, svc *Service, log *zap.Logger) (*Middlewa
 		IdentityHandler: func(c *gin.Context) interface{} {
 			claims := jwt.ExtractClaims(c)
 			sub, _ := claims["sub"].(string)
-			id, _ := strconv.ParseInt(sub, 10, 64)
 
-			return id
+			return sub
 		},
 
 		Authorizer: func(c *gin.Context, identity interface{}) bool {
-			id, _ := identity.(int64)
+			id, _ := identity.(string)
 			token := bearerToken(c.Request.Header.Get("Authorization"))
 
-			if id < 1 || !svc.SessionActive(c.Request.Context(), token, id) {
+			if id == "" || !svc.SessionActive(c.Request.Context(), token, id) {
 				c.Set(sessionRevoked, true)
 				return false
 			}

@@ -234,7 +234,7 @@ func TestHealth_PostgresUnavailablePreventsStartup(t *testing.T) {
 		"environment": "local",
 		"auth": {
 			"jwt": {"secret_key": "test-secret-not-for-prod", "ttl": "1h"},
-			"bootstrap": {"username": "root", "email": "root@labp.net", "password": "root!@#$"}
+			"bootstrap": {"full_name": "root", "email": "root@labp.net", "password": "root!@#$"}
 		},
 		"database": {
 			"postgres": {"dsn": "postgres://lotty:lottypassword@localhost:19997/labp_e2e?sslmode=disable"},
@@ -294,7 +294,7 @@ func startIsolatedPanel(t *testing.T, label string, overrides map[string]string)
 		"environment": "local",
 		"auth": {
 			"jwt": {"secret_key": "e2e-test-secret-not-for-prod", "ttl": "1h"},
-			"bootstrap": {"username": "root", "email": "root@labp.net", "password": "root!@#$"}
+			"bootstrap": {"full_name": "root", "email": "root@labp.net", "password": "root!@#$"}
 		},
 		"database": {
 			"postgres": {"dsn": %q},

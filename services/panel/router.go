@@ -81,7 +81,7 @@ func bootstrapAdmin(log *zap.Logger, svc *usersdomain.Service, cfg config.Bootst
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	created, err := svc.EnsureBootstrapAdmin(ctx, cfg.Username, cfg.Email, cfg.PasswordHash)
+	created, err := svc.EnsureBootstrapAdmin(ctx, cfg.FullName, cfg.Email, cfg.PasswordHash)
 	if err != nil {
 		log.Error("bootstrap admin creation failed", zap.Error(err))
 		return

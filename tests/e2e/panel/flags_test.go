@@ -46,13 +46,13 @@ func TestCreateFlag_String(t *testing.T) {
 	if result.Data.CreatedBy == nil {
 		t.Error("created_by should be present")
 	}
-	if result.Data.CreatedBy.ID < 1 {
+	if result.Data.CreatedBy.ID == "" {
 		t.Error("created_by ID should be positive")
 	}
 	if result.Data.UpdatedBy == nil {
 		t.Error("updated_by should be present")
 	}
-	if result.Data.UpdatedBy.ID < 1 {
+	if result.Data.UpdatedBy.ID == "" {
 		t.Error("updated_by ID should be positive")
 	}
 	if result.Data.CreatedBy.ID != result.Data.UpdatedBy.ID {
@@ -195,7 +195,7 @@ func TestCreateFlag_DuplicateName(t *testing.T) {
 func TestGetFlag(t *testing.T) {
 	id, key := createFlag(t, "get-flag", "string", "test-value", "Get Flag")
 
-	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/flags/%d", id), adminToken, nil)
+	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/flags/%s", id), adminToken, nil)
 	defer resp.Body.Close()
 
 	requireStatus(t, resp, http.StatusOK)
@@ -203,7 +203,7 @@ func TestGetFlag(t *testing.T) {
 	result := decodeFlagResponse(t, resp)
 
 	if result.Data.ID != id {
-		t.Errorf("id: got %d, want %d", result.Data.ID, id)
+		t.Errorf("id: got %s, want %s", result.Data.ID, id)
 	}
 	if result.Data.Key != key {
 		t.Errorf("key: got %q, want %q", result.Data.Key, key)
@@ -220,7 +220,7 @@ func TestGetFlag(t *testing.T) {
 }
 
 func TestGetFlag_Nonexistent(t *testing.T) {
-	resp := doRequest(http.MethodGet, "/api/panel/v1/flags/999999999", adminToken, nil)
+	resp := doRequest(http.MethodGet, "/api/panel/v1/flags/0198f4c0-dead-7000-8000-000000000001", adminToken, nil)
 	defer resp.Body.Close()
 
 	requireErrorResponse(t, resp, http.StatusNotFound, "NOT_FOUND")
@@ -363,7 +363,7 @@ func TestListFlags_OffsetBeyondTotal(t *testing.T) {
 func TestUpdateFlag(t *testing.T) {
 	id, _ := createFlag(t, "update-flag", "string", "original", "Update Flag")
 
-	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/flags/%d", id), adminToken,
+	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/flags/%s", id), adminToken,
 		jsonBody(map[string]any{
 			"default_value": "updated",
 			"description":   "Updated description",
@@ -398,7 +398,7 @@ func TestUpdateFlag(t *testing.T) {
 func TestUpdateFlag_ChangeKey(t *testing.T) {
 	id, _ := createFlag(t, "update-key-flag", "string", "test", "Update Key Flag")
 
-	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/flags/%d", id), adminToken,
+	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/flags/%s", id), adminToken,
 		jsonBody(map[string]any{
 			"key": "new-key-name-" + runID,
 		}))
@@ -419,7 +419,7 @@ func TestUpdateFlag_ChangeKey(t *testing.T) {
 func TestUpdateFlag_InvalidValueForType(t *testing.T) {
 	id, _ := createFlag(t, "invalid-update-flag", "number", 100, "Invalid Update Flag")
 
-	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/flags/%d", id), adminToken,
+	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/flags/%s", id), adminToken,
 		jsonBody(map[string]any{
 			"default_value": "not-a-number",
 		}))
@@ -429,7 +429,7 @@ func TestUpdateFlag_InvalidValueForType(t *testing.T) {
 }
 
 func TestUpdateFlag_Nonexistent(t *testing.T) {
-	resp := doRequest(http.MethodPatch, "/api/panel/v1/flags/999999999", adminToken,
+	resp := doRequest(http.MethodPatch, "/api/panel/v1/flags/0198f4c0-dead-7000-8000-000000000001", adminToken,
 		jsonBody(map[string]any{"default_value": "test"}))
 	defer resp.Body.Close()
 
@@ -439,19 +439,19 @@ func TestUpdateFlag_Nonexistent(t *testing.T) {
 func TestDeleteFlag(t *testing.T) {
 	id, _ := createFlag(t, "delete-flag", "string", "to-delete", "Delete Flag")
 
-	resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/flags/%d", id), adminToken, nil)
+	resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/flags/%s", id), adminToken, nil)
 	defer resp.Body.Close()
 
 	requireStatus(t, resp, http.StatusNoContent)
 
-	getResp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/flags/%d", id), adminToken, nil)
+	getResp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/flags/%s", id), adminToken, nil)
 	defer getResp.Body.Close()
 
 	requireErrorResponse(t, getResp, http.StatusNotFound, "NOT_FOUND")
 }
 
 func TestDeleteFlag_Nonexistent(t *testing.T) {
-	resp := doRequest(http.MethodDelete, "/api/panel/v1/flags/999999999", adminToken, nil)
+	resp := doRequest(http.MethodDelete, "/api/panel/v1/flags/0198f4c0-dead-7000-8000-000000000001", adminToken, nil)
 	defer resp.Body.Close()
 
 	requireErrorResponse(t, resp, http.StatusNotFound, "NOT_FOUND")
@@ -460,7 +460,7 @@ func TestDeleteFlag_Nonexistent(t *testing.T) {
 func TestFlags_NoSecretsInResponse(t *testing.T) {
 	id, _ := createFlag(t, "no-secrets-flag", "string", "test", "No Secrets Flag")
 
-	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/flags/%d", id), adminToken, nil)
+	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/flags/%s", id), adminToken, nil)
 	defer resp.Body.Close()
 
 	var raw map[string]json.RawMessage
@@ -504,7 +504,7 @@ func TestUnauthenticatedFlag_RejectedFromAllEndpoints(t *testing.T) {
 	})
 
 	t.Run("GET /flags/:id", func(t *testing.T) {
-		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/flags/%d", id), "", nil)
+		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/flags/%s", id), "", nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusUnauthorized)
 	})
@@ -521,14 +521,14 @@ func TestUnauthenticatedFlag_RejectedFromAllEndpoints(t *testing.T) {
 	})
 
 	t.Run("PATCH /flags/:id", func(t *testing.T) {
-		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/flags/%d", id), "",
+		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/flags/%s", id), "",
 			jsonBody(map[string]any{"default_value": "hack"}))
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusUnauthorized)
 	})
 
 	t.Run("DELETE /flags/:id", func(t *testing.T) {
-		resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/flags/%d", id), "", nil)
+		resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/flags/%s", id), "", nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusUnauthorized)
 	})
@@ -538,7 +538,7 @@ func TestViewerCannotManageFlags(t *testing.T) {
 	viewerEmail := testEmail("viewer-flags")
 	createResp := doRequest(http.MethodPost, "/api/panel/v1/users", adminToken,
 		jsonBody(map[string]string{
-			"username": testUsername("viewer-flags"),
+			"full_name": testFullName("viewer-flags"),
 			"email":    viewerEmail,
 			"password": "testpass123",
 			"role":     "viewer",
@@ -574,26 +574,26 @@ func TestViewerCannotManageFlags(t *testing.T) {
 	})
 
 	t.Run("can get flag by id", func(t *testing.T) {
-		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/flags/%d", targetID), viewerToken, nil)
+		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/flags/%s", targetID), viewerToken, nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusOK)
 	})
 
 	t.Run("can update flag", func(t *testing.T) {
-		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/flags/%d", targetID), viewerToken,
+		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/flags/%s", targetID), viewerToken,
 			jsonBody(map[string]any{"default_value": "updated"}))
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusOK)
 	})
 
 	t.Run("can delete flag", func(t *testing.T) {
-		resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/flags/%d", targetID), viewerToken, nil)
+		resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/flags/%s", targetID), viewerToken, nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusNoContent)
 	})
 }
 
-func createFlag(t *testing.T, key, flagType string, defaultValue any, name ...string) (int64, string) {
+func createFlag(t *testing.T, key, flagType string, defaultValue any, name ...string) (string, string) {
 	t.Helper()
 	uniqueKey := key + "-" + runID
 	flagName := uniqueKey
@@ -615,7 +615,7 @@ func createFlag(t *testing.T, key, flagType string, defaultValue any, name ...st
 
 	var result struct {
 		Data struct {
-			ID int64 `json:"id"`
+			ID string `json:"id"`
 		} `json:"data"`
 	}
 	decodeJSON(resp, &result)

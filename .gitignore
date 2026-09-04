@@ -11,6 +11,9 @@ config.local.json
 .vscode/
 .DS_Store
 
+# Agents
+.opencode/
+
 # logs
 *.log
 

@@ -9,19 +9,21 @@ BEGIN
 END;
 $body$
 LANGUAGE plpgsql;
--- +goose StatementEnd
 
+-- +goose StatementEnd
 CREATE TABLE users(
-    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id uuid PRIMARY KEY DEFAULT uuidv7(),
     email varchar(96) UNIQUE NOT NULL,
-    username varchar(64) UNIQUE NOT NULL,
-    password_hash varchar(64) NOT NULL,
+    full_name varchar(255) UNIQUE NOT NULL,
+    password_hash varchar(255) NOT NULL,
     "role" varchar(16) NOT NULL CHECK (ROLE IN ('admin', 'experimenter', 'approver', 'viewer')),
     avatar_url varchar(512) NULL,
     deleted_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE INDEX idx_users_email ON users(email);
 
 CREATE TRIGGER users_updated_at
     BEFORE UPDATE ON users
@@ -34,3 +36,4 @@ DROP TRIGGER users_updated_at ON users;
 DROP FUNCTION update_updated_at();
 
 DROP TABLE users;
+

@@ -5,8 +5,12 @@ info:
   version: 0.0.0_dev
 
 servers:
-  - url: http://localhost:8080/api/panel/v1
-    description: local development
+  - url: http://localhost:8081/api/v1/panel
+    description: local panel development
+  - url: http://localhost:8082/api/v1/runtime
+    description: local runtime development
+  - url: http://localhost:8083/api/v1/analytics
+    description: local analytics development
 
 # JWT bearer auth; endpoints marked public below are excluded
 security:
@@ -207,9 +211,8 @@ paths:
         required: true
         description: User ID
         schema:
-          type: integer
-          format: int64
-          minimum: 1
+          type: string
+          format: uuid
 
     get:
       tags: [users]
@@ -282,9 +285,8 @@ paths:
         required: true
         description: User ID
         schema:
-          type: integer
-          format: int64
-          minimum: 1
+          type: string
+          format: uuid
 
     post:
       tags: [users]
@@ -386,9 +388,8 @@ paths:
         required: true
         description: Flag ID
         schema:
-          type: integer
-          format: int64
-          minimum: 1
+          type: string
+          format: uuid
 
     get:
       tags: [flags]
@@ -518,9 +519,8 @@ paths:
         required: true
         description: Metric ID
         schema:
-          type: integer
-          format: int64
-          minimum: 1
+          type: string
+          format: uuid
 
     get:
       tags: [metrics]
@@ -610,7 +610,7 @@ components:
               message: user not found
 
     Conflict:
-      description: Resource already exists (username or email taken)
+      description: Resource already exists (email or full_name taken)
       content:
         application/json:
           schema:
@@ -698,15 +698,18 @@ components:
       type: object
       properties:
         id:
-          type: integer
-          format: int64
-        username:
           type: string
-          minLength: 3
-          maxLength: 64
+          format: uuid
+          description: UUIDv7 primary key
+        full_name:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: Unique human-readable name (indexed via UNIQUE constraint)
         email:
           type: string
           format: email
+          description: Unique email address (indexed via UNIQUE constraint and idx_users_email)
         role:
           $ref: "#/components/schemas/Role"
         avatar_url:
@@ -719,25 +722,27 @@ components:
         updated_at:
           type: string
           format: date-time
-      required: [id, username, email, role, created_at, updated_at]
+      required: [id, full_name, email, role, created_at, updated_at]
 
     CreateUserRequest:
       type: object
       properties:
-        username:
+        full_name:
           type: string
-          minLength: 3
-          maxLength: 64
+          minLength: 1
+          maxLength: 256
+          description: Must be unique across all users
         email:
           type: string
           format: email
+          description: Must be unique across all users (case-sensitive)
         password:
           type: string
           format: password
           minLength: 8
         role:
           $ref: "#/components/schemas/Role"
-      required: [username, email, password, role]
+      required: [full_name, email, password, role]
 
     UpdateUserRequest:
       type: object
@@ -872,8 +877,9 @@ components:
       type: object
       properties:
         id:
-          type: integer
-          format: int64
+          type: string
+          format: uuid
+          description: UUIDv7 primary key
         key:
           type: string
           minLength: 3
@@ -992,8 +998,8 @@ components:
       type: object
       properties:
         id:
-          type: integer
-          format: int64
+          type: string
+          format: uuid
         key:
           type: string
           minLength: 3
@@ -1033,8 +1039,9 @@ components:
       type: object
       properties:
         id:
-          type: integer
-          format: int64
+          type: string
+          format: uuid
+          description: UUIDv7 primary key
         key:
           type: string
           minLength: 3
@@ -1167,8 +1174,8 @@ components:
       type: object
       properties:
         id:
-          type: integer
-          format: int64
+          type: string
+          format: uuid
         key:
           type: string
           minLength: 3

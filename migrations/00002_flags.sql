@@ -1,13 +1,13 @@
 -- +goose Up
 CREATE TABLE flags(
-    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id uuid PRIMARY KEY DEFAULT uuidv7(),
     "key" varchar(128) NOT NULL UNIQUE CHECK (length(trim(key)) > 0),
     name varchar(256) NOT NULL UNIQUE CHECK (length(trim(name)) > 0),
     description varchar(4096) NULL,
     "type" varchar(8) NOT NULL CHECK (type IN ('string', 'number', 'bool')),
     default_value jsonb NOT NULL,
-    created_by bigint NOT NULL,
-    updated_by bigint NOT NULL,
+    created_by uuid NOT NULL,
+    updated_by uuid NOT NULL,
     deleted_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
@@ -23,3 +23,4 @@ CREATE TRIGGER flags_updated_at
 
 -- +goose Down
 DROP TABLE flags;
+

@@ -3,7 +3,6 @@ package auth
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -15,8 +14,8 @@ var (
 )
 
 type Tokenizer interface {
-	GenerateToken(userID int64, role string) (string, time.Time, error)
-	ParseToken(token string) (int64, error)
+	GenerateToken(userID string, role string) (string, time.Time, error)
+	ParseToken(token string) (string, error)
 }
 
 type JWTManager struct {
@@ -28,13 +27,13 @@ func NewJWTManager(secret string, ttl time.Duration) *JWTManager {
 	return &JWTManager{secret: []byte(secret), ttl: ttl}
 }
 
-func (m *JWTManager) GenerateToken(userID int64, role string) (string, time.Time, error) {
+func (m *JWTManager) GenerateToken(userID string, role string) (string, time.Time, error) {
 	now := time.Now()
 
 	expiry := now.Add(m.ttl)
 
 	claims := jwt.MapClaims{
-		"sub":  strconv.FormatInt(userID, 10),
+		"sub":  userID,
 		"role": role,
 		"iat":  jwt.NewNumericDate(now),
 		"exp":  jwt.NewNumericDate(expiry),
@@ -50,7 +49,7 @@ func (m *JWTManager) GenerateToken(userID int64, role string) (string, time.Time
 	return signed, expiry, nil
 }
 
-func (m *JWTManager) ParseToken(token string) (int64, error) {
+func (m *JWTManager) ParseToken(token string) (string, error) {
 	var claims jwt.RegisteredClaims
 
 	parsed, err := jwt.ParseWithClaims(token, &claims, func(t *jwt.Token) (any, error) {
@@ -61,17 +60,17 @@ func (m *JWTManager) ParseToken(token string) (int64, error) {
 	})
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
-			return 0, ErrExpiredToken
+			return "", ErrExpiredToken
 		}
-		return 0, fmt.Errorf("%w: %v", ErrInvalidToken, err)
+		return "", fmt.Errorf("%w: %v", ErrInvalidToken, err)
 	}
 	if !parsed.Valid {
-		return 0, ErrInvalidToken
+		return "", ErrInvalidToken
 	}
 
-	userID, err := strconv.ParseInt(claims.Subject, 10, 64)
-	if err != nil || userID < 1 {
-		return 0, ErrInvalidToken
+	userID := claims.Subject
+	if userID == "" {
+		return "", ErrInvalidToken
 	}
 
 	return userID, nil

@@ -8,6 +8,7 @@ import (
 
 	"github.com/faraquic/lotty-ab-platform/pkg/database"
 	"github.com/faraquic/lotty-ab-platform/services/panel/domain/users"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -26,32 +27,37 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{db}
 }
 
-func (r *Repository) Create(ctx context.Context, f Flag) (int64, error) {
+func (r *Repository) Create(ctx context.Context, f Flag) (string, error) {
+	uid, err := uuid.NewV7()
+	if err != nil {
+		return "", err
+	}
+	id := uid.String()
 	const q = `
-INSERT INTO flags(key, name, type, default_value, description, created_by, updated_by)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO flags(id, key, name, type, default_value, description, created_by, updated_by)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING
     id`
 
-	var id int64
+	var outID string
 	var desc string
 	if f.Description != nil {
 		desc = *f.Description
 	}
-	err := r.db.QueryRow(ctx, q, f.Key, f.Name, f.Type, f.DefaultValue, desc, f.CreatedBy, f.UpdatedBy).Scan(&id)
+	err = r.db.QueryRow(ctx, q, id, f.Key, f.Name, f.Type, f.DefaultValue, desc, f.CreatedBy, f.UpdatedBy).Scan(&outID)
 	if err != nil {
 		if database.IsUniqueViolation(err) {
 			if strings.Contains(err.Error(), "flags_key_key") {
-				return 0, ErrConflictKeys
+				return "", ErrConflictKeys
 			}
 			if strings.Contains(err.Error(), "flags_name_key") {
-				return 0, ErrConflictNames
+				return "", ErrConflictNames
 			}
-			return 0, ErrConflictKeys
+			return "", ErrConflictKeys
 		}
-		return 0, err
+		return "", err
 	}
-	return id, nil
+	return outID, nil
 }
 
 const selectFlagWithCreatorAndUpdater = `
@@ -68,14 +74,14 @@ SELECT
     f.created_at,
     f.updated_at,
     cb.id,
-    cb.username,
+    cb.full_name,
     cb.email,
     cb.role,
     cb.avatar_url,
     cb.created_at,
     cb.updated_at,
     ub.id,
-    ub.username,
+    ub.full_name,
     ub.email,
     ub.role,
     ub.avatar_url,
@@ -87,26 +93,26 @@ FROM
     JOIN users ub ON f.updated_by = ub.id`
 
 type flagWithCreatorAndUpdaterRow struct {
-	FlagID          int64
+	FlagID          string
 	Key             string
 	Name            string
 	Type            TypeFlag
 	DefaultValue    ValueFlag
 	Description     string
-	CreatedByID     int64
-	UpdatedByID     int64
+	CreatedByID     string
+	UpdatedByID     string
 	DeletedAt       *time.Time
 	FlagCreated     time.Time
 	FlagUpdated     time.Time
-	CreatorID       int64
-	CreatorUsername string
+	CreatorID       string
+	CreatorFullName string
 	CreatorEmail    string
 	CreatorRole     string
 	CreatorAvatar   *string
 	CreatorCreated  time.Time
 	CreatorUpdated  time.Time
-	UpdaterID       int64
-	UpdaterUsername string
+	UpdaterID       string
+	UpdaterFullName string
 	UpdaterEmail    string
 	UpdaterRole     string
 	UpdaterAvatar   *string
@@ -135,7 +141,7 @@ func (r flagWithCreatorAndUpdaterRow) toFlagWithCreatorAndUpdater() FlagWithCrea
 		},
 		CreatedBy: &users.User{
 			ID:        r.CreatorID,
-			Username:  r.CreatorUsername,
+			FullName:  r.CreatorFullName,
 			Email:     r.CreatorEmail,
 			Role:      users.Role(r.CreatorRole),
 			CreatedAt: r.CreatorCreated,
@@ -143,7 +149,7 @@ func (r flagWithCreatorAndUpdaterRow) toFlagWithCreatorAndUpdater() FlagWithCrea
 		},
 		UpdatedBy: &users.User{
 			ID:        r.UpdaterID,
-			Username:  r.UpdaterUsername,
+			FullName:  r.UpdaterFullName,
 			Email:     r.UpdaterEmail,
 			Role:      users.Role(r.UpdaterRole),
 			CreatedAt: r.UpdaterCreated,
@@ -152,7 +158,7 @@ func (r flagWithCreatorAndUpdaterRow) toFlagWithCreatorAndUpdater() FlagWithCrea
 	}
 }
 
-func (r *Repository) GetByID(ctx context.Context, id int64) (FlagWithCreatorAndUpdater, error) {
+func (r *Repository) GetByID(ctx context.Context, id string) (FlagWithCreatorAndUpdater, error) {
 	const q = selectFlagWithCreatorAndUpdater + `
 WHERE
     f.id = $1
@@ -172,14 +178,14 @@ WHERE
 		&row.FlagCreated,
 		&row.FlagUpdated,
 		&row.CreatorID,
-		&row.CreatorUsername,
+		&row.CreatorFullName,
 		&row.CreatorEmail,
 		&row.CreatorRole,
 		&row.CreatorAvatar,
 		&row.CreatorCreated,
 		&row.CreatorUpdated,
 		&row.UpdaterID,
-		&row.UpdaterUsername,
+		&row.UpdaterFullName,
 		&row.UpdaterEmail,
 		&row.UpdaterRole,
 		&row.UpdaterAvatar,
@@ -254,7 +260,7 @@ LIMIT $1 OFFSET $2`
 	return result, rows.Err()
 }
 
-func (r *Repository) Update(ctx context.Context, id int64, key string, name string, defaultValue ValueFlag, description string, updatedBy int64) (FlagWithCreatorAndUpdater, error) {
+func (r *Repository) Update(ctx context.Context, id string, key string, name string, defaultValue ValueFlag, description string, updatedBy string) (FlagWithCreatorAndUpdater, error) {
 	var dv any
 	if len(defaultValue) > 0 {
 		dv = string(defaultValue)
@@ -291,7 +297,7 @@ WHERE
 	return r.GetByID(ctx, id)
 }
 
-func (r *Repository) Delete(ctx context.Context, id int64) error {
+func (r *Repository) Delete(ctx context.Context, id string) error {
 	const q = `
 UPDATE
     flags
