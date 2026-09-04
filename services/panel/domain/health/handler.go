@@ -9,6 +9,7 @@ import (
 	"github.com/faraquic/lotty-ab-platform/pkg/config"
 	"github.com/faraquic/lotty-ab-platform/pkg/dto"
 	"github.com/faraquic/lotty-ab-platform/pkg/logger"
+	"github.com/faraquic/lotty-ab-platform/pkg/snapshot"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/rueidis"
@@ -19,12 +20,13 @@ type Handler struct {
 	pool        *pgxpool.Pool
 	redis       *rueidis.Client
 	s3          *s3.Client
+	snapshot    *snapshot.SnapshotStorage
 	environment string
 	log         *zap.Logger
 }
 
-func NewHandler(pool *pgxpool.Pool, redis *rueidis.Client, s3 *s3.Client, environment string, log *zap.Logger) *Handler {
-	return &Handler{pool, redis, s3, environment, log}
+func NewHandler(pool *pgxpool.Pool, redis *rueidis.Client, s3 *s3.Client, snapshotStorage *snapshot.SnapshotStorage, environment string, log *zap.Logger) *Handler {
+	return &Handler{pool, redis, s3, snapshotStorage, environment, log}
 }
 
 func (h *Handler) RegisterRoutes(g *gin.RouterGroup) {
@@ -42,6 +44,7 @@ func (h *Handler) ready(c *gin.Context) {
 
 	db := h.checkDatabase(ctx)
 	cache := h.checkCache(ctx)
+	snap := h.checkSnapshot(ctx)
 	storage := h.checkS3(ctx)
 
 	if db.Status != dto.StatusOK {
@@ -56,6 +59,13 @@ func (h *Handler) ready(c *gin.Context) {
 			"readiness probe: cache unavailable",
 			zap.String(logger.FieldCacheStatus, string(cache.Status)),
 			zap.String(logger.FieldCacheMsg, cache.Message),
+		)
+	}
+	if snap.Status != dto.StatusOK {
+		h.log.Warn(
+			"readiness probe: snapshot unavailable",
+			zap.String(logger.FieldSnapshotStatus, string(snap.Status)),
+			zap.String(logger.FieldSnapshotMsg, snap.Message),
 		)
 	}
 	if storage.Status != dto.StatusOK {
@@ -75,12 +85,13 @@ func (h *Handler) ready(c *gin.Context) {
 			"service":  {Status: dto.StatusOK},
 			"database": db,
 			"cache":    cache,
+			"snapshot": snap,
 			"storage":  storage,
 		},
 	}
 
 	status := http.StatusOK
-	if db.Status != dto.StatusOK {
+	if db.Status != dto.StatusOK || cache.Status != dto.StatusOK || snap.Status != dto.StatusOK {
 		status = http.StatusServiceUnavailable
 	}
 
@@ -108,6 +119,23 @@ func (h *Handler) checkCache(ctx context.Context) dto.ComponentStatus {
 	if err := (*h.redis).Do(ctx, (*h.redis).B().Ping().Build()).Error(); err != nil {
 		h.log.Warn("health check: redis ping failed", zap.Error(err))
 		return dto.ComponentStatus{Status: dto.StatusUnavailable, Message: err.Error()}
+	}
+
+	return dto.ComponentStatus{Status: dto.StatusOK}
+}
+
+func (h *Handler) checkSnapshot(ctx context.Context) dto.ComponentStatus {
+	if h.snapshot == nil {
+		return dto.ComponentStatus{Status: dto.StatusUnavailable, Message: "snapshot storage not initialized"}
+	}
+
+	exists, err := h.snapshot.Exists(ctx)
+	if err != nil {
+		h.log.Warn("health check: snapshot exists failed", zap.Error(err))
+		return dto.ComponentStatus{Status: dto.StatusUnavailable, Message: err.Error()}
+	}
+	if !exists {
+		return dto.ComponentStatus{Status: dto.StatusUnavailable, Message: "snapshot not found"}
 	}
 
 	return dto.ComponentStatus{Status: dto.StatusOK}

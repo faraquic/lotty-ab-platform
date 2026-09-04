@@ -41,6 +41,7 @@ const (
 	FieldCacheMsg       = "cache.message"
 	FieldCacheAddrs     = "cache.addrs"
 	FieldCacheDB        = "cache.db"
+	FieldCacheKeyNS     = "cache.key_namespace"
 )
 
 const (
@@ -78,4 +79,12 @@ const (
 	FieldMetricID   = "metric.id"
 	FieldMetricKey  = "metric.key"
 	FieldMetricType = "metric.type"
+)
+
+const (
+	FieldSnapshotFlagCount = "snapshot.flag_count"
+	FieldSnapshotStatus    = "snapshot.status"
+	FieldSnapshotMsg       = "snapshot.message"
+	FieldQueueLen          = "queue.len"
+	FieldQueueCap          = "queue.cap"
 )

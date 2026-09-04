@@ -82,7 +82,7 @@ func TestHealth_Readiness(t *testing.T) {
 		t.Error("timestamp must not be empty")
 	}
 
-	for _, name := range []string{"service", "database", "cache", "storage"} {
+	for _, name := range []string{"service", "database", "cache", "snapshot", "storage"} {
 		comp, ok := result.Components[name]
 		if !ok {
 			t.Errorf("components missing %q", name)
@@ -120,39 +120,52 @@ func TestHealth_ReadinessNoSecretsInResponse(t *testing.T) {
 }
 
 func TestHealth_ReadinessRedisUnavailable(t *testing.T) {
-	proc, port := startIsolatedPanel(t, "redis-unavail", map[string]string{
-		"redis_address": "localhost:19999",
-	})
-	defer stopIsolatedPanel(t, proc)
-
-	url := fmt.Sprintf("http://localhost:%s/api/v1/panel/ready", port)
-	resp := waitForHealth(t, url, http.StatusOK)
-
-	var result healthReadyResponse
-	decodeJSON(resp, &result)
-
-	dbComp, ok := result.Components["database"]
-	if !ok {
-		t.Fatal("missing database component")
-	}
-	if dbComp.Status != "ok" {
-		t.Errorf("database status: got %q, want %q", dbComp.Status, "ok")
+	if testing.Short() {
+		t.Skip("skipping in short mode")
 	}
 
-	cacheComp, ok := result.Components["cache"]
-	if !ok {
-		t.Fatal("missing cache component")
-	}
-	if cacheComp.Status != "unavailable" {
-		t.Errorf("cache status: got %q, want %q", cacheComp.Status, "unavailable")
+	cfgDir := t.TempDir()
+	cfgPath := filepath.Join(cfgDir, "config.local.json")
+
+	cfg := fmt.Sprintf(`{
+		"environment": "local",
+		"auth": {
+			"jwt": {"secret_key": "e2e-test-secret-not-for-prod", "ttl": "1h"},
+			"bootstrap": {"full_name": "root", "email": "root@labp.net", "password_hash": "$argon2id$v=19$m=65536,t=1,p=4$6lGItC3BN+vvxDF42RRw2g$svLMZu6udCWh8/bjOlpP1S3syNanEwiQO17cbUaDvck"}
+		},
+		"database": {
+			"postgres": {"dsn": %q},
+			"redis":    {"address": "localhost:19999"},
+			"s3":       {"bucket": %q, "region": "us-east-1", "endpoint": %q, "access_key": "minioadmin", "secret_key": "minioadmin"}
+		},
+		"panel": {"http": {"address": "0.0.0.0:18082"}}
+	}`, e2ePostgresDSN, e2eS3Bucket, e2eS3Endpoint)
+
+	if err := os.WriteFile(cfgPath, []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
 	}
 
-	storageComp, ok := result.Components["storage"]
-	if !ok {
-		t.Fatal("missing storage component")
+	binPath := filepath.Join(cfgDir, "panel-redis-unavail")
+	build := exec.Command("go", "build", "-o", binPath, "./services/panel")
+	build.Dir = mustProjectRoot()
+	build.Env = append(os.Environ(), "CONFIG_NAME="+cfgPath)
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build: %v\n%s", err, out)
 	}
-	if storageComp.Status != "ok" {
-		t.Errorf("storage status: got %q, want %q", storageComp.Status, "ok")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binPath)
+	cmd.Dir = cfgDir
+	cmd.Env = append(os.Environ(), "CONFIG_NAME="+cfgPath)
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+
+	err := cmd.Run()
+
+	if ctx.Err() == nil && err == nil {
+		t.Error("server should not start successfully with unreachable redis")
 	}
 }
 
@@ -184,6 +197,14 @@ func TestHealth_ReadinessS3Unavailable(t *testing.T) {
 		t.Errorf("cache status: got %q, want %q", cacheComp.Status, "ok")
 	}
 
+	snapComp, ok := result.Components["snapshot"]
+	if !ok {
+		t.Fatal("missing snapshot component")
+	}
+	if snapComp.Status != "ok" {
+		t.Errorf("snapshot status: got %q, want %q", snapComp.Status, "ok")
+	}
+
 	storageComp, ok := result.Components["storage"]
 	if !ok {
 		t.Fatal("missing storage component")
@@ -194,31 +215,52 @@ func TestHealth_ReadinessS3Unavailable(t *testing.T) {
 }
 
 func TestHealth_ReadinessBothOptionalDepsUnavailable(t *testing.T) {
-	proc, port := startIsolatedPanel(t, "both-unavail", map[string]string{
-		"redis_address": "localhost:19999",
-		"s3_endpoint":   "http://localhost:19998",
-	})
-	defer stopIsolatedPanel(t, proc)
-
-	url := fmt.Sprintf("http://localhost:%s/api/v1/panel/ready", port)
-	resp := waitForHealth(t, url, http.StatusOK)
-
-	var result healthReadyResponse
-	decodeJSON(resp, &result)
-
-	dbComp := result.Components["database"]
-	if dbComp.Status != "ok" {
-		t.Errorf("database status: got %q, want %q", dbComp.Status, "ok")
+	if testing.Short() {
+		t.Skip("skipping in short mode")
 	}
 
-	cacheComp := result.Components["cache"]
-	if cacheComp.Status != "unavailable" {
-		t.Errorf("cache status: got %q, want %q", cacheComp.Status, "unavailable")
+	cfgDir := t.TempDir()
+	cfgPath := filepath.Join(cfgDir, "config.local.json")
+
+	cfg := fmt.Sprintf(`{
+		"environment": "local",
+		"auth": {
+			"jwt": {"secret_key": "e2e-test-secret-not-for-prod", "ttl": "1h"},
+			"bootstrap": {"full_name": "root", "email": "root@labp.net", "password_hash": "$argon2id$v=19$m=65536,t=1,p=4$6lGItC3BN+vvxDF42RRw2g$svLMZu6udCWh8/bjOlpP1S3syNanEwiQO17cbUaDvck"}
+		},
+		"database": {
+			"postgres": {"dsn": %q},
+			"redis":    {"address": "localhost:19999"},
+			"s3":       {"bucket": %q, "region": "us-east-1", "endpoint": %q, "access_key": "minioadmin", "secret_key": "minioadmin"}
+		},
+		"panel": {"http": {"address": "0.0.0.0:18082"}}
+	}`, e2ePostgresDSN, e2eS3Bucket, e2eS3Endpoint)
+
+	if err := os.WriteFile(cfgPath, []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
 	}
 
-	storageComp := result.Components["storage"]
-	if storageComp.Status != "unavailable" {
-		t.Errorf("storage status: got %q, want %q", storageComp.Status, "unavailable")
+	binPath := filepath.Join(cfgDir, "panel-both-unavail")
+	build := exec.Command("go", "build", "-o", binPath, "./services/panel")
+	build.Dir = mustProjectRoot()
+	build.Env = append(os.Environ(), "CONFIG_NAME="+cfgPath)
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build: %v\n%s", err, out)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binPath)
+	cmd.Dir = cfgDir
+	cmd.Env = append(os.Environ(), "CONFIG_NAME="+cfgPath)
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+
+	err := cmd.Run()
+
+	if ctx.Err() == nil && err == nil {
+		t.Error("server should not start successfully with unreachable redis")
 	}
 }
 

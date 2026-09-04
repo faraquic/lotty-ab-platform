@@ -24,12 +24,13 @@ type FlagRepo interface {
 }
 
 type Service struct {
-	repo FlagRepo
-	log  *zap.Logger
+	repo      FlagRepo
+	refresher SnapshotRefresher
+	log       *zap.Logger
 }
 
-func NewService(repo FlagRepo, log *zap.Logger) *Service {
-	return &Service{repo, log}
+func NewService(repo FlagRepo, refresher SnapshotRefresher, log *zap.Logger) *Service {
+	return &Service{repo, refresher, log}
 }
 
 func (s *Service) Create(ctx context.Context, callerID string, req CreateFlagRequest) (FlagResponse, error) {
@@ -69,6 +70,8 @@ func (s *Service) Create(ctx context.Context, callerID string, req CreateFlagReq
 		zap.String(logger.FieldFlagType, string(typeFlag)),
 		zap.String(logger.FieldActorID, callerID),
 	)
+
+	s.notifyRefresh()
 
 	return s.GetByID(ctx, id)
 }
@@ -144,6 +147,8 @@ func (s *Service) Update(ctx context.Context, callerID, id string, req UpdateFla
 		zap.String(logger.FieldActorID, callerID),
 	)
 
+	s.notifyRefresh()
+
 	return ToResponse(fwo), nil
 }
 
@@ -157,5 +162,11 @@ func (s *Service) Delete(ctx context.Context, callerID, id string) error {
 		zap.String(logger.FieldActorID, callerID),
 	)
 
+	s.notifyRefresh()
+
 	return nil
+}
+
+func (s *Service) notifyRefresh() {
+	s.refresher.Refresh()
 }

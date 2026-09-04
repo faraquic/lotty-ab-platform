@@ -15,6 +15,7 @@ import (
 	libauth "github.com/faraquic/lotty-ab-platform/pkg/auth"
 	"github.com/faraquic/lotty-ab-platform/pkg/config"
 	"github.com/faraquic/lotty-ab-platform/pkg/middleware"
+	"github.com/faraquic/lotty-ab-platform/pkg/snapshot"
 	authdomain "github.com/faraquic/lotty-ab-platform/services/panel/domain/auth"
 	flagsdomain "github.com/faraquic/lotty-ab-platform/services/panel/domain/flags"
 	healthdomain "github.com/faraquic/lotty-ab-platform/services/panel/domain/health"
@@ -22,7 +23,7 @@ import (
 	usersdomain "github.com/faraquic/lotty-ab-platform/services/panel/domain/users"
 )
 
-func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisClient *rueidis.Client, s3Client *s3.Client) *gin.Engine {
+func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisClient *rueidis.Client, s3Client *s3.Client) (*gin.Engine, flagsdomain.SnapshotRefresher) {
 	r := gin.New()
 	r.HandleMethodNotAllowed = true
 
@@ -30,7 +31,8 @@ func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisCli
 
 	apiV1 := r.Group("/api/v1/panel")
 
-	healthdomain.NewHandler(pool, redisClient, s3Client, cfg.Environment, log).RegisterRoutes(apiV1)
+	snapStorage := snapshot.NewSnapshotStorage(redisClient, log)
+	healthdomain.NewHandler(pool, redisClient, s3Client, snapStorage, cfg.Environment, log).RegisterRoutes(apiV1)
 
 	tokenizer := libauth.NewJWTManager(cfg.Auth.JWT.SecretKey, cfg.Auth.JWT.TTL)
 	authRepo := authdomain.NewRepository(pool)
@@ -57,7 +59,9 @@ func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisCli
 	}
 
 	flagsRepo := flagsdomain.NewRepository(pool)
-	flagsSvc := flagsdomain.NewService(flagsRepo, log)
+	refresher := flagsdomain.NewRefresher(flagsRepo, snapStorage, log)
+	bootstrapSnapshotRefresh(log, refresher)
+	flagsSvc := flagsdomain.NewService(flagsRepo, refresher, log)
 	flagsHandler := flagsdomain.NewHandler(flagsSvc, log)
 
 	authMW, err := authdomain.NewMiddleware(cfg, authSvc, log)
@@ -76,7 +80,7 @@ func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisCli
 
 	metricsHandler.RegisterRoutes(anyAuthGroup)
 
-	return r
+	return r, refresher
 }
 
 func bootstrapAdmin(log *zap.Logger, svc *usersdomain.Service, cfg config.BootstrapConfig) {
@@ -152,6 +156,20 @@ func bootstrapDevMetrics(log *zap.Logger, pool *pgxpool.Pool, svc *metricsdomain
 			log.Info("dev metrics bootstrap: metric created", zap.String("metric.key", req.Key))
 		}
 	}
+}
+
+func bootstrapSnapshotRefresh(log *zap.Logger, refresher flagsdomain.SnapshotRefresher) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := refresher.RefreshSync(ctx); err != nil {
+		log.Warn("snapshot bootstrap refresh failed; will retry on first mutation",
+			zap.Error(err),
+		)
+		return
+	}
+
+	log.Info("snapshot bootstrap refresh completed")
 }
 
 func addMiddleware(r *gin.Engine, cfg *config.Config, log *zap.Logger) {

@@ -54,13 +54,13 @@ func main() {
 		log,
 	)
 	if err != nil {
-		log.Warn("redis unavailable; continuing without cache",
+		log.Error("redis unavailable; startup aborted",
 			zap.String(logger.FieldCacheSystem, "redis"),
 			zap.Error(err),
 		)
-	} else {
-		defer (*redis).Close()
+		os.Exit(1)
 	}
+	defer (*redis).Close()
 
 	s3, err := database.NewS3(
 		connectCtx,
@@ -81,7 +81,7 @@ func main() {
 	}
 
 	setGinMode(cfg.Environment, log)
-	r := newRouter(log, cfg, postgres, redis, s3)
+	r, refresher := newRouter(log, cfg, postgres, redis, s3)
 
 	log.Info("server listening",
 		zap.String(logger.FieldServerAddress, cfg.Panel.HTTP.Address),
@@ -122,6 +122,8 @@ func main() {
 
 		return
 	}
+
+	refresher.Stop()
 
 	log.Info("graceful shutdown completed",
 		zap.String(logger.FieldServerAddress, cfg.Panel.HTTP.Address),
