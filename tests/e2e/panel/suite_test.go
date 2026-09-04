@@ -161,7 +161,7 @@ func runSuite(m *testing.M) int {
 		"environment": "local",
 		"auth": {
 			"jwt": {"secret_key": "e2e-test-secret-not-for-prod", "ttl": "1h"},
-			"bootstrap": {"full_name": "root", "email": "root@labp.net", "password": "root!@#$"}
+			"bootstrap": {"full_name": "root", "email": "root@labp.net", "password_hash": "$argon2id$v=19$m=65536,t=1,p=4$6lGItC3BN+vvxDF42RRw2g$svLMZu6udCWh8/bjOlpP1S3syNanEwiQO17cbUaDvck"}
 		},
 		"database": {
 			"postgres": {"dsn": %q},
@@ -199,7 +199,7 @@ func runSuite(m *testing.M) int {
 
 	baseURL = fmt.Sprintf("http://localhost:%s", testPort)
 
-	waitForServer(baseURL + "/api/panel/v1/health")
+	waitForServer(baseURL + "/api/v1/panel/health")
 
 	adminToken = login("root@labp.net", "root!@#$")
 	if adminToken == "" {
@@ -379,42 +379,42 @@ func doRequestWithRawBody(method, path, token string, body io.Reader) *http.Resp
 
 func getMe(t *testing.T, token string) *http.Response {
 	t.Helper()
-	return doRequest(http.MethodGet, "/api/panel/v1/me", token, nil)
+	return doRequest(http.MethodGet, "/api/v1/panel/me", token, nil)
 }
 
 func getUser(t *testing.T, id string) *http.Response {
 	t.Helper()
-	return doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/users/%s", id), adminToken, nil)
+	return doRequest(http.MethodGet, fmt.Sprintf("/api/v1/panel/users/%s", id), adminToken, nil)
 }
 
 func updateUser(t *testing.T, id string, body io.Reader) *http.Response {
 	t.Helper()
-	return doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/users/%s", id), adminToken, body)
+	return doRequest(http.MethodPatch, fmt.Sprintf("/api/v1/panel/users/%s", id), adminToken, body)
 }
 
 func deleteUser(t *testing.T, id string) *http.Response {
 	t.Helper()
-	return doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/users/%s", id), adminToken, nil)
+	return doRequest(http.MethodDelete, fmt.Sprintf("/api/v1/panel/users/%s", id), adminToken, nil)
 }
 
 func uploadAvatar(t *testing.T, token, filename string, data []byte) *http.Response {
 	t.Helper()
-	return doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", filename, data)
+	return doMultipartRequest("/api/v1/panel/me/avatar", token, "avatar", filename, data)
 }
 
 func deleteAvatar(t *testing.T, token string) *http.Response {
 	t.Helper()
-	return doMultipartRequest("/api/panel/v1/me/avatar", token, "avatar", "", nil)
+	return doMultipartRequest("/api/v1/panel/me/avatar", token, "avatar", "", nil)
 }
 
 func uploadUserAvatar(t *testing.T, token string, userID string, filename string, data []byte) *http.Response {
 	t.Helper()
-	return doMultipartRequest(fmt.Sprintf("/api/panel/v1/users/%s/avatar", userID), token, "avatar", filename, data)
+	return doMultipartRequest(fmt.Sprintf("/api/v1/panel/users/%s/avatar", userID), token, "avatar", filename, data)
 }
 
 func deleteUserAvatar(t *testing.T, token string, userID string) *http.Response {
 	t.Helper()
-	return doMultipartRequest(fmt.Sprintf("/api/panel/v1/users/%s/avatar", userID), token, "avatar", "", nil)
+	return doMultipartRequest(fmt.Sprintf("/api/v1/panel/users/%s/avatar", userID), token, "avatar", "", nil)
 }
 
 // --- setup helpers ---
@@ -428,7 +428,7 @@ func createUser(t *testing.T, role, prefix string) (string, string) {
 		"password": "testpass123",
 		"role":     role,
 	})
-	resp := doRequest(http.MethodPost, "/api/panel/v1/users", adminToken, body)
+	resp := doRequest(http.MethodPost, "/api/v1/panel/users", adminToken, body)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
@@ -457,7 +457,7 @@ func createAndLoginUser(t *testing.T, role, prefix string) (string, string, stri
 
 func login(email, password string) string {
 	body := jsonBody(map[string]string{"email": email, "password": password})
-	resp := doRequest(http.MethodPost, "/api/panel/v1/login", "", body)
+	resp := doRequest(http.MethodPost, "/api/v1/panel/login", "", body)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {

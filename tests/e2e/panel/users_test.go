@@ -75,7 +75,7 @@ func TestGetMe_InvalidToken(t *testing.T) {
 func TestCreateAndListUser(t *testing.T) {
 	id, email := createUser(t, "viewer", "list-user")
 
-	listResp := doRequest(http.MethodGet, "/api/panel/v1/users?limit=100", adminToken, nil)
+	listResp := doRequest(http.MethodGet, "/api/v1/panel/users?limit=100", adminToken, nil)
 	defer listResp.Body.Close()
 
 	requireStatus(t, listResp, http.StatusOK)
@@ -103,7 +103,7 @@ func TestListUsers_Pagination(t *testing.T) {
 	createUser(t, "viewer", "page-a")
 	createUser(t, "viewer", "page-b")
 
-	resp := doRequest(http.MethodGet, "/api/panel/v1/users?limit=1&offset=0", adminToken, nil)
+	resp := doRequest(http.MethodGet, "/api/v1/panel/users?limit=1&offset=0", adminToken, nil)
 	defer resp.Body.Close()
 
 	requireStatus(t, resp, http.StatusOK)
@@ -135,13 +135,13 @@ func TestListUsers_Pagination_HasNextFalseOnFinalPage(t *testing.T) {
 	createUser(t, "viewer", "final-b")
 
 	// Get total count first
-	firstResp := doRequest(http.MethodGet, "/api/panel/v1/users?limit=1&offset=0", adminToken, nil)
+	firstResp := doRequest(http.MethodGet, "/api/v1/panel/users?limit=1&offset=0", adminToken, nil)
 	defer firstResp.Body.Close()
 	first := decodePaginatedUsersResponse(t, firstResp)
 
 	// Fetch the last page (offset = total - 1)
 	lastOffset := int(first.Meta.Total) - 1
-	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/users?limit=1&offset=%d", lastOffset), adminToken, nil)
+	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/v1/panel/users?limit=1&offset=%d", lastOffset), adminToken, nil)
 	defer resp.Body.Close()
 
 	requireStatus(t, resp, http.StatusOK)
@@ -160,7 +160,7 @@ func TestListUsers_Pagination_HasNextFalseOnFinalPage(t *testing.T) {
 
 func TestListUsers_Pagination_OffsetBeyondTotal(t *testing.T) {
 	// Get baseline total
-	baseResp := doRequest(http.MethodGet, "/api/panel/v1/users?limit=1&offset=0", adminToken, nil)
+	baseResp := doRequest(http.MethodGet, "/api/v1/panel/users?limit=1&offset=0", adminToken, nil)
 	defer baseResp.Body.Close()
 	base := decodePaginatedUsersResponse(t, baseResp)
 
@@ -171,7 +171,7 @@ func TestListUsers_Pagination_OffsetBeyondTotal(t *testing.T) {
 	_ = id2
 
 	// Request offset far beyond total
-	resp := doRequest(http.MethodGet, "/api/panel/v1/users?limit=1&offset=100000", adminToken, nil)
+	resp := doRequest(http.MethodGet, "/api/v1/panel/users?limit=1&offset=100000", adminToken, nil)
 	defer resp.Body.Close()
 
 	requireStatus(t, resp, http.StatusOK)
@@ -192,7 +192,7 @@ func TestListUsers_Pagination_OffsetBeyondTotal(t *testing.T) {
 }
 
 func TestListUsers_DefaultLimit(t *testing.T) {
-	resp := doRequest(http.MethodGet, "/api/panel/v1/users", adminToken, nil)
+	resp := doRequest(http.MethodGet, "/api/v1/panel/users", adminToken, nil)
 	defer resp.Body.Close()
 
 	requireStatus(t, resp, http.StatusOK)
@@ -259,9 +259,9 @@ func TestUsers_RejectsInvalidOrNonexistentIDs(t *testing.T) {
 		wantStatus int
 		wantCode   string
 	}{
-		{"non-numeric id", "/api/panel/v1/users/abc", http.StatusBadRequest, "BAD_REQUEST"},
-		{"negative id", "/api/panel/v1/users/-1", http.StatusBadRequest, "BAD_REQUEST"},
-		{"nonexistent id", "/api/panel/v1/users/0198f4c0-dead-7000-8000-000000000001", http.StatusNotFound, "NOT_FOUND"},
+		{"non-numeric id", "/api/v1/panel/users/abc", http.StatusBadRequest, "BAD_REQUEST"},
+		{"negative id", "/api/v1/panel/users/-1", http.StatusBadRequest, "BAD_REQUEST"},
+		{"nonexistent id", "/api/v1/panel/users/0198f4c0-dead-7000-8000-000000000001", http.StatusNotFound, "NOT_FOUND"},
 	}
 
 	for _, tc := range cases {
@@ -305,7 +305,7 @@ func TestUpdateUserRole(t *testing.T) {
 }
 
 func TestUpdateUser_NonexistentID(t *testing.T) {
-	resp := doRequest(http.MethodPatch, "/api/panel/v1/users/0198f4c0-dead-7000-8000-000000000001", adminToken,
+	resp := doRequest(http.MethodPatch, "/api/v1/panel/users/0198f4c0-dead-7000-8000-000000000001", adminToken,
 		jsonBody(map[string]string{"email": "new@test.local"}))
 	defer resp.Body.Close()
 
@@ -380,7 +380,7 @@ func TestCreateUser_DuplicateEmail(t *testing.T) {
 	email := testEmail("dup-email")
 	createUser(t, "viewer", "dup-email")
 
-	resp := doRequest(http.MethodPost, "/api/panel/v1/users", adminToken,
+	resp := doRequest(http.MethodPost, "/api/v1/panel/users", adminToken,
 		jsonBody(map[string]string{
 			"full_name": testFullName("dup-email-2"),
 			"email":    email,
@@ -396,7 +396,7 @@ func TestCreateUser_DuplicateFullName(t *testing.T) {
 	fullName := testFullName("dup-user")
 	createUser(t, "viewer", "dup-user")
 
-	resp := doRequest(http.MethodPost, "/api/panel/v1/users", adminToken,
+	resp := doRequest(http.MethodPost, "/api/v1/panel/users", adminToken,
 		jsonBody(map[string]string{
 			"full_name": fullName,
 			"email":    testEmail("dup-user-diff"),
@@ -410,7 +410,7 @@ func TestCreateUser_DuplicateFullName(t *testing.T) {
 
 func TestViewerCannotManageUsers(t *testing.T) {
 	viewerEmail := testEmail("viewer-cant-manage")
-	createResp := doRequest(http.MethodPost, "/api/panel/v1/users", adminToken,
+	createResp := doRequest(http.MethodPost, "/api/v1/panel/users", adminToken,
 		jsonBody(map[string]string{
 			"full_name": testFullName("viewer-cant-manage"),
 			"email":    viewerEmail,
@@ -430,7 +430,7 @@ func TestViewerCannotManageUsers(t *testing.T) {
 	targetID, _ := createUser(t, "viewer", "viewer-manage-target")
 
 	t.Run("cannot create user", func(t *testing.T) {
-		resp := doRequest(http.MethodPost, "/api/panel/v1/users", viewerToken,
+		resp := doRequest(http.MethodPost, "/api/v1/panel/users", viewerToken,
 			jsonBody(map[string]string{
 				"full_name": testFullName("should-not-exist"),
 				"email":    testEmail("should-not-exist"),
@@ -442,26 +442,26 @@ func TestViewerCannotManageUsers(t *testing.T) {
 	})
 
 	t.Run("cannot list users", func(t *testing.T) {
-		resp := doRequest(http.MethodGet, "/api/panel/v1/users", viewerToken, nil)
+		resp := doRequest(http.MethodGet, "/api/v1/panel/users", viewerToken, nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusForbidden)
 	})
 
 	t.Run("cannot get user by id", func(t *testing.T) {
-		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/users/%s", targetID), viewerToken, nil)
+		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/v1/panel/users/%s", targetID), viewerToken, nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusForbidden)
 	})
 
 	t.Run("cannot update user", func(t *testing.T) {
-		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/users/%s", targetID), viewerToken,
+		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/v1/panel/users/%s", targetID), viewerToken,
 			jsonBody(map[string]string{"email": "hacker@test.local"}))
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusForbidden)
 	})
 
 	t.Run("cannot delete user", func(t *testing.T) {
-		resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/users/%s", targetID), viewerToken, nil)
+		resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/v1/panel/users/%s", targetID), viewerToken, nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusForbidden)
 	})
@@ -471,19 +471,19 @@ func TestUnauthenticatedUser_RejectedFromAllEndpoints(t *testing.T) {
 	id, _ := createUser(t, "viewer", "unauth-target")
 
 	t.Run("GET /users", func(t *testing.T) {
-		resp := doRequest(http.MethodGet, "/api/panel/v1/users", "", nil)
+		resp := doRequest(http.MethodGet, "/api/v1/panel/users", "", nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusUnauthorized)
 	})
 
 	t.Run("GET /users/:id", func(t *testing.T) {
-		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/users/%s", id), "", nil)
+		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/v1/panel/users/%s", id), "", nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusUnauthorized)
 	})
 
 	t.Run("POST /users", func(t *testing.T) {
-		resp := doRequest(http.MethodPost, "/api/panel/v1/users", "",
+		resp := doRequest(http.MethodPost, "/api/v1/panel/users", "",
 			jsonBody(map[string]string{
 				"full_name": testFullName("should-not-work"),
 				"email":    testEmail("should-not-work"),
@@ -495,14 +495,14 @@ func TestUnauthenticatedUser_RejectedFromAllEndpoints(t *testing.T) {
 	})
 
 	t.Run("PATCH /users/:id", func(t *testing.T) {
-		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/users/%s", id), "",
+		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/v1/panel/users/%s", id), "",
 			jsonBody(map[string]string{"email": "hacker@test.local"}))
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusUnauthorized)
 	})
 
 	t.Run("DELETE /users/:id", func(t *testing.T) {
-		resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/users/%s", id), "", nil)
+		resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/v1/panel/users/%s", id), "", nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusUnauthorized)
 	})
@@ -530,7 +530,7 @@ func TestCreateUser_RejectsInvalidRequests(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			resp := doRequest(http.MethodPost, "/api/panel/v1/users", adminToken, jsonBody(tc.payload))
+			resp := doRequest(http.MethodPost, "/api/v1/panel/users", adminToken, jsonBody(tc.payload))
 			defer resp.Body.Close()
 			requireErrorResponse(t, resp, http.StatusBadRequest, "BAD_REQUEST")
 		})
@@ -538,7 +538,7 @@ func TestCreateUser_RejectsInvalidRequests(t *testing.T) {
 }
 
 func TestCreateUser_InvalidJSON(t *testing.T) {
-	resp := doRequest(http.MethodPost, "/api/panel/v1/users", adminToken,
+	resp := doRequest(http.MethodPost, "/api/v1/panel/users", adminToken,
 		strings.NewReader("{invalid json"))
 	defer resp.Body.Close()
 
@@ -577,7 +577,7 @@ func TestCreateUser_NoSecretsInResponse(t *testing.T) {
 }
 
 func TestListUsers_NoSecretsInResponse(t *testing.T) {
-	resp := doRequest(http.MethodGet, "/api/panel/v1/users?limit=5", adminToken, nil)
+	resp := doRequest(http.MethodGet, "/api/v1/panel/users?limit=5", adminToken, nil)
 	defer resp.Body.Close()
 
 	var raw struct {
@@ -596,7 +596,7 @@ func TestListUsers_NoSecretsInResponse(t *testing.T) {
 }
 
 func TestListUsers_JSONContentType(t *testing.T) {
-	resp := doRequest(http.MethodGet, "/api/panel/v1/users", adminToken, nil)
+	resp := doRequest(http.MethodGet, "/api/v1/panel/users", adminToken, nil)
 	defer resp.Body.Close()
 
 	requireJSONContentType(t, resp)

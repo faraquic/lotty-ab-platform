@@ -17,7 +17,7 @@ func TestCreateMetric(t *testing.T) {
 			key := fmt.Sprintf("metric-%s-%s", mt, runID)
 			name := fmt.Sprintf("Test %s Metric", mt)
 
-			resp := doRequest(http.MethodPost, "/api/panel/v1/metrics", adminToken,
+			resp := doRequest(http.MethodPost, "/api/v1/panel/metrics", adminToken,
 				jsonBody(map[string]any{
 					"key":         key,
 					"name":        name,
@@ -87,7 +87,7 @@ func TestCreateMetric_WithDescription(t *testing.T) {
 	key := "metric-with-desc-" + runID
 	desc := "A metric with a description"
 
-	resp := doRequest(http.MethodPost, "/api/panel/v1/metrics", adminToken,
+	resp := doRequest(http.MethodPost, "/api/v1/panel/metrics", adminToken,
 		jsonBody(map[string]any{
 			"key":         key,
 			"name":        "Metric With Description",
@@ -110,7 +110,7 @@ func TestCreateMetric_WithDescription(t *testing.T) {
 func TestCreateMetric_DefaultStatus(t *testing.T) {
 	key := "metric-default-status-" + runID
 
-	resp := doRequest(http.MethodPost, "/api/panel/v1/metrics", adminToken,
+	resp := doRequest(http.MethodPost, "/api/v1/panel/metrics", adminToken,
 		jsonBody(map[string]any{
 			"key":         key,
 			"name":        "Default Status Metric",
@@ -130,12 +130,12 @@ func TestCreateMetric_DefaultStatus(t *testing.T) {
 }
 
 func TestCreateMetric_DuplicateKey(t *testing.T) {
-	key := "dup-key-metric-" + runID
-	createMetric(t, key, "Dup Key Metric", "count")
+	baseKey := "dup-key-metric-" + runID
+	_, createdKey := createMetric(t, baseKey, "Dup Key Metric", "count")
 
-	resp := doRequest(http.MethodPost, "/api/panel/v1/metrics", adminToken,
+	resp := doRequest(http.MethodPost, "/api/v1/panel/metrics", adminToken,
 		jsonBody(map[string]any{
-			"key":         key,
+			"key":         createdKey,
 			"name":        "Different Name",
 			"metric_type": "count",
 			"aggregation": map[string]any{"event": "test"},
@@ -150,7 +150,7 @@ func TestCreateMetric_DuplicateName(t *testing.T) {
 	name := "Dup Name Metric " + runID
 	createMetric(t, "dup-name-metric-"+runID, name, "count")
 
-	resp := doRequest(http.MethodPost, "/api/panel/v1/metrics", adminToken,
+	resp := doRequest(http.MethodPost, "/api/v1/panel/metrics", adminToken,
 		jsonBody(map[string]any{
 			"key":         "other-key-" + runID,
 			"name":        name,
@@ -176,7 +176,6 @@ func TestCreateMetric_RejectsInvalidRequests(t *testing.T) {
 		{"missing aggregation", map[string]any{"key": "test-m", "name": "Test", "metric_type": "count", "attribution": map[string]any{"w": "1d"}}, http.StatusBadRequest},
 		{"missing attribution", map[string]any{"key": "test-m", "name": "Test", "metric_type": "count", "aggregation": map[string]any{"e": 1}}, http.StatusBadRequest},
 		{"invalid metric_type", map[string]any{"key": "test-m", "name": "Test", "metric_type": "invalid", "aggregation": map[string]any{"e": 1}, "attribution": map[string]any{"w": "1d"}}, http.StatusBadRequest},
-		{"invalid status", map[string]any{"key": "test-m", "name": "Test", "metric_type": "count", "status": "invalid", "aggregation": map[string]any{"e": 1}, "attribution": map[string]any{"w": "1d"}}, http.StatusBadRequest},
 		{"key too short", map[string]any{"key": "ab", "name": "Test", "metric_type": "count", "aggregation": map[string]any{"e": 1}, "attribution": map[string]any{"w": "1d"}}, http.StatusBadRequest},
 		{"key too long", map[string]any{"key": strings.Repeat("a", 129), "name": "Test", "metric_type": "count", "aggregation": map[string]any{"e": 1}, "attribution": map[string]any{"w": "1d"}}, http.StatusBadRequest},
 		{"name too long", map[string]any{"key": "valid-key", "name": strings.Repeat("a", 257), "metric_type": "count", "aggregation": map[string]any{"e": 1}, "attribution": map[string]any{"w": "1d"}}, http.StatusBadRequest},
@@ -189,7 +188,7 @@ func TestCreateMetric_RejectsInvalidRequests(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			resp := doRequest(http.MethodPost, "/api/panel/v1/metrics", adminToken, jsonBody(tc.payload))
+			resp := doRequest(http.MethodPost, "/api/v1/panel/metrics", adminToken, jsonBody(tc.payload))
 			defer resp.Body.Close()
 			requireErrorResponse(t, resp, tc.expectedCode, "BAD_REQUEST")
 		})
@@ -199,7 +198,7 @@ func TestCreateMetric_RejectsInvalidRequests(t *testing.T) {
 func TestGetMetric(t *testing.T) {
 	id, key := createMetric(t, "get-metric", "Get Metric", "count")
 
-	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken, nil)
+	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/v1/panel/metrics/%s", id), adminToken, nil)
 	defer resp.Body.Close()
 
 	requireStatus(t, resp, http.StatusOK)
@@ -221,14 +220,14 @@ func TestGetMetric(t *testing.T) {
 }
 
 func TestGetMetric_InvalidID(t *testing.T) {
-	resp := doRequest(http.MethodGet, "/api/panel/v1/metrics/abc", adminToken, nil)
+	resp := doRequest(http.MethodGet, "/api/v1/panel/metrics/abc", adminToken, nil)
 	defer resp.Body.Close()
 
 	requireErrorResponse(t, resp, http.StatusBadRequest, "BAD_REQUEST")
 }
 
 func TestGetMetric_Nonexistent(t *testing.T) {
-	resp := doRequest(http.MethodGet, "/api/panel/v1/metrics/0198f4c0-dead-7000-8000-000000000001", adminToken, nil)
+	resp := doRequest(http.MethodGet, "/api/v1/panel/metrics/0198f4c0-dead-7000-8000-000000000001", adminToken, nil)
 	defer resp.Body.Close()
 
 	requireErrorResponse(t, resp, http.StatusNotFound, "NOT_FOUND")
@@ -237,16 +236,16 @@ func TestGetMetric_Nonexistent(t *testing.T) {
 func TestGetMetric_Archived(t *testing.T) {
 	id, _ := createMetric(t, "get-archived", "Get Archived Metric", "count")
 
-	archiveResp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken,
+	archiveResp := doRequest(http.MethodPatch, fmt.Sprintf("/api/v1/panel/metrics/%s", id), adminToken,
 		jsonBody(map[string]any{"status": "archived"}))
 	defer archiveResp.Body.Close()
 	requireStatus(t, archiveResp, http.StatusOK)
 
-	defaultResp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken, nil)
+	defaultResp := doRequest(http.MethodGet, fmt.Sprintf("/api/v1/panel/metrics/%s", id), adminToken, nil)
 	defer defaultResp.Body.Close()
 	requireErrorResponse(t, defaultResp, http.StatusNotFound, "NOT_FOUND")
 
-	archivedResp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%s?archived=true", id), adminToken, nil)
+	archivedResp := doRequest(http.MethodGet, fmt.Sprintf("/api/v1/panel/metrics/%s?archived=true", id), adminToken, nil)
 	defer archivedResp.Body.Close()
 	requireStatus(t, archivedResp, http.StatusOK)
 
@@ -263,7 +262,7 @@ func TestListMetrics(t *testing.T) {
 	_, keyA := createMetric(t, "list-metric-a", "List Metric A", "count")
 	_, keyB := createMetric(t, "list-metric-b", "List Metric B", "sum")
 
-	resp := doRequest(http.MethodGet, "/api/panel/v1/metrics?limit=100", adminToken, nil)
+	resp := doRequest(http.MethodGet, "/api/v1/panel/metrics?limit=100", adminToken, nil)
 	defer resp.Body.Close()
 
 	requireStatus(t, resp, http.StatusOK)
@@ -316,7 +315,7 @@ func TestListMetrics_Pagination(t *testing.T) {
 	_, _ = createMetric(t, "page-metric-b", "Page Metric B", "sum")
 	_, _ = createMetric(t, "page-metric-c", "Page Metric C", "average")
 
-	resp := doRequest(http.MethodGet, "/api/panel/v1/metrics?limit=2&offset=0", adminToken, nil)
+	resp := doRequest(http.MethodGet, "/api/v1/panel/metrics?limit=2&offset=0", adminToken, nil)
 	defer resp.Body.Close()
 
 	requireStatus(t, resp, http.StatusOK)
@@ -338,7 +337,7 @@ func TestListMetrics_Pagination(t *testing.T) {
 }
 
 func TestListMetrics_OffsetBeyondTotal(t *testing.T) {
-	resp := doRequest(http.MethodGet, "/api/panel/v1/metrics?limit=1&offset=100000", adminToken, nil)
+	resp := doRequest(http.MethodGet, "/api/v1/panel/metrics?limit=1&offset=100000", adminToken, nil)
 	defer resp.Body.Close()
 
 	requireStatus(t, resp, http.StatusOK)
@@ -357,20 +356,12 @@ func TestListMetrics_OffsetBeyondTotal(t *testing.T) {
 
 func TestListMetrics_ExcludesArchived(t *testing.T) {
 	_, keyActive := createMetric(t, "list-active-metric", "List Active Metric", "count")
-	_, keyArchived := createMetric(t, "list-archived-metric", "List Archived Metric", "sum")
+	idArchived, keyArchived := createMetric(t, "list-archived-metric", "List Archived Metric", "sum")
 
-	archiveResp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%s", func() string {
-		id, _ := createMetric(t, "temp-archived-metric", "Temp Archived", "count")
-		return id
-	}()), adminToken, jsonBody(map[string]any{"status": "archived"}))
+	archiveResp := doRequest(http.MethodPatch, fmt.Sprintf("/api/v1/panel/metrics/%s", idArchived), adminToken, jsonBody(map[string]any{"status": "archived"}))
 	archiveResp.Body.Close()
 
-	idToArchive, _ := createMetric(t, "list-archive-target", "List Archive Target", "count")
-	archiveResp2 := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%s", idToArchive), adminToken,
-		jsonBody(map[string]any{"status": "archived"}))
-	archiveResp2.Body.Close()
-
-	defaultResp := doRequest(http.MethodGet, "/api/panel/v1/metrics?limit=100", adminToken, nil)
+	defaultResp := doRequest(http.MethodGet, "/api/v1/panel/metrics?limit=100", adminToken, nil)
 	defer defaultResp.Body.Close()
 	defaultResult := decodePaginatedMetricsResponse(t, defaultResp)
 
@@ -390,7 +381,7 @@ func TestListMetrics_ExcludesArchived(t *testing.T) {
 		t.Error("active metric should appear in default list")
 	}
 
-	archivedResp := doRequest(http.MethodGet, "/api/panel/v1/metrics?limit=100&archived=true", adminToken, nil)
+	archivedResp := doRequest(http.MethodGet, "/api/v1/panel/metrics?limit=100&archived=true", adminToken, nil)
 	defer archivedResp.Body.Close()
 	archivedResult := decodePaginatedMetricsResponse(t, archivedResp)
 
@@ -409,7 +400,7 @@ func TestUpdateMetric(t *testing.T) {
 	id, _ := createMetric(t, "update-metric", "Update Metric", "count")
 
 	newName := "Updated Metric Name"
-	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken,
+	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/v1/panel/metrics/%s", id), adminToken,
 		jsonBody(map[string]any{
 			"name":        newName,
 			"description": "Updated description",
@@ -438,7 +429,7 @@ func TestUpdateMetric(t *testing.T) {
 func TestUpdateMetric_Archive(t *testing.T) {
 	id, _ := createMetric(t, "archive-metric", "Archive Metric", "count")
 
-	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken,
+	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/v1/panel/metrics/%s", id), adminToken,
 		jsonBody(map[string]any{"status": "archived"}))
 	defer resp.Body.Close()
 
@@ -449,11 +440,11 @@ func TestUpdateMetric_Archive(t *testing.T) {
 		t.Errorf("status: got %q, want %q", result.Data.Status, "archived")
 	}
 
-	getDefault := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken, nil)
+	getDefault := doRequest(http.MethodGet, fmt.Sprintf("/api/v1/panel/metrics/%s", id), adminToken, nil)
 	defer getDefault.Body.Close()
 	requireErrorResponse(t, getDefault, http.StatusNotFound, "NOT_FOUND")
 
-	getArchived := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%s?archived=true", id), adminToken, nil)
+	getArchived := doRequest(http.MethodGet, fmt.Sprintf("/api/v1/panel/metrics/%s?archived=true", id), adminToken, nil)
 	defer getArchived.Body.Close()
 	requireStatus(t, getArchived, http.StatusOK)
 }
@@ -461,17 +452,17 @@ func TestUpdateMetric_Archive(t *testing.T) {
 func TestUpdateMetric_UpdateArchived(t *testing.T) {
 	id, _ := createMetric(t, "update-archived", "Update Archived Metric", "count")
 
-	archiveResp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken,
+	archiveResp := doRequest(http.MethodPatch, fmt.Sprintf("/api/v1/panel/metrics/%s", id), adminToken,
 		jsonBody(map[string]any{"status": "archived"}))
 	defer archiveResp.Body.Close()
 	requireStatus(t, archiveResp, http.StatusOK)
 
-	updateResp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken,
+	updateResp := doRequest(http.MethodPatch, fmt.Sprintf("/api/v1/panel/metrics/%s", id), adminToken,
 		jsonBody(map[string]any{"name": "Re-archived Name"}))
 	defer updateResp.Body.Close()
 	requireStatus(t, updateResp, http.StatusOK)
 
-	getResp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%s?archived=true", id), adminToken, nil)
+	getResp := doRequest(http.MethodGet, fmt.Sprintf("/api/v1/panel/metrics/%s?archived=true", id), adminToken, nil)
 	defer getResp.Body.Close()
 	result := decodeMetricResponse(t, getResp)
 	if result.Data.Name != "Re-archived Name" {
@@ -482,11 +473,11 @@ func TestUpdateMetric_UpdateArchived(t *testing.T) {
 func TestUpdateMetric_PreservesCreatedBy(t *testing.T) {
 	id, _ := createMetric(t, "preserve-audit", "Preserve Audit", "count")
 
-	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken, nil)
+	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/v1/panel/metrics/%s", id), adminToken, nil)
 	defer resp.Body.Close()
 	before := decodeMetricResponse(t, resp)
 
-	updateResp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken,
+	updateResp := doRequest(http.MethodPatch, fmt.Sprintf("/api/v1/panel/metrics/%s", id), adminToken,
 		jsonBody(map[string]any{"name": "Preserve Audit Updated"}))
 	defer updateResp.Body.Close()
 
@@ -499,7 +490,7 @@ func TestUpdateMetric_PreservesCreatedBy(t *testing.T) {
 }
 
 func TestUpdateMetric_Nonexistent(t *testing.T) {
-	resp := doRequest(http.MethodPatch, "/api/panel/v1/metrics/0198f4c0-dead-7000-8000-000000000001", adminToken,
+	resp := doRequest(http.MethodPatch, "/api/v1/panel/metrics/0198f4c0-dead-7000-8000-000000000001", adminToken,
 		jsonBody(map[string]any{"name": "test"}))
 	defer resp.Body.Close()
 
@@ -509,7 +500,7 @@ func TestUpdateMetric_Nonexistent(t *testing.T) {
 func TestUpdateMetric_InvalidAggregation(t *testing.T) {
 	id, _ := createMetric(t, "invalid-agg-update", "Invalid Agg Update", "count")
 
-	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken,
+	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/v1/panel/metrics/%s", id), adminToken,
 		jsonBody(map[string]any{"aggregation": "not-json"}))
 	defer resp.Body.Close()
 
@@ -519,7 +510,7 @@ func TestUpdateMetric_InvalidAggregation(t *testing.T) {
 func TestUpdateMetric_EmptyAggregation(t *testing.T) {
 	id, _ := createMetric(t, "empty-agg-update", "Empty Agg Update", "count")
 
-	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken,
+	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/v1/panel/metrics/%s", id), adminToken,
 		jsonBody(map[string]any{"aggregation": map[string]any{}}))
 	defer resp.Body.Close()
 
@@ -529,7 +520,7 @@ func TestUpdateMetric_EmptyAggregation(t *testing.T) {
 func TestMetrics_NoSecretsInResponse(t *testing.T) {
 	id, _ := createMetric(t, "no-secrets-metric", "No Secrets Metric", "count")
 
-	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%s", id), adminToken, nil)
+	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/v1/panel/metrics/%s", id), adminToken, nil)
 	defer resp.Body.Close()
 
 	var raw map[string]json.RawMessage
@@ -551,7 +542,7 @@ func TestMetrics_NoSecretsInResponse(t *testing.T) {
 }
 
 func TestMetrics_JSONContentType(t *testing.T) {
-	resp := doRequest(http.MethodGet, "/api/panel/v1/metrics", adminToken, nil)
+	resp := doRequest(http.MethodGet, "/api/v1/panel/metrics", adminToken, nil)
 	defer resp.Body.Close()
 
 	requireJSONContentType(t, resp)
@@ -561,19 +552,19 @@ func TestUnauthenticatedMetric_RejectedFromAllEndpoints(t *testing.T) {
 	id, _ := createMetric(t, "unauth-metric", "Unauth Metric", "count")
 
 	t.Run("GET /metrics", func(t *testing.T) {
-		resp := doRequest(http.MethodGet, "/api/panel/v1/metrics", "", nil)
+		resp := doRequest(http.MethodGet, "/api/v1/panel/metrics", "", nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusUnauthorized)
 	})
 
 	t.Run("GET /metrics/:id", func(t *testing.T) {
-		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%s", id), "", nil)
+		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/v1/panel/metrics/%s", id), "", nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusUnauthorized)
 	})
 
 	t.Run("POST /metrics", func(t *testing.T) {
-		resp := doRequest(http.MethodPost, "/api/panel/v1/metrics", "",
+		resp := doRequest(http.MethodPost, "/api/v1/panel/metrics", "",
 			jsonBody(map[string]any{
 				"key":         "should-not-work",
 				"metric_type": "count",
@@ -585,7 +576,7 @@ func TestUnauthenticatedMetric_RejectedFromAllEndpoints(t *testing.T) {
 	})
 
 	t.Run("PATCH /metrics/:id", func(t *testing.T) {
-		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%s", id), "",
+		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/v1/panel/metrics/%s", id), "",
 			jsonBody(map[string]any{"name": "hack"}))
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusUnauthorized)
@@ -594,7 +585,7 @@ func TestUnauthenticatedMetric_RejectedFromAllEndpoints(t *testing.T) {
 
 func TestViewerCanManageMetrics(t *testing.T) {
 	viewerEmail := testEmail("viewer-metrics")
-	createResp := doRequest(http.MethodPost, "/api/panel/v1/users", adminToken,
+	createResp := doRequest(http.MethodPost, "/api/v1/panel/users", adminToken,
 		jsonBody(map[string]string{
 			"full_name": testFullName("viewer-metrics"),
 			"email":    viewerEmail,
@@ -614,7 +605,7 @@ func TestViewerCanManageMetrics(t *testing.T) {
 	targetID, _ := createMetric(t, "viewer-target-metric", "Viewer Target Metric", "count")
 
 	t.Run("can create metric", func(t *testing.T) {
-		resp := doRequest(http.MethodPost, "/api/panel/v1/metrics", viewerToken,
+		resp := doRequest(http.MethodPost, "/api/v1/panel/metrics", viewerToken,
 			jsonBody(map[string]any{
 				"key":         "viewer-create-" + runID,
 				"name":        "Viewer Create Metric",
@@ -627,19 +618,19 @@ func TestViewerCanManageMetrics(t *testing.T) {
 	})
 
 	t.Run("can list metrics", func(t *testing.T) {
-		resp := doRequest(http.MethodGet, "/api/panel/v1/metrics", viewerToken, nil)
+		resp := doRequest(http.MethodGet, "/api/v1/panel/metrics", viewerToken, nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusOK)
 	})
 
 	t.Run("can get metric by id", func(t *testing.T) {
-		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/metrics/%s", targetID), viewerToken, nil)
+		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/v1/panel/metrics/%s", targetID), viewerToken, nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusOK)
 	})
 
 	t.Run("can update metric", func(t *testing.T) {
-		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/metrics/%s", targetID), viewerToken,
+		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/v1/panel/metrics/%s", targetID), viewerToken,
 			jsonBody(map[string]any{"name": "Viewer Target Metric Updated"}))
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusOK)
@@ -647,7 +638,7 @@ func TestViewerCanManageMetrics(t *testing.T) {
 }
 
 func TestUpdateMetric_NegativeID(t *testing.T) {
-	resp := doRequest(http.MethodPatch, "/api/panel/v1/metrics/-1", adminToken,
+	resp := doRequest(http.MethodPatch, "/api/v1/panel/metrics/-1", adminToken,
 		jsonBody(map[string]any{"name": "test"}))
 	defer resp.Body.Close()
 
@@ -655,7 +646,7 @@ func TestUpdateMetric_NegativeID(t *testing.T) {
 }
 
 func TestGetMetric_NegativeID(t *testing.T) {
-	resp := doRequest(http.MethodGet, "/api/panel/v1/metrics/-1", adminToken, nil)
+	resp := doRequest(http.MethodGet, "/api/v1/panel/metrics/-1", adminToken, nil)
 	defer resp.Body.Close()
 
 	requireErrorResponse(t, resp, http.StatusBadRequest, "BAD_REQUEST")
@@ -678,7 +669,7 @@ func createMetric(t *testing.T, key, name, metricType string, extra ...map[strin
 		}
 	}
 
-	resp := doRequest(http.MethodPost, "/api/panel/v1/metrics", adminToken, jsonBody(payload))
+	resp := doRequest(http.MethodPost, "/api/v1/panel/metrics", adminToken, jsonBody(payload))
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {

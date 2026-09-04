@@ -28,7 +28,7 @@ type healthCompStatus struct {
 }
 
 func TestHealth_Liveness(t *testing.T) {
-	resp := doRequest(http.MethodGet, "/api/panel/v1/health", "", nil)
+	resp := doRequest(http.MethodGet, "/api/v1/panel/health", "", nil)
 	defer resp.Body.Close()
 
 	requireStatus(t, resp, http.StatusOK)
@@ -45,7 +45,7 @@ func TestHealth_Liveness(t *testing.T) {
 }
 
 func TestHealth_LivenessNoAuthRequired(t *testing.T) {
-	req, err := http.NewRequest(http.MethodGet, baseURL+"/api/panel/v1/health", nil)
+	req, err := http.NewRequest(http.MethodGet, baseURL+"/api/v1/panel/health", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestHealth_LivenessNoAuthRequired(t *testing.T) {
 }
 
 func TestHealth_Readiness(t *testing.T) {
-	resp := doRequest(http.MethodGet, "/api/panel/v1/ready", "", nil)
+	resp := doRequest(http.MethodGet, "/api/v1/panel/ready", "", nil)
 	defer resp.Body.Close()
 
 	requireStatus(t, resp, http.StatusOK)
@@ -95,7 +95,7 @@ func TestHealth_Readiness(t *testing.T) {
 }
 
 func TestHealth_ReadinessNoAuthRequired(t *testing.T) {
-	req, err := http.NewRequest(http.MethodGet, baseURL+"/api/panel/v1/ready", nil)
+	req, err := http.NewRequest(http.MethodGet, baseURL+"/api/v1/panel/ready", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestHealth_ReadinessNoAuthRequired(t *testing.T) {
 }
 
 func TestHealth_ReadinessNoSecretsInResponse(t *testing.T) {
-	resp := doRequest(http.MethodGet, "/api/panel/v1/ready", "", nil)
+	resp := doRequest(http.MethodGet, "/api/v1/panel/ready", "", nil)
 	defer resp.Body.Close()
 
 	requireNoSensitiveFields(t, resp,
@@ -125,7 +125,7 @@ func TestHealth_ReadinessRedisUnavailable(t *testing.T) {
 	})
 	defer stopIsolatedPanel(t, proc)
 
-	url := fmt.Sprintf("http://localhost:%s/api/panel/v1/ready", port)
+	url := fmt.Sprintf("http://localhost:%s/api/v1/panel/ready", port)
 	resp := waitForHealth(t, url, http.StatusOK)
 
 	var result healthReadyResponse
@@ -162,7 +162,7 @@ func TestHealth_ReadinessS3Unavailable(t *testing.T) {
 	})
 	defer stopIsolatedPanel(t, proc)
 
-	url := fmt.Sprintf("http://localhost:%s/api/panel/v1/ready", port)
+	url := fmt.Sprintf("http://localhost:%s/api/v1/panel/ready", port)
 	resp := waitForHealth(t, url, http.StatusOK)
 
 	var result healthReadyResponse
@@ -200,7 +200,7 @@ func TestHealth_ReadinessBothOptionalDepsUnavailable(t *testing.T) {
 	})
 	defer stopIsolatedPanel(t, proc)
 
-	url := fmt.Sprintf("http://localhost:%s/api/panel/v1/ready", port)
+	url := fmt.Sprintf("http://localhost:%s/api/v1/panel/ready", port)
 	resp := waitForHealth(t, url, http.StatusOK)
 
 	var result healthReadyResponse
@@ -234,7 +234,7 @@ func TestHealth_PostgresUnavailablePreventsStartup(t *testing.T) {
 		"environment": "local",
 		"auth": {
 			"jwt": {"secret_key": "test-secret-not-for-prod", "ttl": "1h"},
-			"bootstrap": {"full_name": "root", "email": "root@labp.net", "password": "root!@#$"}
+			"bootstrap": {"full_name": "root", "email": "root@labp.net", "password_hash": "$argon2id$v=19$m=65536,t=1,p=4$6lGItC3BN+vvxDF42RRw2g$svLMZu6udCWh8/bjOlpP1S3syNanEwiQO17cbUaDvck"}
 		},
 		"database": {
 			"postgres": {"dsn": "postgres://lotty:lottypassword@localhost:19997/labp_e2e?sslmode=disable"},
@@ -249,7 +249,7 @@ func TestHealth_PostgresUnavailablePreventsStartup(t *testing.T) {
 	}
 
 	binPath := filepath.Join(cfgDir, "panel")
-	build := exec.Command("go", "build", "-o", binPath, "./services/panel/cmd")
+	build := exec.Command("go", "build", "-o", binPath, "./services/panel")
 	build.Dir = mustProjectRoot()
 	build.Env = append(os.Environ(), "CONFIG_NAME="+cfgPath)
 	if out, err := build.CombinedOutput(); err != nil {
@@ -294,7 +294,7 @@ func startIsolatedPanel(t *testing.T, label string, overrides map[string]string)
 		"environment": "local",
 		"auth": {
 			"jwt": {"secret_key": "e2e-test-secret-not-for-prod", "ttl": "1h"},
-			"bootstrap": {"full_name": "root", "email": "root@labp.net", "password": "root!@#$"}
+			"bootstrap": {"full_name": "root", "email": "root@labp.net", "password_hash": "$argon2id$v=19$m=65536,t=1,p=4$6lGItC3BN+vvxDF42RRw2g$svLMZu6udCWh8/bjOlpP1S3syNanEwiQO17cbUaDvck"}
 		},
 		"database": {
 			"postgres": {"dsn": %q},
@@ -309,7 +309,7 @@ func startIsolatedPanel(t *testing.T, label string, overrides map[string]string)
 	}
 
 	binPath := filepath.Join(cfgDir, "panel-"+label)
-	build := exec.Command("go", "build", "-o", binPath, "./services/panel/cmd")
+	build := exec.Command("go", "build", "-o", binPath, "./services/panel")
 	build.Dir = mustProjectRoot()
 	build.Env = append(os.Environ(), "CONFIG_NAME="+cfgPath)
 	if out, err := build.CombinedOutput(); err != nil {
@@ -326,7 +326,7 @@ func startIsolatedPanel(t *testing.T, label string, overrides map[string]string)
 		t.Fatalf("start %s: %v", label, err)
 	}
 
-	healthURL := fmt.Sprintf("http://localhost:%s/api/panel/v1/health", port)
+	healthURL := fmt.Sprintf("http://localhost:%s/api/v1/panel/health", port)
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		resp, err := http.Get(healthURL)

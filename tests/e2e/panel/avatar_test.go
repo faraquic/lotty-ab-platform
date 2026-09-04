@@ -169,7 +169,7 @@ func TestAvatar_MissingFormFieldTriggersDelete(t *testing.T) {
 	defer uploadResp.Body.Close()
 	requireStatus(t, uploadResp, http.StatusOK)
 
-	deleteResp := doMultipartRequestNoFile("/api/panel/v1/me/avatar", token)
+	deleteResp := doMultipartRequestNoFile("/api/v1/panel/me/avatar", token)
 	defer deleteResp.Body.Close()
 
 	requireStatus(t, deleteResp, http.StatusOK)
@@ -317,9 +317,9 @@ func TestAvatar_RejectsInvalidOrNonexistentUserIDs(t *testing.T) {
 		wantStatus int
 		wantCode   string
 	}{
-		{"nonexistent user", "/api/panel/v1/users/0198f4c0-dead-7000-8000-000000000001/avatar", http.StatusNotFound, "NOT_FOUND"},
-		{"non-numeric id", "/api/panel/v1/users/abc/avatar", http.StatusBadRequest, "BAD_REQUEST"},
-		{"negative id", "/api/panel/v1/users/-1/avatar", http.StatusBadRequest, "BAD_REQUEST"},
+		{"nonexistent user", "/api/v1/panel/users/0198f4c0-dead-7000-8000-000000000001/avatar", http.StatusNotFound, "NOT_FOUND"},
+		{"non-numeric id", "/api/v1/panel/users/abc/avatar", http.StatusBadRequest, "BAD_REQUEST"},
+		{"negative id", "/api/v1/panel/users/-1/avatar", http.StatusBadRequest, "BAD_REQUEST"},
 	}
 
 	for _, tc := range cases {

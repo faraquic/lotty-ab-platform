@@ -10,7 +10,7 @@ import (
 )
 
 func TestCreateFlag_String(t *testing.T) {
-	resp := doRequest(http.MethodPost, "/api/panel/v1/flags", adminToken,
+	resp := doRequest(http.MethodPost, "/api/v1/panel/flags", adminToken,
 		jsonBody(map[string]any{
 			"key":           "test-string-flag",
 			"name":          "Test String Flag",
@@ -64,7 +64,7 @@ func TestCreateFlag_String(t *testing.T) {
 }
 
 func TestCreateFlag_Number(t *testing.T) {
-	resp := doRequest(http.MethodPost, "/api/panel/v1/flags", adminToken,
+	resp := doRequest(http.MethodPost, "/api/v1/panel/flags", adminToken,
 		jsonBody(map[string]any{
 			"key":           "test-number-flag",
 			"name":          "Test Number Flag",
@@ -95,7 +95,7 @@ func TestCreateFlag_Number(t *testing.T) {
 }
 
 func TestCreateFlag_Bool(t *testing.T) {
-	resp := doRequest(http.MethodPost, "/api/panel/v1/flags", adminToken,
+	resp := doRequest(http.MethodPost, "/api/v1/panel/flags", adminToken,
 		jsonBody(map[string]any{
 			"key":           "test-bool-flag",
 			"name":          "Test Bool Flag",
@@ -149,7 +149,7 @@ func TestCreateFlag_RejectsInvalidRequests(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			resp := doRequest(http.MethodPost, "/api/panel/v1/flags", adminToken, jsonBody(tc.payload))
+			resp := doRequest(http.MethodPost, "/api/v1/panel/flags", adminToken, jsonBody(tc.payload))
 			defer resp.Body.Close()
 			if tc.expectedCode == http.StatusOK {
 				requireStatus(t, resp, http.StatusOK)
@@ -164,7 +164,7 @@ func TestCreateFlag_DuplicateKey(t *testing.T) {
 	key := "duplicate-key"
 	createFlag(t, key, "string", "first", "First Flag")
 
-	resp := doRequest(http.MethodPost, "/api/panel/v1/flags", adminToken,
+	resp := doRequest(http.MethodPost, "/api/v1/panel/flags", adminToken,
 		jsonBody(map[string]any{
 			"key":           key + "-" + runID,
 			"name":          "First Flag",
@@ -180,7 +180,7 @@ func TestCreateFlag_DuplicateName(t *testing.T) {
 	key := "duplicate-name"
 	createFlag(t, key, "string", "first", "Unique Name")
 
-	resp := doRequest(http.MethodPost, "/api/panel/v1/flags", adminToken,
+	resp := doRequest(http.MethodPost, "/api/v1/panel/flags", adminToken,
 		jsonBody(map[string]any{
 			"key":           "different-key-" + runID,
 			"name":          "Unique Name",
@@ -195,7 +195,7 @@ func TestCreateFlag_DuplicateName(t *testing.T) {
 func TestGetFlag(t *testing.T) {
 	id, key := createFlag(t, "get-flag", "string", "test-value", "Get Flag")
 
-	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/flags/%s", id), adminToken, nil)
+	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/v1/panel/flags/%s", id), adminToken, nil)
 	defer resp.Body.Close()
 
 	requireStatus(t, resp, http.StatusOK)
@@ -220,14 +220,14 @@ func TestGetFlag(t *testing.T) {
 }
 
 func TestGetFlag_Nonexistent(t *testing.T) {
-	resp := doRequest(http.MethodGet, "/api/panel/v1/flags/0198f4c0-dead-7000-8000-000000000001", adminToken, nil)
+	resp := doRequest(http.MethodGet, "/api/v1/panel/flags/0198f4c0-dead-7000-8000-000000000001", adminToken, nil)
 	defer resp.Body.Close()
 
 	requireErrorResponse(t, resp, http.StatusNotFound, "NOT_FOUND")
 }
 
 func TestGetFlag_InvalidID(t *testing.T) {
-	resp := doRequest(http.MethodGet, "/api/panel/v1/flags/abc", adminToken, nil)
+	resp := doRequest(http.MethodGet, "/api/v1/panel/flags/abc", adminToken, nil)
 	defer resp.Body.Close()
 
 	requireErrorResponse(t, resp, http.StatusBadRequest, "BAD_REQUEST")
@@ -237,7 +237,7 @@ func TestListFlags(t *testing.T) {
 	_, keyA := createFlag(t, "list-flag-a", "string", "value-a", "List Flag A")
 	_, keyB := createFlag(t, "list-flag-b", "number", 123, "List Flag B")
 
-	resp := doRequest(http.MethodGet, "/api/panel/v1/flags?limit=100", adminToken, nil)
+	resp := doRequest(http.MethodGet, "/api/v1/panel/flags?limit=100", adminToken, nil)
 	defer resp.Body.Close()
 
 	requireStatus(t, resp, http.StatusOK)
@@ -292,7 +292,7 @@ func TestListFlags(t *testing.T) {
 }
 
 func TestListFlags_Pagination(t *testing.T) {
-	baseResp := doRequest(http.MethodGet, "/api/panel/v1/flags?limit=1&offset=0", adminToken, nil)
+	baseResp := doRequest(http.MethodGet, "/api/v1/panel/flags?limit=1&offset=0", adminToken, nil)
 	defer baseResp.Body.Close()
 	base := decodePaginatedFlagsResponse(t, baseResp)
 
@@ -300,7 +300,7 @@ func TestListFlags_Pagination(t *testing.T) {
 	_, _ = createFlag(t, "page-flag-b", "string", "b", "Page Flag B")
 	_, _ = createFlag(t, "page-flag-c", "string", "c", "Page Flag C")
 
-	resp := doRequest(http.MethodGet, "/api/panel/v1/flags?limit=2&offset=0", adminToken, nil)
+	resp := doRequest(http.MethodGet, "/api/v1/panel/flags?limit=2&offset=0", adminToken, nil)
 	defer resp.Body.Close()
 
 	requireStatus(t, resp, http.StatusOK)
@@ -317,7 +317,7 @@ func TestListFlags_Pagination(t *testing.T) {
 		t.Error("expected has_next=true on first page")
 	}
 
-	resp2 := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/flags?limit=2&offset=%d", base.Data.Meta.Total+2), adminToken, nil)
+	resp2 := doRequest(http.MethodGet, fmt.Sprintf("/api/v1/panel/flags?limit=2&offset=%d", base.Data.Meta.Total+2), adminToken, nil)
 	defer resp2.Body.Close()
 
 	requireStatus(t, resp2, http.StatusOK)
@@ -333,14 +333,14 @@ func TestListFlags_Pagination(t *testing.T) {
 }
 
 func TestListFlags_OffsetBeyondTotal(t *testing.T) {
-	baseResp := doRequest(http.MethodGet, "/api/panel/v1/flags?limit=1&offset=0", adminToken, nil)
+	baseResp := doRequest(http.MethodGet, "/api/v1/panel/flags?limit=1&offset=0", adminToken, nil)
 	defer baseResp.Body.Close()
 	base := decodePaginatedFlagsResponse(t, baseResp)
 
 	_, _ = createFlag(t, "beyond-flag-a", "string", "a", "Beyond Flag A")
 	_, _ = createFlag(t, "beyond-flag-b", "string", "b", "Beyond Flag B")
 
-	resp := doRequest(http.MethodGet, "/api/panel/v1/flags?limit=1&offset=100000", adminToken, nil)
+	resp := doRequest(http.MethodGet, "/api/v1/panel/flags?limit=1&offset=100000", adminToken, nil)
 	defer resp.Body.Close()
 
 	requireStatus(t, resp, http.StatusOK)
@@ -363,7 +363,7 @@ func TestListFlags_OffsetBeyondTotal(t *testing.T) {
 func TestUpdateFlag(t *testing.T) {
 	id, _ := createFlag(t, "update-flag", "string", "original", "Update Flag")
 
-	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/flags/%s", id), adminToken,
+	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/v1/panel/flags/%s", id), adminToken,
 		jsonBody(map[string]any{
 			"default_value": "updated",
 			"description":   "Updated description",
@@ -398,7 +398,7 @@ func TestUpdateFlag(t *testing.T) {
 func TestUpdateFlag_ChangeKey(t *testing.T) {
 	id, _ := createFlag(t, "update-key-flag", "string", "test", "Update Key Flag")
 
-	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/flags/%s", id), adminToken,
+	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/v1/panel/flags/%s", id), adminToken,
 		jsonBody(map[string]any{
 			"key": "new-key-name-" + runID,
 		}))
@@ -419,7 +419,7 @@ func TestUpdateFlag_ChangeKey(t *testing.T) {
 func TestUpdateFlag_InvalidValueForType(t *testing.T) {
 	id, _ := createFlag(t, "invalid-update-flag", "number", 100, "Invalid Update Flag")
 
-	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/flags/%s", id), adminToken,
+	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/v1/panel/flags/%s", id), adminToken,
 		jsonBody(map[string]any{
 			"default_value": "not-a-number",
 		}))
@@ -429,7 +429,7 @@ func TestUpdateFlag_InvalidValueForType(t *testing.T) {
 }
 
 func TestUpdateFlag_Nonexistent(t *testing.T) {
-	resp := doRequest(http.MethodPatch, "/api/panel/v1/flags/0198f4c0-dead-7000-8000-000000000001", adminToken,
+	resp := doRequest(http.MethodPatch, "/api/v1/panel/flags/0198f4c0-dead-7000-8000-000000000001", adminToken,
 		jsonBody(map[string]any{"default_value": "test"}))
 	defer resp.Body.Close()
 
@@ -439,19 +439,19 @@ func TestUpdateFlag_Nonexistent(t *testing.T) {
 func TestDeleteFlag(t *testing.T) {
 	id, _ := createFlag(t, "delete-flag", "string", "to-delete", "Delete Flag")
 
-	resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/flags/%s", id), adminToken, nil)
+	resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/v1/panel/flags/%s", id), adminToken, nil)
 	defer resp.Body.Close()
 
 	requireStatus(t, resp, http.StatusNoContent)
 
-	getResp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/flags/%s", id), adminToken, nil)
+	getResp := doRequest(http.MethodGet, fmt.Sprintf("/api/v1/panel/flags/%s", id), adminToken, nil)
 	defer getResp.Body.Close()
 
 	requireErrorResponse(t, getResp, http.StatusNotFound, "NOT_FOUND")
 }
 
 func TestDeleteFlag_Nonexistent(t *testing.T) {
-	resp := doRequest(http.MethodDelete, "/api/panel/v1/flags/0198f4c0-dead-7000-8000-000000000001", adminToken, nil)
+	resp := doRequest(http.MethodDelete, "/api/v1/panel/flags/0198f4c0-dead-7000-8000-000000000001", adminToken, nil)
 	defer resp.Body.Close()
 
 	requireErrorResponse(t, resp, http.StatusNotFound, "NOT_FOUND")
@@ -460,7 +460,7 @@ func TestDeleteFlag_Nonexistent(t *testing.T) {
 func TestFlags_NoSecretsInResponse(t *testing.T) {
 	id, _ := createFlag(t, "no-secrets-flag", "string", "test", "No Secrets Flag")
 
-	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/flags/%s", id), adminToken, nil)
+	resp := doRequest(http.MethodGet, fmt.Sprintf("/api/v1/panel/flags/%s", id), adminToken, nil)
 	defer resp.Body.Close()
 
 	var raw map[string]json.RawMessage
@@ -488,7 +488,7 @@ func TestFlags_NoSecretsInResponse(t *testing.T) {
 }
 
 func TestListFlags_JSONContentType(t *testing.T) {
-	resp := doRequest(http.MethodGet, "/api/panel/v1/flags", adminToken, nil)
+	resp := doRequest(http.MethodGet, "/api/v1/panel/flags", adminToken, nil)
 	defer resp.Body.Close()
 
 	requireJSONContentType(t, resp)
@@ -498,19 +498,19 @@ func TestUnauthenticatedFlag_RejectedFromAllEndpoints(t *testing.T) {
 	id, _ := createFlag(t, "unauth-flag", "string", "test", "Unauth Flag")
 
 	t.Run("GET /flags", func(t *testing.T) {
-		resp := doRequest(http.MethodGet, "/api/panel/v1/flags", "", nil)
+		resp := doRequest(http.MethodGet, "/api/v1/panel/flags", "", nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusUnauthorized)
 	})
 
 	t.Run("GET /flags/:id", func(t *testing.T) {
-		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/flags/%s", id), "", nil)
+		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/v1/panel/flags/%s", id), "", nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusUnauthorized)
 	})
 
 	t.Run("POST /flags", func(t *testing.T) {
-		resp := doRequest(http.MethodPost, "/api/panel/v1/flags", "",
+		resp := doRequest(http.MethodPost, "/api/v1/panel/flags", "",
 			jsonBody(map[string]any{
 				"key":           "should-not-work",
 				"type":          "string",
@@ -521,14 +521,14 @@ func TestUnauthenticatedFlag_RejectedFromAllEndpoints(t *testing.T) {
 	})
 
 	t.Run("PATCH /flags/:id", func(t *testing.T) {
-		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/flags/%s", id), "",
+		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/v1/panel/flags/%s", id), "",
 			jsonBody(map[string]any{"default_value": "hack"}))
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusUnauthorized)
 	})
 
 	t.Run("DELETE /flags/:id", func(t *testing.T) {
-		resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/flags/%s", id), "", nil)
+		resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/v1/panel/flags/%s", id), "", nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusUnauthorized)
 	})
@@ -536,7 +536,7 @@ func TestUnauthenticatedFlag_RejectedFromAllEndpoints(t *testing.T) {
 
 func TestViewerCannotManageFlags(t *testing.T) {
 	viewerEmail := testEmail("viewer-flags")
-	createResp := doRequest(http.MethodPost, "/api/panel/v1/users", adminToken,
+	createResp := doRequest(http.MethodPost, "/api/v1/panel/users", adminToken,
 		jsonBody(map[string]string{
 			"full_name": testFullName("viewer-flags"),
 			"email":    viewerEmail,
@@ -556,7 +556,7 @@ func TestViewerCannotManageFlags(t *testing.T) {
 	targetID, _ := createFlag(t, "viewer-target-flag", "string", "test", "Viewer Target Flag")
 
 	t.Run("can create flag", func(t *testing.T) {
-		resp := doRequest(http.MethodPost, "/api/panel/v1/flags", viewerToken,
+		resp := doRequest(http.MethodPost, "/api/v1/panel/flags", viewerToken,
 			jsonBody(map[string]any{
 				"key":           "viewer-create-" + runID,
 				"name":          "Viewer Create Flag",
@@ -568,26 +568,26 @@ func TestViewerCannotManageFlags(t *testing.T) {
 	})
 
 	t.Run("can list flags", func(t *testing.T) {
-		resp := doRequest(http.MethodGet, "/api/panel/v1/flags", viewerToken, nil)
+		resp := doRequest(http.MethodGet, "/api/v1/panel/flags", viewerToken, nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusOK)
 	})
 
 	t.Run("can get flag by id", func(t *testing.T) {
-		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/panel/v1/flags/%s", targetID), viewerToken, nil)
+		resp := doRequest(http.MethodGet, fmt.Sprintf("/api/v1/panel/flags/%s", targetID), viewerToken, nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusOK)
 	})
 
 	t.Run("can update flag", func(t *testing.T) {
-		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/panel/v1/flags/%s", targetID), viewerToken,
+		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/v1/panel/flags/%s", targetID), viewerToken,
 			jsonBody(map[string]any{"default_value": "updated"}))
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusOK)
 	})
 
 	t.Run("can delete flag", func(t *testing.T) {
-		resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/panel/v1/flags/%s", targetID), viewerToken, nil)
+		resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/v1/panel/flags/%s", targetID), viewerToken, nil)
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusNoContent)
 	})
@@ -600,7 +600,7 @@ func createFlag(t *testing.T, key, flagType string, defaultValue any, name ...st
 	if len(name) > 0 {
 		flagName = name[0]
 	}
-	resp := doRequest(http.MethodPost, "/api/panel/v1/flags", adminToken,
+	resp := doRequest(http.MethodPost, "/api/v1/panel/flags", adminToken,
 		jsonBody(map[string]any{
 			"key":           uniqueKey,
 			"name":          flagName,

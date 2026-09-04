@@ -16,7 +16,7 @@ import (
 )
 
 func TestAuth_Login_ValidCredentials(t *testing.T) {
-	resp := doRequest(http.MethodPost, "/api/panel/v1/login", "",
+	resp := doRequest(http.MethodPost, "/api/v1/panel/login", "",
 		jsonBody(map[string]string{"email": "root@labp.net", "password": "root!@#$"}))
 	defer resp.Body.Close()
 
@@ -60,7 +60,7 @@ func TestAuth_Login_TokenUsableOnProtectedEndpoint(t *testing.T) {
 }
 
 func TestAuth_Login_InvalidPassword(t *testing.T) {
-	resp := doRequest(http.MethodPost, "/api/panel/v1/login", "",
+	resp := doRequest(http.MethodPost, "/api/v1/panel/login", "",
 		jsonBody(map[string]string{"email": "root@labp.net", "password": "wrongpassword"}))
 	defer resp.Body.Close()
 
@@ -71,7 +71,7 @@ func TestAuth_Login_InvalidPassword(t *testing.T) {
 }
 
 func TestAuth_Login_NonexistentUser(t *testing.T) {
-	resp := doRequest(http.MethodPost, "/api/panel/v1/login", "",
+	resp := doRequest(http.MethodPost, "/api/v1/panel/login", "",
 		jsonBody(map[string]string{"email": "nobody@test.local", "password": "whatever"}))
 	defer resp.Body.Close()
 
@@ -79,9 +79,9 @@ func TestAuth_Login_NonexistentUser(t *testing.T) {
 }
 
 func TestAuth_Login_NoUserEnumeration(t *testing.T) {
-	bodyWrong := readBody(t, doRequest(http.MethodPost, "/api/panel/v1/login", "",
+	bodyWrong := readBody(t, doRequest(http.MethodPost, "/api/v1/panel/login", "",
 		jsonBody(map[string]string{"email": "root@labp.net", "password": "wrong"})))
-	bodyMissing := readBody(t, doRequest(http.MethodPost, "/api/panel/v1/login", "",
+	bodyMissing := readBody(t, doRequest(http.MethodPost, "/api/v1/panel/login", "",
 		jsonBody(map[string]string{"email": "nobody@test.local", "password": "wrong"})))
 
 	var errWrong, errMissing struct {
@@ -103,21 +103,21 @@ func TestAuth_Login_RejectsInvalidRequests(t *testing.T) {
 		send func(t *testing.T) *http.Response
 	}{
 		{"empty body", func(t *testing.T) *http.Response {
-			return doRequestWithRawBody(http.MethodPost, "/api/panel/v1/login", "", strings.NewReader(""))
+			return doRequestWithRawBody(http.MethodPost, "/api/v1/panel/login", "", strings.NewReader(""))
 		}},
 		{"malformed json", func(t *testing.T) *http.Response {
-			return doRequestWithRawBody(http.MethodPost, "/api/panel/v1/login", "", strings.NewReader("{not json}"))
+			return doRequestWithRawBody(http.MethodPost, "/api/v1/panel/login", "", strings.NewReader("{not json}"))
 		}},
 		{"missing email", func(t *testing.T) *http.Response {
-			return doRequest(http.MethodPost, "/api/panel/v1/login", "",
+			return doRequest(http.MethodPost, "/api/v1/panel/login", "",
 				jsonBody(map[string]string{"password": "root!@#$"}))
 		}},
 		{"missing password", func(t *testing.T) *http.Response {
-			return doRequest(http.MethodPost, "/api/panel/v1/login", "",
+			return doRequest(http.MethodPost, "/api/v1/panel/login", "",
 				jsonBody(map[string]string{"email": "root@labp.net"}))
 		}},
 		{"invalid email format", func(t *testing.T) *http.Response {
-			return doRequest(http.MethodPost, "/api/panel/v1/login", "",
+			return doRequest(http.MethodPost, "/api/v1/panel/login", "",
 				jsonBody(map[string]string{"email": "not-an-email", "password": "root!@#$"}))
 		}},
 	}
@@ -154,7 +154,7 @@ func TestAuth_Middleware_RejectsInvalidAuthorization(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			resp := doRequestWithAuth(t, http.MethodGet, "/api/panel/v1/me", tc.setHeader, tc.value, nil)
+			resp := doRequestWithAuth(t, http.MethodGet, "/api/v1/panel/me", tc.setHeader, tc.value, nil)
 			defer resp.Body.Close()
 			requireErrorResponse(t, resp, http.StatusUnauthorized, "UNAUTHORIZED")
 		})
@@ -205,7 +205,7 @@ func TestAuth_Session_RevokedTokenNoUserLeakage(t *testing.T) {
 }
 
 func TestAuth_Security_ContentTypeJSON(t *testing.T) {
-	resp := doRequest(http.MethodPost, "/api/panel/v1/login", "",
+	resp := doRequest(http.MethodPost, "/api/v1/panel/login", "",
 		jsonBody(map[string]string{"email": "root@labp.net", "password": "root!@#$"}))
 	defer resp.Body.Close()
 
@@ -213,7 +213,7 @@ func TestAuth_Security_ContentTypeJSON(t *testing.T) {
 }
 
 func TestAuth_Security_NoStackTracesInError(t *testing.T) {
-	resp := doRequest(http.MethodPost, "/api/panel/v1/login", "",
+	resp := doRequest(http.MethodPost, "/api/v1/panel/login", "",
 		jsonBody(map[string]string{"email": "root@labp.net", "password": "wrong"}))
 	defer resp.Body.Close()
 
@@ -229,7 +229,7 @@ func TestAuth_Security_NoStackTracesInError(t *testing.T) {
 }
 
 func TestAuth_Security_NoPasswordInLoginResponse(t *testing.T) {
-	resp := doRequest(http.MethodPost, "/api/panel/v1/login", "",
+	resp := doRequest(http.MethodPost, "/api/v1/panel/login", "",
 		jsonBody(map[string]string{"email": "root@labp.net", "password": "root!@#$"}))
 	defer resp.Body.Close()
 
@@ -245,11 +245,11 @@ func TestAuth_Security_AllErrorResponseCodes(t *testing.T) {
 		body     io.Reader
 		wantCode int
 	}{
-		{"login bad credentials", http.MethodPost, "/api/panel/v1/login", "", jsonBody(map[string]string{"email": "x@x.com", "password": "x"}), http.StatusUnauthorized},
-		{"login missing fields", http.MethodPost, "/api/panel/v1/login", "", jsonBody(map[string]string{"email": "x@x.com"}), http.StatusBadRequest},
-		{"login malformed json", http.MethodPost, "/api/panel/v1/login", "", strings.NewReader("{bad"), http.StatusBadRequest},
-		{"me no token", http.MethodGet, "/api/panel/v1/me", "", nil, http.StatusUnauthorized},
-		{"me bad token", http.MethodGet, "/api/panel/v1/me", "garbage", nil, http.StatusUnauthorized},
+		{"login bad credentials", http.MethodPost, "/api/v1/panel/login", "", jsonBody(map[string]string{"email": "x@x.com", "password": "x"}), http.StatusUnauthorized},
+		{"login missing fields", http.MethodPost, "/api/v1/panel/login", "", jsonBody(map[string]string{"email": "x@x.com"}), http.StatusBadRequest},
+		{"login malformed json", http.MethodPost, "/api/v1/panel/login", "", strings.NewReader("{bad"), http.StatusBadRequest},
+		{"me no token", http.MethodGet, "/api/v1/panel/me", "", nil, http.StatusUnauthorized},
+		{"me bad token", http.MethodGet, "/api/v1/panel/me", "garbage", nil, http.StatusUnauthorized},
 	}
 
 	for _, tc := range tests {
@@ -279,7 +279,7 @@ func TestAuth_RoleBasedAccessControl(t *testing.T) {
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusOK)
 
-		resp2 := doRequest(http.MethodGet, "/api/panel/v1/users", token, nil)
+		resp2 := doRequest(http.MethodGet, "/api/v1/panel/users", token, nil)
 		defer resp2.Body.Close()
 		requireStatus(t, resp2, http.StatusOK)
 	})
@@ -295,7 +295,7 @@ func TestAuth_RoleBasedAccessControl(t *testing.T) {
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusOK)
 
-		resp2 := doRequest(http.MethodGet, "/api/panel/v1/users", token, nil)
+		resp2 := doRequest(http.MethodGet, "/api/v1/panel/users", token, nil)
 		defer resp2.Body.Close()
 		requireStatus(t, resp2, http.StatusForbidden)
 	})
