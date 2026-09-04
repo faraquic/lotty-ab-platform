@@ -25,9 +25,15 @@ func NewHandler(svc *Service, log *zap.Logger) *Handler {
 func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	flags := rg.Group("/flags")
 	{
-		flags.POST("", h.create)
 		flags.GET("", h.list)
 		flags.GET("/:id", h.getByID)
+	}
+}
+
+func (h *Handler) RegisterWriteRoutes(rg *gin.RouterGroup) {
+	flags := rg.Group("/flags")
+	{
+		flags.POST("", h.create)
 		flags.PATCH("/:id", h.update)
 		flags.DELETE("/:id", h.delete)
 	}

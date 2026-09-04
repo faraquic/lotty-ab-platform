@@ -379,6 +379,7 @@ go test ./pkg/... -short -count=1
 | 2026-08-31 | Conflict domains: удалены из scope |
 | 2026-08-31 | Web UI: удалён из scope |
 | 2026-08-31 | Email notifications: удалены из scope |
+| 2026-08-31 | Flags CRUD: write операции (POST/PATCH/DELETE) ограничены ролью admin |
 | 2026-09-01 | Restructure: `services/panel/internal/` → `services/panel/`, `cmd/main.go` + `cmd/router.go` → `main.go` + `router.go`, `internal/lib/` removed |
 | 2026-09-01 | Logging: health handler gains probe failure logging, auth middleware logs security events, dead code removed (`Recovery`, `CallerID`, `RequestLogger`, `RequestFields`) |
 | 2026-09-01 | Middleware: dual-framework support (gin + fiber) — `RequestIDGin/Fiber`, `RecoveryGin/Fiber`, `LoggerGin/Fiber`, `CallerIDGin/Fiber` |
