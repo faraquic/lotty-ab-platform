@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/hex"
 	"math/rand"
+	"sync/atomic"
 	"time"
 
+	"github.com/faraquic/lotty-ab-platform/pkg/database"
 	"github.com/faraquic/lotty-ab-platform/pkg/logger"
 	"github.com/goccy/go-json"
 	"github.com/redis/rueidis"
@@ -16,35 +18,114 @@ const (
 	keySnapshot    = "labp:runtime:snapshot"
 	keySnapshotRev = "labp:runtime:snapshot:rev"
 	redisOpTimeout = 1 * time.Second
+	watchInterval  = 30 * time.Second
 )
 
 var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
-
-type Snapshot struct {
-	Revision *[14]byte      `json:"r"`
-	Flags    []FlagSnapshot `json:"f"`
-}
-
-type FlagSnapshot struct {
-	Key   string `json:"k"`
-	Type  string `json:"t"`
-	Value []byte `json:"v"`
-}
 
 type SnapshotStorage struct {
 	r         *rueidis.Client
 	getCmd    rueidis.Completed
 	getRevCmd rueidis.Completed
+	current   atomic.Pointer[Snapshot]
+	rev       atomic.Pointer[Revision]
 	log       *zap.Logger
+	done      chan struct{}
 }
 
+type SnapshotManager = SnapshotStorage
+
 func NewSnapshotStorage(r *rueidis.Client, log *zap.Logger) *SnapshotStorage {
-	return &SnapshotStorage{
+	ss := &SnapshotStorage{
 		r:         r,
 		getCmd:    (*r).B().Get().Key(keySnapshot).Build(),
 		getRevCmd: (*r).B().Get().Key(keySnapshotRev).Build(),
 		log:       log.Named("snapshot"),
+		done:      make(chan struct{}),
 	}
+
+	if s, err := ss.Get(); err == nil {
+		ss.current.Store(s)
+		ss.rev.Store(s.Revision)
+	} else {
+		ss.log.Warn("initial snapshot load failed; starting with empty",
+			zap.Error(err),
+		)
+	}
+
+	go ss.watch()
+
+	return ss
+}
+
+func NewSnapshotManager(r *rueidis.Client, log *zap.Logger) (*SnapshotManager, error) {
+	ss := NewSnapshotStorage(r, log)
+	if s := ss.Current(); s == nil {
+		if s, err := ss.Get(); err != nil {
+			return nil, err
+		} else {
+			ss.current.Store(s)
+			ss.rev.Store(s.Revision)
+		}
+	}
+	return ss, nil
+}
+
+func (ss *SnapshotStorage) Current() *Snapshot {
+	return ss.current.Load()
+}
+
+func (ss *SnapshotStorage) RevisionValue() *Revision {
+	return ss.rev.Load()
+}
+
+func (ss *SnapshotStorage) Stop() {
+	select {
+	case <-ss.done:
+		return
+	default:
+		close(ss.done)
+	}
+}
+
+func (ss *SnapshotStorage) watch() {
+	ticker := time.NewTicker(watchInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if err := ss.checkUpdate(); err != nil {
+				ss.log.Warn("snapshot check update failed",
+					zap.Error(err),
+				)
+			}
+		case <-ss.done:
+			return
+		}
+	}
+}
+
+func (ss *SnapshotStorage) checkUpdate() error {
+	rev, err := ss.GetRevision()
+	if err != nil {
+		return err
+	}
+
+	cached := ss.rev.Load()
+	if cached == nil || *cached != *rev {
+		s, err := ss.Get()
+		if err != nil {
+			return err
+		}
+		ss.current.Store(s)
+		ss.rev.Store(s.Revision)
+		ss.log.Info("snapshot updated from redis",
+			zap.String(logger.FieldCacheOperation, "get"),
+			zap.String(logger.FieldCacheKeyNS, keySnapshot),
+		)
+	}
+	return nil
 }
 
 func (ss *SnapshotStorage) Get() (*Snapshot, error) {
@@ -110,11 +191,20 @@ func (ss *SnapshotStorage) SetWithContext(ctx context.Context, s *Snapshot) erro
 	cmds := []rueidis.Completed{
 		b.Set().Key(keySnapshot).Value(string(bytes)).Build(),
 		b.Set().Key(keySnapshotRev).Value(string(s.Revision[:])).Build(),
+		b.Publish().Channel(database.ChannelUpdateSnapshot).Message(string(s.Revision[:])).Build(),
 	}
 
 	res := (*ss.r).DoMulti(ctx, cmds...)
-	for _, r := range res {
+	for i, r := range res {
 		if r.Error() != nil {
+			if i == 2 {
+				ss.log.Warn("failed to publish snapshot update",
+					zap.String(logger.FieldCacheSystem, "redis"),
+					zap.String(logger.FieldCacheOperation, "publish"),
+					zap.Error(r.Error()),
+				)
+				continue
+			}
 			ss.log.Error("failed to set snapshot",
 				zap.String(logger.FieldCacheSystem, "redis"),
 				zap.String(logger.FieldCacheOperation, "set"),
@@ -125,6 +215,9 @@ func (ss *SnapshotStorage) SetWithContext(ctx context.Context, s *Snapshot) erro
 		}
 	}
 
+	ss.current.Store(s)
+	ss.rev.Store(s.Revision)
+
 	ss.log.Debug("snapshot stored",
 		zap.String(logger.FieldCacheSystem, "redis"),
 		zap.String(logger.FieldCacheOperation, "set"),
@@ -133,7 +226,7 @@ func (ss *SnapshotStorage) SetWithContext(ctx context.Context, s *Snapshot) erro
 	return nil
 }
 
-func (ss *SnapshotStorage) GetRevision() (*[14]byte, error) {
+func (ss *SnapshotStorage) GetRevision() (*Revision, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), redisOpTimeout)
 	defer cancel()
 
@@ -149,7 +242,7 @@ func (ss *SnapshotStorage) GetRevision() (*[14]byte, error) {
 		return nil, err
 	}
 
-	var rev [14]byte
+	var rev Revision
 	copy(rev[:], bytes)
 
 	ss.log.Debug("snapshot revision retrieved",
@@ -169,10 +262,10 @@ func (ss *SnapshotStorage) Exists(ctx context.Context) (bool, error) {
 	return exists, nil
 }
 
-func generateRevision() *[14]byte {
+func generateRevision() *Revision {
 	var rev [7]byte
+	var dst Revision
 	_, _ = rng.Read(rev[:])
-	var dst [14]byte
 	hex.Encode(dst[:], rev[:])
 	return &dst
 }

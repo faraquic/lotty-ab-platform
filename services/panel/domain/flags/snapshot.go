@@ -58,6 +58,7 @@ func (r *Refresher) RefreshSync(ctx context.Context) error {
 func (r *Refresher) Stop() {
 	close(r.ch)
 	<-r.done
+	r.storage.Stop()
 }
 
 func (r *Refresher) worker() {
