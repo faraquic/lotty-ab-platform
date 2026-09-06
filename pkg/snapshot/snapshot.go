@@ -28,7 +28,7 @@ type SnapshotStorage struct {
 	getCmd    rueidis.Completed
 	getRevCmd rueidis.Completed
 	current   atomic.Pointer[Snapshot]
-	rev       atomic.Pointer[Revision]
+	rev       Revision
 	log       *zap.Logger
 	done      chan struct{}
 }
@@ -44,11 +44,12 @@ func NewSnapshotStorage(r *rueidis.Client, log *zap.Logger) *SnapshotStorage {
 		done:      make(chan struct{}),
 	}
 
-	if s, err := ss.Get(); err == nil {
+	if s, err := ss.get(); err == nil {
 		ss.current.Store(s)
-		ss.rev.Store(s.Revision)
+		ss.rev = *s.Revision
 	} else {
-		ss.log.Warn("initial snapshot load failed; starting with empty",
+		ss.log.Warn(
+			"initial snapshot load failed; starting with empty",
 			zap.Error(err),
 		)
 	}
@@ -61,11 +62,11 @@ func NewSnapshotStorage(r *rueidis.Client, log *zap.Logger) *SnapshotStorage {
 func NewSnapshotManager(r *rueidis.Client, log *zap.Logger) (*SnapshotManager, error) {
 	ss := NewSnapshotStorage(r, log)
 	if s := ss.Current(); s == nil {
-		if s, err := ss.Get(); err != nil {
+		if s, err := ss.get(); err != nil {
 			return nil, err
 		} else {
 			ss.current.Store(s)
-			ss.rev.Store(s.Revision)
+			ss.rev = *s.Revision
 		}
 	}
 	return ss, nil
@@ -76,7 +77,7 @@ func (ss *SnapshotStorage) Current() *Snapshot {
 }
 
 func (ss *SnapshotStorage) RevisionValue() *Revision {
-	return ss.rev.Load()
+	return &ss.rev
 }
 
 func (ss *SnapshotStorage) Stop() {
@@ -88,89 +89,6 @@ func (ss *SnapshotStorage) Stop() {
 	}
 }
 
-func (ss *SnapshotStorage) watch() {
-	ticker := time.NewTicker(watchInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			if err := ss.checkUpdate(); err != nil {
-				ss.log.Warn("snapshot check update failed",
-					zap.Error(err),
-				)
-			}
-		case <-ss.done:
-			return
-		}
-	}
-}
-
-func (ss *SnapshotStorage) checkUpdate() error {
-	rev, err := ss.GetRevision()
-	if err != nil {
-		return err
-	}
-
-	cached := ss.rev.Load()
-	if cached == nil || *cached != *rev {
-		s, err := ss.Get()
-		if err != nil {
-			return err
-		}
-		ss.current.Store(s)
-		ss.rev.Store(s.Revision)
-		ss.log.Info("snapshot updated from redis",
-			zap.String(logger.FieldCacheOperation, "get"),
-			zap.String(logger.FieldCacheKeyNS, keySnapshot),
-		)
-	}
-	return nil
-}
-
-func (ss *SnapshotStorage) Get() (*Snapshot, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), redisOpTimeout)
-	defer cancel()
-
-	bytes, err := (*ss.r).Do(ctx, ss.getCmd).AsBytes()
-	if err != nil {
-		ss.log.Error("failed to get snapshot",
-			zap.String(logger.FieldCacheSystem, "redis"),
-			zap.String(logger.FieldCacheOperation, "get"),
-			zap.String(logger.FieldCacheKeyNS, keySnapshot),
-			zap.Bool(logger.FieldCacheHit, false),
-			zap.Error(err),
-		)
-		return nil, err
-	}
-
-	var s Snapshot
-	if err := json.Unmarshal(bytes, &s); err != nil {
-		ss.log.Error("failed to unmarshal snapshot",
-			zap.String(logger.FieldCacheSystem, "redis"),
-			zap.String(logger.FieldCacheOperation, "get"),
-			zap.String(logger.FieldCacheKeyNS, keySnapshot),
-			zap.String(logger.FieldErrorType, "internal_error"),
-			zap.Error(err),
-		)
-		return nil, err
-	}
-
-	ss.log.Debug("snapshot retrieved",
-		zap.String(logger.FieldCacheSystem, "redis"),
-		zap.String(logger.FieldCacheOperation, "get"),
-		zap.String(logger.FieldCacheKeyNS, keySnapshot),
-		zap.Bool(logger.FieldCacheHit, true),
-	)
-	return &s, nil
-}
-
-func (ss *SnapshotStorage) Set(s *Snapshot) error {
-	ctx, cancel := context.WithTimeout(context.Background(), redisOpTimeout)
-	defer cancel()
-	return ss.SetWithContext(ctx, s)
-}
-
 func (ss *SnapshotStorage) SetWithContext(ctx context.Context, s *Snapshot) error {
 	if s.Revision == nil {
 		s.Revision = generateRevision()
@@ -178,7 +96,8 @@ func (ss *SnapshotStorage) SetWithContext(ctx context.Context, s *Snapshot) erro
 
 	bytes, err := json.Marshal(s)
 	if err != nil {
-		ss.log.Error("failed to marshal snapshot",
+		ss.log.Error(
+			"failed to marshal snapshot",
 			zap.String(logger.FieldCacheSystem, "redis"),
 			zap.String(logger.FieldCacheOperation, "set"),
 			zap.String(logger.FieldErrorType, "internal_error"),
@@ -198,14 +117,16 @@ func (ss *SnapshotStorage) SetWithContext(ctx context.Context, s *Snapshot) erro
 	for i, r := range res {
 		if r.Error() != nil {
 			if i == 2 {
-				ss.log.Warn("failed to publish snapshot update",
+				ss.log.Warn(
+					"failed to publish snapshot update",
 					zap.String(logger.FieldCacheSystem, "redis"),
 					zap.String(logger.FieldCacheOperation, "publish"),
 					zap.Error(r.Error()),
 				)
 				continue
 			}
-			ss.log.Error("failed to set snapshot",
+			ss.log.Error(
+				"failed to set snapshot",
 				zap.String(logger.FieldCacheSystem, "redis"),
 				zap.String(logger.FieldCacheOperation, "set"),
 				zap.String(logger.FieldCacheKeyNS, keySnapshot),
@@ -216,9 +137,10 @@ func (ss *SnapshotStorage) SetWithContext(ctx context.Context, s *Snapshot) erro
 	}
 
 	ss.current.Store(s)
-	ss.rev.Store(s.Revision)
+	ss.rev = *s.Revision
 
-	ss.log.Debug("snapshot stored",
+	ss.log.Debug(
+		"snapshot stored",
 		zap.String(logger.FieldCacheSystem, "redis"),
 		zap.String(logger.FieldCacheOperation, "set"),
 		zap.String(logger.FieldCacheKeyNS, keySnapshot),
@@ -226,13 +148,95 @@ func (ss *SnapshotStorage) SetWithContext(ctx context.Context, s *Snapshot) erro
 	return nil
 }
 
-func (ss *SnapshotStorage) GetRevision() (*Revision, error) {
+func (ss *SnapshotStorage) watch() {
+	ticker := time.NewTicker(watchInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if err := ss.checkUpdate(); err != nil {
+				ss.log.Warn(
+					"snapshot check update failed",
+					zap.Error(err),
+				)
+			}
+		case <-ss.done:
+			return
+		}
+	}
+}
+
+func (ss *SnapshotStorage) checkUpdate() error {
+	rev, err := ss.getRevision()
+	if err != nil {
+		return err
+	}
+
+	if ss.rev != *rev {
+		s, err := ss.get()
+		if err != nil {
+			return err
+		}
+		ss.current.Store(s)
+		ss.rev = *s.Revision
+		ss.log.Info(
+			"snapshot updated from redis",
+			zap.String(logger.FieldCacheOperation, "get"),
+			zap.String(logger.FieldCacheKeyNS, keySnapshot),
+		)
+	}
+	return nil
+}
+
+func (ss *SnapshotStorage) get() (*Snapshot, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), redisOpTimeout)
+	defer cancel()
+
+	bytes, err := (*ss.r).Do(ctx, ss.getCmd).AsBytes()
+	if err != nil {
+		ss.log.Error(
+			"failed to get snapshot",
+			zap.String(logger.FieldCacheSystem, "redis"),
+			zap.String(logger.FieldCacheOperation, "get"),
+			zap.String(logger.FieldCacheKeyNS, keySnapshot),
+			zap.Bool(logger.FieldCacheHit, false),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	var s Snapshot
+	if err := json.Unmarshal(bytes, &s); err != nil {
+		ss.log.Error(
+			"failed to unmarshal snapshot",
+			zap.String(logger.FieldCacheSystem, "redis"),
+			zap.String(logger.FieldCacheOperation, "get"),
+			zap.String(logger.FieldCacheKeyNS, keySnapshot),
+			zap.String(logger.FieldErrorType, "internal_error"),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	ss.log.Debug(
+		"snapshot retrieved",
+		zap.String(logger.FieldCacheSystem, "redis"),
+		zap.String(logger.FieldCacheOperation, "get"),
+		zap.String(logger.FieldCacheKeyNS, keySnapshot),
+		zap.Bool(logger.FieldCacheHit, true),
+	)
+	return &s, nil
+}
+
+func (ss *SnapshotStorage) getRevision() (*Revision, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), redisOpTimeout)
 	defer cancel()
 
 	bytes, err := (*ss.r).Do(ctx, ss.getRevCmd).AsBytes()
 	if err != nil {
-		ss.log.Error("failed to get snapshot revision",
+		ss.log.Error(
+			"failed to get snapshot revision",
 			zap.String(logger.FieldCacheSystem, "redis"),
 			zap.String(logger.FieldCacheOperation, "get"),
 			zap.String(logger.FieldCacheKeyNS, keySnapshotRev),
@@ -245,7 +249,8 @@ func (ss *SnapshotStorage) GetRevision() (*Revision, error) {
 	var rev Revision
 	copy(rev[:], bytes)
 
-	ss.log.Debug("snapshot revision retrieved",
+	ss.log.Debug(
+		"snapshot revision retrieved",
 		zap.String(logger.FieldCacheSystem, "redis"),
 		zap.String(logger.FieldCacheOperation, "get"),
 		zap.String(logger.FieldCacheKeyNS, keySnapshotRev),
