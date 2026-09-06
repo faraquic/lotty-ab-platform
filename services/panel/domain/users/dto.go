@@ -3,10 +3,10 @@ package users
 import "github.com/faraquic/lotty-ab-platform/pkg/api"
 
 type CreateUserRequest struct {
-	FullName   string `json:"full_name" binding:"required,min=1,max=256"`
-	Email      string `json:"email" binding:"required,email,min=5,max=96"`
-	Password   string `json:"password" binding:"required,min=8"`
-	Role       string `json:"role" binding:"required,oneof=admin experimenter approver viewer"`
+	FullName string `json:"full_name" binding:"required,min=1,max=256"`
+	Email    string `json:"email" binding:"required,email,min=5,max=96"`
+	Password string `json:"password" binding:"required,min=8"`
+	Role     string `json:"role" binding:"required,oneof=admin experimenter approver viewer"`
 }
 
 type UpdateUserRequest struct {
@@ -16,10 +16,10 @@ type UpdateUserRequest struct {
 
 type UserResponse struct {
 	api.ResourceResponse
-	FullName    string  `json:"full_name"`
-	Email       string  `json:"email"`
-	Role        string  `json:"role"`
-	AvatarURL   *string `json:"avatar_url"`
+	FullName  string  `json:"full_name"`
+	Email     string  `json:"email"`
+	Role      string  `json:"role"`
+	AvatarURL *string `json:"avatar_url"`
 }
 
 type PaginatedUserResponse struct {

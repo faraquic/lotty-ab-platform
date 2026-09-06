@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"mime/multipart"
 
+	"github.com/alexedwards/argon2id"
 	"github.com/faraquic/lotty-ab-platform/pkg/api"
 	"github.com/faraquic/lotty-ab-platform/pkg/logger"
 	"go.uber.org/zap"
-	"github.com/alexedwards/argon2id"
 )
 
 var (
