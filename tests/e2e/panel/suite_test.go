@@ -424,9 +424,9 @@ func createUser(t *testing.T, role, prefix string) (string, string) {
 	email := testEmail(prefix)
 	body := jsonBody(map[string]string{
 		"full_name": testFullName(prefix),
-		"email":    email,
-		"password": "testpass123",
-		"role":     role,
+		"email":     email,
+		"password":  "testpass123",
+		"role":      role,
 	})
 	resp := doRequest(http.MethodPost, "/api/v1/panel/users", adminToken, body)
 	defer resp.Body.Close()

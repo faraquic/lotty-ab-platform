@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/faraquic/lotty-ab-platform/pkg/config"
+	"github.com/faraquic/lotty-ab-platform/pkg/database"
 	"github.com/faraquic/lotty-ab-platform/pkg/logger"
 	"github.com/goccy/go-json"
 	"github.com/gofiber/fiber/v3"
@@ -16,6 +19,8 @@ func main() {
 	cfg := config.MustLoad("runtime")
 	log := logger.SetupLogger(cfg.Environment, cfg.LogLevel)
 
+	config.ValidateSecurity(cfg, log)
+
 	log.Info(
 		"runtime service starting",
 		zap.String(logger.FieldServiceName, config.ServiceName),
@@ -24,15 +29,31 @@ func main() {
 		zap.String(logger.FieldServerAddress, cfg.Runtime.HTTP.Address),
 	)
 
-	config.ValidateSecurity(cfg, log)
+	connectCtx, cancelConnect := connectContext()
+	defer cancelConnect()
 
-	app := NewApp(&fiber.Config{
+	redis, err := database.NewRedis(
+		connectCtx,
+		cfg.Database.Redis.Address,
+		log,
+	)
+	if err != nil {
+		log.Error(
+			"redis unavailable; startup aborted",
+			zap.String(logger.FieldCacheSystem, "redis"),
+			zap.Error(err),
+		)
+		os.Exit(1)
+	}
+	defer (*redis).Close()
+
+	app, snapReader := NewApp(&fiber.Config{
 		ReadTimeout:  cfg.Runtime.HTTP.Timeout,
 		WriteTimeout: cfg.Runtime.HTTP.Timeout,
 		IdleTimeout:  cfg.Runtime.HTTP.IdleTimeout,
 		JSONEncoder:  json.Marshal,
 		JSONDecoder:  json.Unmarshal,
-	}, log, cfg)
+	}, log, cfg, redis)
 
 	log.Info(
 		"server listening",
@@ -70,8 +91,14 @@ func main() {
 		return
 	}
 
+	snapReader.Stop()
+
 	log.Info(
 		"graceful shutdown completed",
 		zap.String(logger.FieldServerAddress, cfg.Runtime.HTTP.Address),
 	)
+}
+
+func connectContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), 5*time.Second)
 }

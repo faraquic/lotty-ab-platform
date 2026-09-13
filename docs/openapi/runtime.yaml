@@ -1,0 +1,239 @@
+openapi: 3.0.3
+info:
+  title: Lotty AB Platform — Runtime API
+  description: Runtime decision plane — deterministic variant delivery from in-memory snapshot.
+  version: 0.0.0_dev
+
+servers:
+  - url: http://localhost:8082/api/v1/runtime
+    description: local run (go run / bin/runtime direct, without nginx)
+  - url: http://localhost:8080/api/v1/runtime
+    description: docker run (via nginx reverse proxy, docker-compose up)
+
+tags:
+  - name: decide
+    description: Deterministic flag evaluation
+  - name: health
+    description: Liveness and readiness probes
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Liveness probe
+      operationId: health
+      security: []
+      responses:
+        "200":
+          description: Service is alive
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: OK
+
+  /ready:
+    get:
+      tags: [health]
+      summary: Readiness probe
+      operationId: ready
+      security: []
+      responses:
+        "200":
+          description: Service is ready (cache and snapshot available)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+        "503":
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+
+  /decide:
+    post:
+      tags: [decide]
+      summary: Evaluate flags for a subject
+      operationId: decide
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DecideRequest"
+            example:
+              subject_id: user-123
+              attributes:
+                country: DE
+                app_version: 4.2.0
+              flags: [checkout_redesign]
+      responses:
+        "200":
+          description: Decision evaluated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecideResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "503":
+          description: Snapshot not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error:
+                  code: SNAPSHOT_UNAVAILABLE
+                  message: snapshot not ready
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  responses:
+    BadRequest:
+      description: Invalid request payload
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    PayloadTooLarge:
+      description: Request body too large
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            success: false
+            error:
+              code: PAYLOAD_TOO_LARGE
+              message: request body too large
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    DecideRequest:
+      type: object
+      required: [subject_id]
+      properties:
+        subject_id:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: Opaque subject identifier
+          example: user-123
+        attributes:
+          type: object
+          description: Subject attributes for targeting evaluation
+          additionalProperties: true
+          example:
+            country: DE
+            app_version: 4.2.0
+        flags:
+          type: array
+          description: Flag keys to evaluate. Empty omits returns all flags from snapshot.
+          maxItems: 100
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
+          example: [checkout_redesign]
+
+    DecideResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            request_id:
+              type: string
+              format: uuid
+            config_revision:
+              type: string
+              description: Hex-encoded snapshot revision
+            flags:
+              type: object
+              additionalProperties:
+                $ref: "#/components/schemas/FlagDecision"
+      required: [success, data]
+
+    FlagDecision:
+      type: object
+      properties:
+        value:
+          description: Flag value (string | number | boolean | null if missing)
+          oneOf:
+            - type: string
+            - type: number
+            - type: boolean
+            - type: object
+              nullable: true
+        source:
+          type: string
+          enum: [default, missing]
+          description: default = flag found in snapshot, missing = flag not found
+        reason:
+          type: string
+          description: Present when source is missing
+      required: [value, source]
+
+    ComponentStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, unavailable]
+        message:
+          type: string
+      required: [status]
+
+    ReadyResponse:
+      type: object
+      properties:
+        service:
+          type: string
+          example: labp-runtime
+        version:
+          type: string
+          example: 0.1.0
+        environment:
+          type: string
+          example: local
+        timestamp:
+          type: string
+          format: date-time
+        components:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ComponentStatus"
+      required: [service, version, environment, timestamp, components]
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              enum: [BAD_REQUEST, PAYLOAD_TOO_LARGE, SNAPSHOT_UNAVAILABLE, INTERNAL_SERVER_ERROR]
+            message:
+              type: string
+          required: [code, message]
+      required: [success, error]

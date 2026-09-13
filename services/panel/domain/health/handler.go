@@ -20,13 +20,13 @@ type Handler struct {
 	pool        *pgxpool.Pool
 	redis       *rueidis.Client
 	s3          *s3.Client
-	snapshot    *snapshot.SnapshotStorage
+	snapshot    *snapshot.Reader
 	environment string
 	log         *zap.Logger
 }
 
-func NewHandler(pool *pgxpool.Pool, redis *rueidis.Client, s3 *s3.Client, snapshotStorage *snapshot.SnapshotStorage, environment string, log *zap.Logger) *Handler {
-	return &Handler{pool, redis, s3, snapshotStorage, environment, log}
+func NewHandler(pool *pgxpool.Pool, redis *rueidis.Client, s3 *s3.Client, snapshotReader *snapshot.Reader, environment string, log *zap.Logger) *Handler {
+	return &Handler{pool, redis, s3, snapshotReader, environment, log}
 }
 
 func (h *Handler) RegisterRoutes(g *gin.RouterGroup) {

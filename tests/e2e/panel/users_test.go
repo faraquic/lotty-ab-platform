@@ -383,9 +383,9 @@ func TestCreateUser_DuplicateEmail(t *testing.T) {
 	resp := doRequest(http.MethodPost, "/api/v1/panel/users", adminToken,
 		jsonBody(map[string]string{
 			"full_name": testFullName("dup-email-2"),
-			"email":    email,
-			"password": "testpass123",
-			"role":     "viewer",
+			"email":     email,
+			"password":  "testpass123",
+			"role":      "viewer",
 		}))
 	defer resp.Body.Close()
 
@@ -399,9 +399,9 @@ func TestCreateUser_DuplicateFullName(t *testing.T) {
 	resp := doRequest(http.MethodPost, "/api/v1/panel/users", adminToken,
 		jsonBody(map[string]string{
 			"full_name": fullName,
-			"email":    testEmail("dup-user-diff"),
-			"password": "testpass123",
-			"role":     "viewer",
+			"email":     testEmail("dup-user-diff"),
+			"password":  "testpass123",
+			"role":      "viewer",
 		}))
 	defer resp.Body.Close()
 
@@ -413,9 +413,9 @@ func TestViewerCannotManageUsers(t *testing.T) {
 	createResp := doRequest(http.MethodPost, "/api/v1/panel/users", adminToken,
 		jsonBody(map[string]string{
 			"full_name": testFullName("viewer-cant-manage"),
-			"email":    viewerEmail,
-			"password": "testpass123",
-			"role":     "viewer",
+			"email":     viewerEmail,
+			"password":  "testpass123",
+			"role":      "viewer",
 		}))
 	if createResp.StatusCode != http.StatusOK {
 		t.Skipf("failed to create viewer: %d", createResp.StatusCode)
@@ -433,9 +433,9 @@ func TestViewerCannotManageUsers(t *testing.T) {
 		resp := doRequest(http.MethodPost, "/api/v1/panel/users", viewerToken,
 			jsonBody(map[string]string{
 				"full_name": testFullName("should-not-exist"),
-				"email":    testEmail("should-not-exist"),
-				"password": "testpass123",
-				"role":     "viewer",
+				"email":     testEmail("should-not-exist"),
+				"password":  "testpass123",
+				"role":      "viewer",
 			}))
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusForbidden)
@@ -486,9 +486,9 @@ func TestUnauthenticatedUser_RejectedFromAllEndpoints(t *testing.T) {
 		resp := doRequest(http.MethodPost, "/api/v1/panel/users", "",
 			jsonBody(map[string]string{
 				"full_name": testFullName("should-not-work"),
-				"email":    testEmail("should-not-work"),
-				"password": "testpass123",
-				"role":     "viewer",
+				"email":     testEmail("should-not-work"),
+				"password":  "testpass123",
+				"role":      "viewer",
 			}))
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusUnauthorized)

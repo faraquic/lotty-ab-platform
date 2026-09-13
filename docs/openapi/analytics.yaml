@@ -1,0 +1,101 @@
+openapi: 3.0.3
+info:
+  title: Lotty AB Platform — Analytics API
+  description: Event ingestion and attribution plane.
+  version: 0.0.0_dev
+
+servers:
+  - url: http://localhost:8083/api/v1/analytics
+    description: local run (go run / bin/analytics direct, without nginx)
+  - url: http://localhost:8080/api/v1/analytics
+    description: docker run (via nginx reverse proxy, docker-compose up)
+
+tags:
+  - name: health
+    description: Liveness and readiness probes
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Liveness probe
+      operationId: health
+      security: []
+      responses:
+        "200":
+          description: Service is alive
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: OK
+
+  /ready:
+    get:
+      tags: [health]
+      summary: Readiness probe
+      operationId: ready
+      security: []
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+        "503":
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+
+components:
+  schemas:
+    ComponentStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, unavailable]
+        message:
+          type: string
+      required: [status]
+
+    ReadyResponse:
+      type: object
+      properties:
+        service:
+          type: string
+          example: labp-analytics
+        version:
+          type: string
+          example: 0.1.0
+        environment:
+          type: string
+          example: local
+        timestamp:
+          type: string
+          format: date-time
+        components:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ComponentStatus"
+      required: [service, version, environment, timestamp, components]
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              enum: [BAD_REQUEST, PAYLOAD_TOO_LARGE, INTERNAL_SERVER_ERROR]
+            message:
+              type: string
+          required: [code, message]
+      required: [success, error]

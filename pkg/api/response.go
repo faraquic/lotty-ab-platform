@@ -53,6 +53,11 @@ const (
 	Conflict            = "CONFLICT"
 	PayloadTooLarge     = "PAYLOAD_TOO_LARGE"
 	InternalServerError = "INTERNAL_SERVER_ERROR"
+	ServiceUnavailable  = "SERVICE_UNAVAILABLE"
+	SnapshotUnavailable = "SNAPSHOT_UNAVAILABLE"
+	UnprocessableEntity = "UNPROCESSABLE_ENTITY"
+	TooManyRequests     = "TOO_MANY_REQUESTS"
+	BadGateway          = "BAD_GATEWAY"
 
 	InternalServerMessage = "internal server error"
 )

@@ -195,7 +195,7 @@ func (h *Handler) respondError(c *gin.Context, err error) {
 		api.Error(w, http.StatusBadRequest, api.BadRequest, err.Error())
 	case errors.Is(err, ErrStorageUnavailable):
 		logger.SetErrorType(c, logger.ErrorTypeStorageUnavailable)
-		api.Error(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", err.Error())
+		api.Error(w, http.StatusServiceUnavailable, api.ServiceUnavailable, err.Error())
 	default:
 		logger.SetErrorType(c, logger.ErrorTypeInternalError)
 		h.log.Error("unexpected error",

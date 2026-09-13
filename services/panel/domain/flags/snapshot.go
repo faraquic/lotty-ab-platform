@@ -22,13 +22,13 @@ type SnapshotRefresher interface {
 
 type Refresher struct {
 	repo    FlagRepo
-	storage *snapshot.SnapshotStorage
+	storage *snapshot.Writer
 	ch      chan struct{}
 	log     *zap.Logger
 	done    chan struct{}
 }
 
-func NewRefresher(repo FlagRepo, storage *snapshot.SnapshotStorage, log *zap.Logger) *Refresher {
+func NewRefresher(repo FlagRepo, storage *snapshot.Writer, log *zap.Logger) *Refresher {
 	r := &Refresher{
 		repo:    repo,
 		storage: storage,
@@ -58,7 +58,6 @@ func (r *Refresher) RefreshSync(ctx context.Context) error {
 func (r *Refresher) Stop() {
 	close(r.ch)
 	<-r.done
-	r.storage.Stop()
 }
 
 func (r *Refresher) worker() {

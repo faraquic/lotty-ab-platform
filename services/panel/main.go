@@ -81,7 +81,7 @@ func main() {
 	}
 
 	setGinMode(cfg.Environment, log)
-	r, refresher := newRouter(log, cfg, postgres, redis, s3)
+	r, refresher, snapReader := newRouter(log, cfg, postgres, redis, s3)
 
 	log.Info("server listening",
 		zap.String(logger.FieldServerAddress, cfg.Panel.HTTP.Address),
@@ -124,6 +124,7 @@ func main() {
 	}
 
 	refresher.Stop()
+	snapReader.Stop()
 
 	log.Info("graceful shutdown completed",
 		zap.String(logger.FieldServerAddress, cfg.Panel.HTTP.Address),

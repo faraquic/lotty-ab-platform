@@ -6,11 +6,9 @@ info:
 
 servers:
   - url: http://localhost:8081/api/v1/panel
-    description: local panel development
-  - url: http://localhost:8082/api/v1/runtime
-    description: local runtime development
-  - url: http://localhost:8083/api/v1/analytics
-    description: local analytics development
+    description: local run (go run / bin/panel direct, without nginx)
+  - url: http://localhost:8080/api/v1/panel
+    description: docker run (via nginx reverse proxy, docker-compose up)
 
 # JWT bearer auth; endpoints marked public below are excluded
 security:

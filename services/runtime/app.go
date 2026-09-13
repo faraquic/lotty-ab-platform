@@ -3,22 +3,32 @@ package main
 import (
 	"github.com/faraquic/lotty-ab-platform/pkg/config"
 	"github.com/faraquic/lotty-ab-platform/pkg/middleware"
+	"github.com/faraquic/lotty-ab-platform/pkg/snapshot"
+	decidedomain "github.com/faraquic/lotty-ab-platform/services/runtime/domain/decide"
 	healthdomain "github.com/faraquic/lotty-ab-platform/services/runtime/domain/health"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
+	"github.com/redis/rueidis"
 	"go.uber.org/zap"
 )
 
-func NewApp(fiberConfig *fiber.Config, log *zap.Logger, cfg *config.Config) *fiber.App {
+func NewApp(fiberConfig *fiber.Config, log *zap.Logger, cfg *config.Config, redisClient *rueidis.Client) (*fiber.App, *snapshot.Reader) {
 	app := fiber.New(*fiberConfig)
 
 	addMiddleware(app, cfg, log)
 
 	apiV1 := app.Group("/api/v1/runtime")
 
-	healthdomain.NewHandler(cfg.Environment, log).RegisterRoutes(apiV1)
+	snapReader := snapshot.NewReader(redisClient, log)
 
-	return app
+	healthdomain.NewHandler(redisClient, snapReader, cfg.Environment, log).RegisterRoutes(apiV1)
+
+	decideRepo := decidedomain.NewRepository(snapReader, log)
+	decideSvc := decidedomain.NewService(decideRepo, log)
+	decideHandler := decidedomain.NewHandler(decideSvc, log)
+	decideHandler.RegisterRoutes(apiV1)
+
+	return app, snapReader
 }
 
 func addMiddleware(app *fiber.App, cfg *config.Config, log *zap.Logger) {

@@ -588,9 +588,9 @@ func TestViewerCanManageMetrics(t *testing.T) {
 	createResp := doRequest(http.MethodPost, "/api/v1/panel/users", adminToken,
 		jsonBody(map[string]string{
 			"full_name": testFullName("viewer-metrics"),
-			"email":    viewerEmail,
-			"password": "testpass123",
-			"role":     "viewer",
+			"email":     viewerEmail,
+			"password":  "testpass123",
+			"role":      "viewer",
 		}))
 	if createResp.StatusCode != http.StatusOK {
 		t.Skipf("failed to create viewer: %d", createResp.StatusCode)

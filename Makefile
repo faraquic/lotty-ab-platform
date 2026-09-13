@@ -3,7 +3,7 @@ CONTAINER_ENGINE ?= $(shell command -v podman 2>/dev/null || command -v docker 2
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null)
 GIT_TAG    := $(shell git describe --tags --abbrev=0 2>/dev/null)
 ifeq ($(GIT_TAG),)
-SERVICE_VERSION := v0.0.0_dev
+SERVICE_VERSION := dev
 else ifeq ($(GIT_COMMIT),)
 SERVICE_VERSION := $(GIT_TAG)
 else
@@ -168,19 +168,19 @@ logs-local:
 	@echo "Note: services log to stderr. Run them in separate terminals for best output."
 
 .PHONY: run-panel
-run-panel: build _ensure-infra
+run-panel: build-panel _ensure-infra
 	@-pkill -f 'bin/panel' 2>/dev/null; sleep 0.2
 	@echo "Starting panel on :$(PANEL_PORT)..."
 	@./$(PANEL_BIN)
 
 .PHONY: run-runtime
-run-runtime: build-runtime
+run-runtime: build-runtime _ensure-infra
 	@-pkill -f 'bin/runtime' 2>/dev/null; sleep 0.2
 	@echo "Starting runtime on :$(RUNTIME_PORT)..."
 	@./$(RUNTIME_BIN)
 
 .PHONY: run-analytics
-run-analytics: build-analytics
+run-analytics: build-analytics _ensure-infra
 	@-pkill -f 'bin/analytics' 2>/dev/null; sleep 0.2
 	@echo "Starting analytics on :$(ANALYTICS_PORT)..."
 	@./$(ANALYTICS_BIN)

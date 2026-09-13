@@ -23,7 +23,7 @@ import (
 	usersdomain "github.com/faraquic/lotty-ab-platform/services/panel/domain/users"
 )
 
-func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisClient *rueidis.Client, s3Client *s3.Client) (*gin.Engine, flagsdomain.SnapshotRefresher) {
+func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisClient *rueidis.Client, s3Client *s3.Client) (*gin.Engine, flagsdomain.SnapshotRefresher, *snapshot.Reader) {
 	r := gin.New()
 	r.HandleMethodNotAllowed = true
 
@@ -31,8 +31,9 @@ func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisCli
 
 	apiV1 := r.Group("/api/v1/panel")
 
-	snapStorage := snapshot.NewSnapshotStorage(redisClient, log)
-	healthdomain.NewHandler(pool, redisClient, s3Client, snapStorage, cfg.Environment, log).RegisterRoutes(apiV1)
+	snapWriter := snapshot.NewWriter(redisClient, log)
+	snapReader := snapshot.NewReader(redisClient, log)
+	healthdomain.NewHandler(pool, redisClient, s3Client, snapReader, cfg.Environment, log).RegisterRoutes(apiV1)
 
 	tokenizer := libauth.NewJWTManager(cfg.Auth.JWT.SecretKey, cfg.Auth.JWT.TTL)
 	authRepo := authdomain.NewRepository(pool)
@@ -59,7 +60,7 @@ func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisCli
 	}
 
 	flagsRepo := flagsdomain.NewRepository(pool)
-	refresher := flagsdomain.NewRefresher(flagsRepo, snapStorage, log)
+	refresher := flagsdomain.NewRefresher(flagsRepo, snapWriter, log)
 	bootstrapSnapshotRefresh(log, refresher)
 	flagsSvc := flagsdomain.NewService(flagsRepo, refresher, log)
 	flagsHandler := flagsdomain.NewHandler(flagsSvc, log)
@@ -80,7 +81,7 @@ func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisCli
 
 	metricsHandler.RegisterRoutes(anyAuthGroup)
 
-	return r, refresher
+	return r, refresher, snapReader
 }
 
 func bootstrapAdmin(log *zap.Logger, svc *usersdomain.Service, cfg config.BootstrapConfig) {
