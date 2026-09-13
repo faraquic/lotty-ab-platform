@@ -101,8 +101,8 @@ type metricWithCreatorAndUpdaterRow struct {
 	Name            string
 	Description     *string
 	MetricType      string
-	Aggregation     MetricConfig
-	Attribution     MetricConfig
+	Aggregation     Aggregation
+	Attribution     Attribution
 	IsBuiltin       bool
 	Status          string
 	CreatedByID     string
@@ -269,14 +269,14 @@ LIMIT $1 OFFSET $2`
 	return result, rows.Err()
 }
 
-func (r *Repository) Update(ctx context.Context, id string, key, name, description string, aggregation MetricConfig, attribution MetricConfig, status MetricStatus, updatedBy string) (MetricWithCreatorAndUpdater, error) {
+func (r *Repository) Update(ctx context.Context, id string, key, name, description string, aggregation *Aggregation, attribution *Attribution, status MetricStatus, updatedBy string) (MetricWithCreatorAndUpdater, error) {
 	var agg any
-	if len(aggregation) > 0 {
-		agg = string(aggregation)
+	if aggregation != nil {
+		agg = *aggregation
 	}
 	var attr any
-	if len(attribution) > 0 {
-		attr = string(attribution)
+	if attribution != nil {
+		attr = *attribution
 	}
 	var stat any
 	if status != "" {

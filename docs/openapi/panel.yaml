@@ -550,7 +550,7 @@ paths:
       summary: Partially update a metric
       description: |
         Updates mutable fields of a metric. The `metric_type` field is immutable after creation.
-        Omitted fields remain unchanged. Aggregation and attribution must be valid non-empty JSON objects when provided.
+        Omitted fields remain unchanged. Aggregation must match the metric type; attribution requires window_days 1..30 and fallback (none, subject).
         To archive a metric, set `status` to `archived`.
       operationId: updateMetric
       requestBody:
@@ -1033,6 +1033,62 @@ components:
       type: string
       enum: [active, archived]
 
+    AttributionFallback:
+      type: string
+      enum: [none, subject]
+
+    EventRef:
+      type: object
+      properties:
+        event_type:
+          type: string
+          minLength: 1
+          maxLength: 128
+        field:
+          type: string
+          minLength: 1
+          maxLength: 128
+      required: [event_type]
+
+    MetricAggregation:
+      type: object
+      description: >
+        Transparent aggregation config. Shape depends on metric_type:
+        count/unique_count require event_type only;
+        sum/average require event_type + field;
+        percentile requires event_type + field + level (0, 1);
+        ratio requires numerator + denominator and no top-level event_type/field/level.
+      properties:
+        event_type:
+          type: string
+          minLength: 1
+          maxLength: 128
+        field:
+          type: string
+          minLength: 1
+          maxLength: 128
+        level:
+          type: number
+          exclusiveMinimum: 0
+          exclusiveMaximum: 1
+        numerator:
+          $ref: "#/components/schemas/EventRef"
+        denominator:
+          $ref: "#/components/schemas/EventRef"
+
+    MetricAttribution:
+      type: object
+      properties:
+        require_exposure:
+          type: boolean
+        window_days:
+          type: integer
+          minimum: 1
+          maximum: 30
+        fallback:
+          $ref: "#/components/schemas/AttributionFallback"
+      required: [require_exposure, window_days, fallback]
+
     Metric:
       type: object
       properties:
@@ -1055,13 +1111,9 @@ components:
         metric_type:
           $ref: "#/components/schemas/MetricType"
         aggregation:
-          type: object
-          additionalProperties: true
-          description: Aggregation configuration (must be a non-empty JSON object)
+          $ref: "#/components/schemas/MetricAggregation"
         attribution:
-          type: object
-          additionalProperties: true
-          description: Attribution configuration (must be a non-empty JSON object)
+          $ref: "#/components/schemas/MetricAttribution"
         is_builtin:
           type: boolean
         status:
@@ -1109,13 +1161,9 @@ components:
         metric_type:
           $ref: "#/components/schemas/MetricType"
         aggregation:
-          type: object
-          additionalProperties: true
-          description: Aggregation configuration (must be a non-empty JSON object)
+          $ref: "#/components/schemas/MetricAggregation"
         attribution:
-          type: object
-          additionalProperties: true
-          description: Attribution configuration (must be a non-empty JSON object)
+          $ref: "#/components/schemas/MetricAttribution"
       required: [key, name, metric_type, aggregation, attribution]
 
     UpdateMetricRequest:
@@ -1133,13 +1181,9 @@ components:
           type: string
           maxLength: 4096
         aggregation:
-          type: object
-          additionalProperties: true
-          description: Aggregation configuration (must be a non-empty JSON object when provided)
+          $ref: "#/components/schemas/MetricAggregation"
         attribution:
-          type: object
-          additionalProperties: true
-          description: Attribution configuration (must be a non-empty JSON object when provided)
+          $ref: "#/components/schemas/MetricAttribution"
         status:
           $ref: "#/components/schemas/MetricStatus"
       minProperties: 1
@@ -1189,11 +1233,9 @@ components:
         metric_type:
           $ref: "#/components/schemas/MetricType"
         aggregation:
-          type: object
-          additionalProperties: true
+          $ref: "#/components/schemas/MetricAggregation"
         attribution:
-          type: object
-          additionalProperties: true
+          $ref: "#/components/schemas/MetricAttribution"
         is_builtin:
           type: boolean
         status:

@@ -6,20 +6,20 @@ import (
 )
 
 type CreateMetricRequest struct {
-	Key         string       `json:"key" binding:"required,min=3,max=128"`
-	Name        string       `json:"name" binding:"required,min=1,max=256"`
-	Description string       `json:"description"`
-	MetricType  string       `json:"metric_type" binding:"required,oneof=count sum unique_count ratio percentile average"`
-	Aggregation MetricConfig `json:"aggregation" binding:"required"`
-	Attribution MetricConfig `json:"attribution" binding:"required"`
+	Key         string      `json:"key" binding:"required,min=3,max=128"`
+	Name        string      `json:"name" binding:"required,min=1,max=256"`
+	Description string      `json:"description"`
+	MetricType  string      `json:"metric_type" binding:"required,oneof=count sum unique_count ratio percentile average"`
+	Aggregation Aggregation `json:"aggregation" binding:"required"`
+	Attribution Attribution `json:"attribution" binding:"required"`
 }
 
 type UpdateMetricRequest struct {
 	Key         string       `json:"key" binding:"omitempty,min=3,max=128"`
 	Name        string       `json:"name" binding:"omitempty,min=1,max=256"`
 	Description string       `json:"description"`
-	Aggregation MetricConfig `json:"aggregation" binding:"omitempty"`
-	Attribution MetricConfig `json:"attribution" binding:"omitempty"`
+	Aggregation *Aggregation `json:"aggregation"`
+	Attribution *Attribution `json:"attribution"`
 	Status      string       `json:"status" binding:"omitempty,oneof=active archived"`
 }
 
@@ -29,8 +29,8 @@ type MetricResponse struct {
 	Name        string              `json:"name"`
 	Description *string             `json:"description"`
 	MetricType  string              `json:"metric_type"`
-	Aggregation MetricConfig        `json:"aggregation"`
-	Attribution MetricConfig        `json:"attribution"`
+	Aggregation Aggregation         `json:"aggregation"`
+	Attribution Attribution         `json:"attribution"`
 	IsBuiltin   bool                `json:"is_builtin"`
 	Status      string              `json:"status"`
 	CreatedBy   *users.UserResponse `json:"created_by"`

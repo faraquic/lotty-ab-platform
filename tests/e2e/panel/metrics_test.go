@@ -9,6 +9,32 @@ import (
 	"github.com/goccy/go-json"
 )
 
+func aggregationForType(mt string) map[string]any {
+	switch mt {
+	case "count":
+		return map[string]any{"event_type": "purchase_completed"}
+	case "sum":
+		return map[string]any{"event_type": "purchase_completed", "field": "order_value"}
+	case "unique_count":
+		return map[string]any{"event_type": "purchase_completed"}
+	case "average":
+		return map[string]any{"event_type": "purchase_completed", "field": "order_value"}
+	case "percentile":
+		return map[string]any{"event_type": "latency_reported", "field": "latency_ms", "level": 0.95}
+	case "ratio":
+		return map[string]any{
+			"numerator":   map[string]any{"event_type": "purchase_completed"},
+			"denominator": map[string]any{"event_type": "exposure"},
+		}
+	default:
+		return map[string]any{"event_type": "purchase_completed"}
+	}
+}
+
+func validAttribution() map[string]any {
+	return map[string]any{"require_exposure": true, "window_days": 7, "fallback": "subject"}
+}
+
 func TestCreateMetric(t *testing.T) {
 	types := []string{"count", "sum", "unique_count", "ratio", "percentile", "average"}
 
@@ -22,8 +48,8 @@ func TestCreateMetric(t *testing.T) {
 					"key":         key,
 					"name":        name,
 					"metric_type": mt,
-					"aggregation": map[string]any{"event": "purchase_completed", "field": "amount"},
-					"attribution": map[string]any{"window": "30d", "mode": "last_touch"},
+					"aggregation": aggregationForType(mt),
+					"attribution": validAttribution(),
 				}))
 			defer resp.Body.Close()
 
@@ -50,17 +76,26 @@ func TestCreateMetric(t *testing.T) {
 			if result.Data.Status != "active" {
 				t.Errorf("status: got %q, want %q", result.Data.Status, "active")
 			}
-			if len(result.Data.Aggregation) == 0 {
-				t.Error("aggregation should not be empty")
+			if mt == "ratio" {
+				if result.Data.Aggregation.Numerator == nil || result.Data.Aggregation.Numerator.EventType != "purchase_completed" {
+					t.Errorf("aggregation.numerator: unexpected %+v", result.Data.Aggregation.Numerator)
+				}
+				if result.Data.Aggregation.Denominator == nil || result.Data.Aggregation.Denominator.EventType != "exposure" {
+					t.Errorf("aggregation.denominator: unexpected %+v", result.Data.Aggregation.Denominator)
+				}
+			} else {
+				if result.Data.Aggregation.EventType == nil {
+					t.Error("aggregation.event_type should be set")
+				}
 			}
-			if len(result.Data.Attribution) == 0 {
-				t.Error("attribution should not be empty")
+			if result.Data.Attribution.WindowDays != 7 {
+				t.Errorf("attribution.window_days: got %d, want 7", result.Data.Attribution.WindowDays)
 			}
-			if !strings.Contains(string(result.Data.Aggregation), "purchase_completed") {
-				t.Errorf("aggregation: expected raw JSON object, got %s", string(result.Data.Aggregation))
+			if result.Data.Attribution.Fallback != "subject" {
+				t.Errorf("attribution.fallback: got %q, want %q", result.Data.Attribution.Fallback, "subject")
 			}
-			if !strings.Contains(string(result.Data.Attribution), "last_touch") {
-				t.Errorf("attribution: expected raw JSON object, got %s", string(result.Data.Attribution))
+			if !result.Data.Attribution.RequireExposure {
+				t.Error("attribution.require_exposure should be true")
 			}
 			if result.Data.CreatedBy == nil {
 				t.Error("created_by should be present")
@@ -93,8 +128,8 @@ func TestCreateMetric_WithDescription(t *testing.T) {
 			"name":        "Metric With Description",
 			"metric_type": "count",
 			"description": desc,
-			"aggregation": map[string]any{"event": "signup"},
-			"attribution": map[string]any{"window": "7d"},
+			"aggregation": map[string]any{"event_type": "signup"},
+			"attribution": validAttribution(),
 		}))
 	defer resp.Body.Close()
 
@@ -115,8 +150,8 @@ func TestCreateMetric_DefaultStatus(t *testing.T) {
 			"key":         key,
 			"name":        "Default Status Metric",
 			"metric_type": "count",
-			"aggregation": map[string]any{"event": "test"},
-			"attribution": map[string]any{"window": "1d"},
+			"aggregation": map[string]any{"event_type": "test"},
+			"attribution": validAttribution(),
 		}))
 	defer resp.Body.Close()
 
@@ -138,8 +173,8 @@ func TestCreateMetric_DuplicateKey(t *testing.T) {
 			"key":         createdKey,
 			"name":        "Different Name",
 			"metric_type": "count",
-			"aggregation": map[string]any{"event": "test"},
-			"attribution": map[string]any{"window": "1d"},
+			"aggregation": map[string]any{"event_type": "test"},
+			"attribution": validAttribution(),
 		}))
 	defer resp.Body.Close()
 
@@ -155,8 +190,8 @@ func TestCreateMetric_DuplicateName(t *testing.T) {
 			"key":         "other-key-" + runID,
 			"name":        name,
 			"metric_type": "count",
-			"aggregation": map[string]any{"event": "test"},
-			"attribution": map[string]any{"window": "1d"},
+			"aggregation": map[string]any{"event_type": "test"},
+			"attribution": validAttribution(),
 		}))
 	defer resp.Body.Close()
 
@@ -164,26 +199,39 @@ func TestCreateMetric_DuplicateName(t *testing.T) {
 }
 
 func TestCreateMetric_RejectsInvalidRequests(t *testing.T) {
+	validAgg := func() map[string]any { return map[string]any{"event_type": "test"} }
+	validAttr := func() map[string]any { return validAttribution() }
 	cases := []struct {
 		name         string
 		payload      map[string]any
 		expectedCode int
 	}{
 		{"empty body", map[string]any{}, http.StatusBadRequest},
-		{"missing key", map[string]any{"metric_type": "count", "aggregation": map[string]any{"e": 1}, "attribution": map[string]any{"w": "1d"}}, http.StatusBadRequest},
-		{"missing name", map[string]any{"key": "test-m", "metric_type": "count", "aggregation": map[string]any{"e": 1}, "attribution": map[string]any{"w": "1d"}}, http.StatusBadRequest},
-		{"missing metric_type", map[string]any{"key": "test-m", "name": "Test", "aggregation": map[string]any{"e": 1}, "attribution": map[string]any{"w": "1d"}}, http.StatusBadRequest},
-		{"missing aggregation", map[string]any{"key": "test-m", "name": "Test", "metric_type": "count", "attribution": map[string]any{"w": "1d"}}, http.StatusBadRequest},
-		{"missing attribution", map[string]any{"key": "test-m", "name": "Test", "metric_type": "count", "aggregation": map[string]any{"e": 1}}, http.StatusBadRequest},
-		{"invalid metric_type", map[string]any{"key": "test-m", "name": "Test", "metric_type": "invalid", "aggregation": map[string]any{"e": 1}, "attribution": map[string]any{"w": "1d"}}, http.StatusBadRequest},
-		{"key too short", map[string]any{"key": "ab", "name": "Test", "metric_type": "count", "aggregation": map[string]any{"e": 1}, "attribution": map[string]any{"w": "1d"}}, http.StatusBadRequest},
-		{"key too long", map[string]any{"key": strings.Repeat("a", 129), "name": "Test", "metric_type": "count", "aggregation": map[string]any{"e": 1}, "attribution": map[string]any{"w": "1d"}}, http.StatusBadRequest},
-		{"name too long", map[string]any{"key": "valid-key", "name": strings.Repeat("a", 257), "metric_type": "count", "aggregation": map[string]any{"e": 1}, "attribution": map[string]any{"w": "1d"}}, http.StatusBadRequest},
-		{"malformed aggregation JSON", map[string]any{"key": "test-m", "name": "Test", "metric_type": "count", "aggregation": "not-json", "attribution": map[string]any{"w": "1d"}}, http.StatusBadRequest},
-		{"malformed attribution JSON", map[string]any{"key": "test-m", "name": "Test", "metric_type": "count", "aggregation": map[string]any{"e": 1}, "attribution": "not-json"}, http.StatusBadRequest},
-		{"array aggregation", map[string]any{"key": "test-m", "name": "Test", "metric_type": "count", "aggregation": []any{1, 2}, "attribution": map[string]any{"w": "1d"}}, http.StatusBadRequest},
-		{"scalar aggregation", map[string]any{"key": "test-m", "name": "Test", "metric_type": "count", "aggregation": 42, "attribution": map[string]any{"w": "1d"}}, http.StatusBadRequest},
-		{"null aggregation", map[string]any{"key": "test-m", "name": "Test", "metric_type": "count", "aggregation": nil, "attribution": map[string]any{"w": "1d"}}, http.StatusBadRequest},
+		{"missing key", map[string]any{"metric_type": "count", "aggregation": validAgg(), "attribution": validAttr()}, http.StatusBadRequest},
+		{"missing name", map[string]any{"key": "test-m", "metric_type": "count", "aggregation": validAgg(), "attribution": validAttr()}, http.StatusBadRequest},
+		{"missing metric_type", map[string]any{"key": "test-m", "name": "Test", "aggregation": validAgg(), "attribution": validAttr()}, http.StatusBadRequest},
+		{"missing aggregation", map[string]any{"key": "test-m", "name": "Test", "metric_type": "count", "attribution": validAttr()}, http.StatusBadRequest},
+		{"missing attribution", map[string]any{"key": "test-m", "name": "Test", "metric_type": "count", "aggregation": validAgg()}, http.StatusBadRequest},
+		{"invalid metric_type", map[string]any{"key": "test-m", "name": "Test", "metric_type": "invalid", "aggregation": validAgg(), "attribution": validAttr()}, http.StatusBadRequest},
+		{"key too short", map[string]any{"key": "ab", "name": "Test", "metric_type": "count", "aggregation": validAgg(), "attribution": validAttr()}, http.StatusBadRequest},
+		{"key too long", map[string]any{"key": strings.Repeat("a", 129), "name": "Test", "metric_type": "count", "aggregation": validAgg(), "attribution": validAttr()}, http.StatusBadRequest},
+		{"name too long", map[string]any{"key": "valid-key", "name": strings.Repeat("a", 257), "metric_type": "count", "aggregation": validAgg(), "attribution": validAttr()}, http.StatusBadRequest},
+		{"malformed aggregation JSON", map[string]any{"key": "test-m", "name": "Test", "metric_type": "count", "aggregation": "not-json", "attribution": validAttr()}, http.StatusBadRequest},
+		{"malformed attribution JSON", map[string]any{"key": "test-m", "name": "Test", "metric_type": "count", "aggregation": validAgg(), "attribution": "not-json"}, http.StatusBadRequest},
+		{"array aggregation", map[string]any{"key": "test-m", "name": "Test", "metric_type": "count", "aggregation": []any{1, 2}, "attribution": validAttr()}, http.StatusBadRequest},
+		{"scalar aggregation", map[string]any{"key": "test-m", "name": "Test", "metric_type": "count", "aggregation": 42, "attribution": validAttr()}, http.StatusBadRequest},
+		{"null aggregation", map[string]any{"key": "test-m", "name": "Test", "metric_type": "count", "aggregation": nil, "attribution": validAttr()}, http.StatusBadRequest},
+		{"empty aggregation", map[string]any{"key": "test-m", "name": "Test", "metric_type": "count", "aggregation": map[string]any{}, "attribution": validAttr()}, http.StatusBadRequest},
+		{"count with field", map[string]any{"key": "test-m", "name": "Test", "metric_type": "count", "aggregation": map[string]any{"event_type": "e", "field": "f"}, "attribution": validAttr()}, http.StatusBadRequest},
+		{"sum without field", map[string]any{"key": "test-m", "name": "Test", "metric_type": "sum", "aggregation": map[string]any{"event_type": "e"}, "attribution": validAttr()}, http.StatusBadRequest},
+		{"percentile without level", map[string]any{"key": "test-m", "name": "Test", "metric_type": "percentile", "aggregation": map[string]any{"event_type": "e", "field": "f"}, "attribution": validAttr()}, http.StatusBadRequest},
+		{"percentile level out of range", map[string]any{"key": "test-m", "name": "Test", "metric_type": "percentile", "aggregation": map[string]any{"event_type": "e", "field": "f", "level": 1.5}, "attribution": validAttr()}, http.StatusBadRequest},
+		{"ratio without denominator", map[string]any{"key": "test-m", "name": "Test", "metric_type": "ratio", "aggregation": map[string]any{"numerator": map[string]any{"event_type": "a"}}, "attribution": validAttr()}, http.StatusBadRequest},
+		{"ratio with top-level event_type", map[string]any{"key": "test-m", "name": "Test", "metric_type": "ratio", "aggregation": map[string]any{"event_type": "a", "numerator": map[string]any{"event_type": "a"}, "denominator": map[string]any{"event_type": "b"}}, "attribution": validAttr()}, http.StatusBadRequest},
+		{"attribution window zero", map[string]any{"key": "test-m", "name": "Test", "metric_type": "count", "aggregation": validAgg(), "attribution": map[string]any{"require_exposure": true, "window_days": 0, "fallback": "subject"}}, http.StatusBadRequest},
+		{"attribution window too large", map[string]any{"key": "test-m", "name": "Test", "metric_type": "count", "aggregation": validAgg(), "attribution": map[string]any{"require_exposure": true, "window_days": 99, "fallback": "subject"}}, http.StatusBadRequest},
+		{"attribution bad fallback", map[string]any{"key": "test-m", "name": "Test", "metric_type": "count", "aggregation": validAgg(), "attribution": map[string]any{"require_exposure": true, "window_days": 7, "fallback": "last_touch"}}, http.StatusBadRequest},
+		{"attribution missing fallback", map[string]any{"key": "test-m", "name": "Test", "metric_type": "count", "aggregation": validAgg(), "attribution": map[string]any{"require_exposure": true, "window_days": 7}}, http.StatusBadRequest},
 	}
 
 	for _, tc := range cases {
@@ -404,7 +452,7 @@ func TestUpdateMetric(t *testing.T) {
 		jsonBody(map[string]any{
 			"name":        newName,
 			"description": "Updated description",
-			"aggregation": map[string]any{"event": "updated_event", "field": "value"},
+			"aggregation": map[string]any{"event_type": "updated_event"},
 		}))
 	defer resp.Body.Close()
 
@@ -418,8 +466,8 @@ func TestUpdateMetric(t *testing.T) {
 	if result.Data.Description == nil || *result.Data.Description != "Updated description" {
 		t.Errorf("description: got %v, want 'Updated description'", result.Data.Description)
 	}
-	if !strings.Contains(string(result.Data.Aggregation), "updated_event") {
-		t.Errorf("aggregation: expected updated_event, got %s", string(result.Data.Aggregation))
+	if result.Data.Aggregation.EventType == nil || *result.Data.Aggregation.EventType != "updated_event" {
+		t.Errorf("aggregation.event_type: unexpected %+v", result.Data.Aggregation)
 	}
 	if result.Data.CreatedBy == nil || result.Data.UpdatedBy == nil {
 		t.Error("created_by and updated_by should be present")
@@ -517,6 +565,19 @@ func TestUpdateMetric_EmptyAggregation(t *testing.T) {
 	requireErrorResponse(t, resp, http.StatusBadRequest, "BAD_REQUEST")
 }
 
+func TestUpdateMetric_WrongShapeForType(t *testing.T) {
+	id, _ := createMetric(t, "shape-agg-update", "Shape Agg Update", "count")
+
+	resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/v1/panel/metrics/%s", id), adminToken,
+		jsonBody(map[string]any{"aggregation": map[string]any{
+			"numerator":   map[string]any{"event_type": "a"},
+			"denominator": map[string]any{"event_type": "b"},
+		}}))
+	defer resp.Body.Close()
+
+	requireErrorResponse(t, resp, http.StatusBadRequest, "BAD_REQUEST")
+}
+
 func TestMetrics_NoSecretsInResponse(t *testing.T) {
 	id, _ := createMetric(t, "no-secrets-metric", "No Secrets Metric", "count")
 
@@ -568,8 +629,8 @@ func TestUnauthenticatedMetric_RejectedFromAllEndpoints(t *testing.T) {
 			jsonBody(map[string]any{
 				"key":         "should-not-work",
 				"metric_type": "count",
-				"aggregation": map[string]any{"e": 1},
-				"attribution": map[string]any{"w": "1d"},
+				"aggregation": map[string]any{"event_type": "test"},
+				"attribution": validAttribution(),
 			}))
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusUnauthorized)
@@ -610,8 +671,8 @@ func TestViewerCanManageMetrics(t *testing.T) {
 				"key":         "viewer-create-" + runID,
 				"name":        "Viewer Create Metric",
 				"metric_type": "count",
-				"aggregation": map[string]any{"event": "test"},
-				"attribution": map[string]any{"window": "1d"},
+				"aggregation": map[string]any{"event_type": "test"},
+				"attribution": validAttribution(),
 			}))
 		defer resp.Body.Close()
 		requireStatus(t, resp, http.StatusOK)
@@ -660,8 +721,8 @@ func createMetric(t *testing.T, key, name, metricType string, extra ...map[strin
 		"key":         uniqueKey,
 		"name":        name,
 		"metric_type": metricType,
-		"aggregation": map[string]any{"event": "test_event"},
-		"attribution": map[string]any{"window": "30d"},
+		"aggregation": aggregationForType(metricType),
+		"attribution": validAttribution(),
 	}
 	for _, e := range extra {
 		for k, v := range e {

@@ -44,14 +44,33 @@ type paginatedFlagData struct {
 	Meta paginationMetaResponse `json:"meta"`
 }
 
+type eventRefData struct {
+	EventType string  `json:"event_type"`
+	Field     *string `json:"field"`
+}
+
+type aggregationData struct {
+	EventType   *string       `json:"event_type"`
+	Field       *string       `json:"field"`
+	Level       *float64      `json:"level"`
+	Numerator   *eventRefData `json:"numerator"`
+	Denominator *eventRefData `json:"denominator"`
+}
+
+type attributionData struct {
+	RequireExposure bool   `json:"require_exposure"`
+	WindowDays      int    `json:"window_days"`
+	Fallback        string `json:"fallback"`
+}
+
 type metricResponseData struct {
 	ID          string            `json:"id"`
 	Key         string            `json:"key"`
 	Name        string            `json:"name"`
 	Description *string           `json:"description"`
 	MetricType  string            `json:"metric_type"`
-	Aggregation json.RawMessage   `json:"aggregation"`
-	Attribution json.RawMessage   `json:"attribution"`
+	Aggregation aggregationData   `json:"aggregation"`
+	Attribution attributionData   `json:"attribution"`
 	IsBuiltin   bool              `json:"is_builtin"`
 	Status      string            `json:"status"`
 	CreatedBy   *userResponseData `json:"created_by"`

@@ -129,24 +129,24 @@ func bootstrapDevMetrics(log *zap.Logger, pool *pgxpool.Pool, svc *metricsdomain
 			Name:        "Purchase Count",
 			Description: "Number of purchase events (dev)",
 			MetricType:  "count",
-			Aggregation: metricsdomain.MetricConfig([]byte(`{"event":"purchase"}`)),
-			Attribution: metricsdomain.MetricConfig([]byte(`{"window":"30d"}`)),
+			Aggregation: metricsdomain.Aggregation{EventType: strPtr("purchase")},
+			Attribution: metricsdomain.Attribution{RequireExposure: true, WindowDays: 7, Fallback: metricsdomain.AttributionFallbackSubject},
 		},
 		{
 			Key:         "revenue_sum",
 			Name:        "Revenue Sum",
 			Description: "Sum of revenue (dev)",
 			MetricType:  "sum",
-			Aggregation: metricsdomain.MetricConfig([]byte(`{"event":"purchase","field":"revenue"}`)),
-			Attribution: metricsdomain.MetricConfig([]byte(`{"window":"30d"}`)),
+			Aggregation: metricsdomain.Aggregation{EventType: strPtr("purchase"), Field: strPtr("revenue")},
+			Attribution: metricsdomain.Attribution{RequireExposure: true, WindowDays: 7, Fallback: metricsdomain.AttributionFallbackSubject},
 		},
 		{
 			Key:         "conversion_rate",
 			Name:        "Conversion Rate",
 			Description: "Purchase / visit ratio (dev)",
 			MetricType:  "ratio",
-			Aggregation: metricsdomain.MetricConfig([]byte(`{"numerator_event":"purchase","denominator_event":"visit"}`)),
-			Attribution: metricsdomain.MetricConfig([]byte(`{"window":"7d"}`)),
+			Aggregation: metricsdomain.Aggregation{Numerator: &metricsdomain.EventRef{EventType: "purchase"}, Denominator: &metricsdomain.EventRef{EventType: "visit"}},
+			Attribution: metricsdomain.Attribution{RequireExposure: true, WindowDays: 7, Fallback: metricsdomain.AttributionFallbackSubject},
 		},
 	}
 
@@ -157,6 +157,10 @@ func bootstrapDevMetrics(log *zap.Logger, pool *pgxpool.Pool, svc *metricsdomain
 			log.Info("dev metrics bootstrap: metric created", zap.String("metric.key", req.Key))
 		}
 	}
+}
+
+func strPtr(s string) *string {
+	return &s
 }
 
 func bootstrapSnapshotRefresh(log *zap.Logger, refresher flagsdomain.SnapshotRefresher) {

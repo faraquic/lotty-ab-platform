@@ -17,7 +17,7 @@ type MetricRepo interface {
 	Create(ctx context.Context, m Metric) (string, error)
 	GetByID(ctx context.Context, id string, includeArchived bool) (MetricWithCreatorAndUpdater, error)
 	List(ctx context.Context, limit, offset int, includeArchived bool) ([]Metric, error)
-	Update(ctx context.Context, id string, key, name, description string, aggregation MetricConfig, attribution MetricConfig, status MetricStatus, updatedBy string) (MetricWithCreatorAndUpdater, error)
+	Update(ctx context.Context, id string, key, name, description string, aggregation *Aggregation, attribution *Attribution, status MetricStatus, updatedBy string) (MetricWithCreatorAndUpdater, error)
 	Count(ctx context.Context, includeArchived bool) (int64, error)
 }
 
@@ -36,14 +36,14 @@ func (s *Service) Create(ctx context.Context, callerID string, req CreateMetricR
 		return MetricResponse{}, ErrInvalidMetricType
 	}
 
-	aggregation := MetricConfig(req.Aggregation)
-	if !aggregation.Valid() {
-		return MetricResponse{}, ErrInvalidMetricConfig
+	aggregation := req.Aggregation
+	if err := aggregation.Validate(metricType); err != nil {
+		return MetricResponse{}, err
 	}
 
-	attribution := MetricConfig(req.Attribution)
-	if !attribution.Valid() {
-		return MetricResponse{}, ErrInvalidMetricConfig
+	attribution := req.Attribution
+	if err := attribution.Validate(); err != nil {
+		return MetricResponse{}, err
 	}
 
 	var desc *string
@@ -136,25 +136,23 @@ func (s *Service) Update(ctx context.Context, callerID, id string, req UpdateMet
 		if req.Key != "" {
 			return MetricResponse{}, ErrBuiltinProtected
 		}
-		if len(req.Aggregation) > 0 {
+		if req.Aggregation != nil {
 			return MetricResponse{}, ErrBuiltinProtected
 		}
-		if len(req.Attribution) > 0 {
+		if req.Attribution != nil {
 			return MetricResponse{}, ErrBuiltinProtected
 		}
 	}
 
-	if len(req.Aggregation) > 0 {
-		agg := MetricConfig(req.Aggregation)
-		if !agg.Valid() {
-			return MetricResponse{}, ErrInvalidMetricConfig
+	if req.Aggregation != nil {
+		if err := req.Aggregation.Validate(existing.Metric.MetricType); err != nil {
+			return MetricResponse{}, err
 		}
 	}
 
-	if len(req.Attribution) > 0 {
-		attr := MetricConfig(req.Attribution)
-		if !attr.Valid() {
-			return MetricResponse{}, ErrInvalidMetricConfig
+	if req.Attribution != nil {
+		if err := req.Attribution.Validate(); err != nil {
+			return MetricResponse{}, err
 		}
 	}
 
