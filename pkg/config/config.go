@@ -83,7 +83,8 @@ type PanelConfig struct {
 }
 
 type RuntimeConfig struct {
-	HTTP HTTPConfig `mapstructure:"http"`
+	HTTP        HTTPConfig    `mapstructure:"http"`
+	MaxStaleAge time.Duration `mapstructure:"max_stale_age"`
 }
 
 type AnalyticsConfig struct {
@@ -191,6 +192,7 @@ func defaultConfig() *Config {
 			},
 		},
 		Runtime: RuntimeConfig{
+			MaxStaleAge: 5 * time.Minute,
 			HTTP: HTTPConfig{
 				Address: "0.0.0.0:8082",
 				CORS: CORSConfig{
@@ -232,6 +234,12 @@ func findConfigFile() string {
 	var names []string
 
 	if custom := os.Getenv("CONFIG_NAME"); custom != "" {
+		if filepath.IsAbs(custom) {
+			if st, err := os.Stat(custom); err == nil && !st.IsDir() {
+				return custom
+			}
+			return ""
+		}
 		names = append(names, custom)
 	}
 	names = append(names, "config.local.json", "config.json")

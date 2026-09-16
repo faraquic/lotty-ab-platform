@@ -527,9 +527,9 @@ func decodeFlagResponse(t *testing.T, resp *http.Response) apiResponse[flagRespo
 	return decodeResponse[apiResponse[flagResponseData]](t, resp)
 }
 
-func decodePaginatedFlagsResponse(t *testing.T, resp *http.Response) apiResponse[paginatedFlagData] {
+func decodePaginatedFlagsResponse(t *testing.T, resp *http.Response) apiPaginatedResponse[flagResponseData] {
 	t.Helper()
-	return decodeResponse[apiResponse[paginatedFlagData]](t, resp)
+	return decodeResponse[apiPaginatedResponse[flagResponseData]](t, resp)
 }
 
 // --- assertion helpers ---

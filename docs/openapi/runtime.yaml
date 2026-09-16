@@ -56,6 +56,12 @@ paths:
     post:
       tags: [decide]
       summary: Evaluate flags for a subject
+      description: >
+        Deterministic variant delivery. Subjects inside allocation receive an
+        experiment variant (sticky per subject + version salt); everyone else
+        receives the flag default. Non-empty targeting currently excludes the
+        subject until the targeting DSL milestone. Responses served from a
+        stale snapshot carry degraded=true.
       operationId: decide
       security: []
       requestBody:
@@ -78,7 +84,16 @@ paths:
               schema:
                 $ref: "#/components/schemas/DecideResponse"
         "400":
-          $ref: "#/components/responses/BadRequest"
+          description: Invalid request payload or unknown flag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error:
+                  code: BAD_REQUEST
+                  message: unknown flag
         "413":
           $ref: "#/components/responses/PayloadTooLarge"
         "503":
@@ -129,7 +144,7 @@ components:
         subject_id:
           type: string
           minLength: 1
-          maxLength: 256
+          maxLength: 128
           description: Opaque subject identifier
           example: user-123
         attributes:
@@ -142,10 +157,10 @@ components:
         flags:
           type: array
           description: Flag keys to evaluate. Empty omits returns all flags from snapshot.
-          maxItems: 100
+          maxItems: 128
           items:
             type: string
-            minLength: 1
+            minLength: 3
             maxLength: 128
           example: [checkout_redesign]
 
@@ -164,6 +179,9 @@ components:
             config_revision:
               type: string
               description: Hex-encoded snapshot revision
+            degraded:
+              type: boolean
+              description: True when served from a snapshot older than max_stale_age
             flags:
               type: object
               additionalProperties:
@@ -174,7 +192,7 @@ components:
       type: object
       properties:
         value:
-          description: Flag value (string | number | boolean | null if missing)
+          description: Flag value (string | number | boolean)
           oneOf:
             - type: string
             - type: number
@@ -183,11 +201,26 @@ components:
               nullable: true
         source:
           type: string
-          enum: [default, missing]
-          description: default = flag found in snapshot, missing = flag not found
+          enum: [default, experiment]
+          description: default = flag default value, experiment = variant assigned
         reason:
           type: string
-          description: Present when source is missing
+          description: Present for default source (no experiment, targeting mismatch, outside allocation)
+        experiment_id:
+          type: string
+          format: uuid
+          description: Present when source is experiment
+        experiment_version:
+          type: integer
+          description: Present when source is experiment
+        variant_id:
+          type: string
+          format: uuid
+          description: Present when source is experiment
+        decision_id:
+          type: string
+          format: uuid
+          description: Unique per decision, used for attribution. Present for default and experiment sources.
       required: [value, source]
 
     ComponentStatus:

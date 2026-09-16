@@ -12,8 +12,8 @@ CREATE TABLE flags(
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT flags_default_value_type CHECK ((type = 'string' AND jsonb_typeof(default_value) = 'string') OR (type = 'number' AND jsonb_typeof(default_value) = 'number') OR (type = 'bool' AND jsonb_typeof(default_value) = 'boolean')),
-    CONSTRAINT fg_flags_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
-    CONSTRAINT fg_flags_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT
+    CONSTRAINT fk_flags_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_flags_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT
 );
 
 CREATE TRIGGER flags_updated_at

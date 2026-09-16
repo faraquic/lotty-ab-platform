@@ -1,11 +1,11 @@
-package flags
+package snapshot
 
 import (
 	"context"
 	"time"
 
 	"github.com/faraquic/lotty-ab-platform/pkg/logger"
-	"github.com/faraquic/lotty-ab-platform/pkg/snapshot"
+	pkgsnapshot "github.com/faraquic/lotty-ab-platform/pkg/snapshot"
 	"go.uber.org/zap"
 )
 
@@ -14,23 +14,28 @@ const (
 	refreshOpTimeout  = 2 * time.Second
 )
 
-type SnapshotRefresher interface {
+type Refresher interface {
 	Refresh()
 	RefreshSync(ctx context.Context) error
 	Stop()
 }
 
-type Refresher struct {
-	repo    FlagRepo
-	storage *snapshot.Writer
+type Source interface {
+	ListFlags(ctx context.Context) ([]pkgsnapshot.FlagInput, error)
+	ListExperiments(ctx context.Context) ([]pkgsnapshot.ExperimentInput, error)
+}
+
+type RefresherImpl struct {
+	src     Source
+	storage *pkgsnapshot.Writer
 	ch      chan struct{}
 	log     *zap.Logger
 	done    chan struct{}
 }
 
-func NewRefresher(repo FlagRepo, storage *snapshot.Writer, log *zap.Logger) *Refresher {
-	r := &Refresher{
-		repo:    repo,
+func NewRefresher(src Source, storage *pkgsnapshot.Writer, log *zap.Logger) *RefresherImpl {
+	r := &RefresherImpl{
+		src:     src,
 		storage: storage,
 		ch:      make(chan struct{}, refreshBufferSize),
 		log:     log.Named("snapshot_refresher"),
@@ -40,7 +45,7 @@ func NewRefresher(repo FlagRepo, storage *snapshot.Writer, log *zap.Logger) *Ref
 	return r
 }
 
-func (r *Refresher) Refresh() {
+func (r *RefresherImpl) Refresh() {
 	select {
 	case r.ch <- struct{}{}:
 	default:
@@ -51,16 +56,16 @@ func (r *Refresher) Refresh() {
 	}
 }
 
-func (r *Refresher) RefreshSync(ctx context.Context) error {
+func (r *RefresherImpl) RefreshSync(ctx context.Context) error {
 	return r.doRefresh(ctx)
 }
 
-func (r *Refresher) Stop() {
+func (r *RefresherImpl) Stop() {
 	close(r.ch)
 	<-r.done
 }
 
-func (r *Refresher) worker() {
+func (r *RefresherImpl) worker() {
 	defer close(r.done)
 
 	for range r.ch {
@@ -75,10 +80,10 @@ func (r *Refresher) worker() {
 	}
 }
 
-func (r *Refresher) doRefresh(ctx context.Context) error {
+func (r *RefresherImpl) doRefresh(ctx context.Context) error {
 	start := time.Now()
 
-	flags, err := r.repo.List(ctx, 10000, 0)
+	flags, err := r.src.ListFlags(ctx)
 	if err != nil {
 		r.log.Error("failed to list flags for snapshot",
 			zap.String(logger.FieldCacheOperation, "set"),
@@ -87,16 +92,16 @@ func (r *Refresher) doRefresh(ctx context.Context) error {
 		return err
 	}
 
-	inputs := make([]snapshot.FlagInput, 0, len(flags))
-	for _, f := range flags {
-		inputs = append(inputs, snapshot.FlagInput{
-			Key:   f.Key,
-			Type:  string(f.Type),
-			Value: []byte(f.DefaultValue),
-		})
+	experiments, err := r.src.ListExperiments(ctx)
+	if err != nil {
+		r.log.Error("failed to list experiments for snapshot",
+			zap.String(logger.FieldCacheOperation, "set"),
+			zap.Error(err),
+		)
+		return err
 	}
 
-	snap := snapshot.Build(inputs)
+	snap := pkgsnapshot.Build(flags, experiments)
 
 	if err := r.storage.SetWithContext(ctx, snap); err != nil {
 		return err
@@ -105,6 +110,7 @@ func (r *Refresher) doRefresh(ctx context.Context) error {
 	r.log.Info("snapshot refreshed",
 		zap.String(logger.FieldCacheOperation, "set"),
 		zap.Int(logger.FieldSnapshotFlagCount, len(flags)),
+		zap.Int(logger.FieldSnapshotExperimentCount, len(experiments)),
 		zap.Float64(logger.FieldDurationMs, float64(time.Since(start).Nanoseconds())/1e6),
 	)
 	return nil

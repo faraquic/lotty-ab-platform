@@ -33,6 +33,9 @@ func (h *Handler) decide(c fiber.Ctx) error {
 		if err == ErrSnapshotUnavailable {
 			return api.ErrorFiber(c, http.StatusServiceUnavailable, api.SnapshotUnavailable, "snapshot not ready")
 		}
+		if err == ErrUnknownFlag {
+			return api.ErrorFiber(c, http.StatusBadRequest, api.BadRequest, err.Error())
+		}
 		h.log.Error("decide failed", zap.Error(err))
 		return api.InternalErrorFiber(c)
 	}

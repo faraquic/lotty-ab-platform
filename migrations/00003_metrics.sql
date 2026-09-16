@@ -13,8 +13,8 @@ CREATE TABLE metrics(
     updated_by uuid NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT fg_metrics_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
-    CONSTRAINT fg_metrics_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT
+    CONSTRAINT fk_metrics_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_metrics_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT
 );
 
 CREATE TRIGGER metrics_updated_at

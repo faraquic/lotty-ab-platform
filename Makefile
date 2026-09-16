@@ -389,4 +389,5 @@ test-e2e: s3-provision-e2e
 	$(CONTAINER_ENGINE) exec $(POSTGRES_NAME) psql -U $(POSTGRES_USER) -d postgres -c "SELECT 1 FROM pg_database WHERE datname = '$(POSTGRES_DB)_e2e'" | grep -q 1 || \
 		$(CONTAINER_ENGINE) exec $(POSTGRES_NAME) psql -U $(POSTGRES_USER) -d postgres -c "CREATE DATABASE $(POSTGRES_DB)_e2e"
 	go tool goose -dir $(MIGRATIONS_DIR) postgres "postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:$(POSTGRES_PORT)/$(POSTGRES_DB)_e2e?sslmode=disable" up
-	E2E_TEST=1 go test ./tests/e2e/... -v -count=1
+	# -p 1: suites share labp_e2e and fixed ports; parallel packages would collide.
+	E2E_TEST=1 go test -p 1 ./tests/e2e/... -v -count=1

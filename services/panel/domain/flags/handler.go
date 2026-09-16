@@ -70,7 +70,7 @@ func (h *Handler) list(c *gin.Context) {
 		return
 	}
 
-	api.OK(c.Writer, resp)
+	api.OKWithMeta(c.Writer, resp.Data, &resp.Meta)
 }
 
 func (h *Handler) getByID(c *gin.Context) {

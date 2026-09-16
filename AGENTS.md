@@ -50,10 +50,11 @@ services/
 │       ├── flags/      — CRUD, typed default values
 │       ├── metrics/    — CRUD, aggregation config
 │       └── health/     — liveness/readiness probes
-├── runtime/            — decide API (Fiber v3, port :8082) [skeleton]
+├── runtime/            — decide API (Fiber v3, port :8082)
 │   ├── main.go         — entrypoint
 │   ├── app.go          — DI, middleware, routing
 │   └── domain/
+│       ├── decide/     — xxhash64 buckets, allocation, targeting stub
 │       └── health/     — liveness/readiness probes
 └── analytics/          — event ingestion, attribution (Fiber v3, port :8083) [skeleton]
     ├── main.go         — entrypoint
@@ -115,6 +116,7 @@ Analytics ──→ Kafka ──→ ClickHouse (facts)
 | Users CRUD (avatar, self-protection) | `services/panel/domain/users/` | ✅ |
 | Flags CRUD (typed values) | `services/panel/domain/flags/` | ✅ |
 | Metrics CRUD (6 типов) | `services/panel/domain/metrics/` | ✅ |
+| Experiments CRUD + lifecycle (Phase 6+9, review stub) | `services/panel/domain/experiments/` | ✅ |
 | Health probes (panel, runtime, analytics) | `services/*/domain/health/` | ✅ |
 | Shared packages | `pkg/api`, `pkg/auth`, `pkg/config`, `pkg/database`, `pkg/logger`, `pkg/middleware`, `pkg/dto` | ✅ |
 | Dual-framework middleware | `pkg/middleware/` (gin + fiber) | ✅ |
@@ -124,15 +126,16 @@ Analytics ──→ Kafka ──→ ClickHouse (facts)
 | Docker Compose | `docker-compose.yml` (8 сервисов) | ✅ |
 | Multi-service Makefile | `Makefile` (build, dev, run, docker) | ✅ |
 | Runtime skeleton | `services/runtime/` (Fiber v3, health only) | ✅ |
+| Runtime decide API (xxhash64, allocation, snapshot v2) | `services/runtime/domain/decide/` | ✅ |
 | Analytics skeleton | `services/analytics/` (Fiber v3, health only) | ✅ |
 
 ### Не построено (Milestone 3-14)
 
 | Milestone | Описание | Статус |
 |-----------|----------|--------|
-| 3 | Runtime decide API, targeting engine, xxhash64, snapshot | ❌ |
-| 4 | Experiments domain, versions, variants, allocation | ❌ (миграция 00006 сломана) |
-| 5 | Approver groups, review workflow | ❌ |
+| 3 | Runtime decide API, targeting engine, xxhash64, snapshot | ⚠️ частично (decide + xxhash + snapshot v2 готовы; targeting — заглушка до Phase 7, participation policy отложена) |
+| 4 | Experiments domain, versions, variants, allocation | ⚠️ частично (CRUD + lifecycle готовы, нет conflicts/priority, review — заглушка) |
+| 5 | Approver groups, review workflow | ✅ (группы + пороги + треды комментариев; `services/panel/domain/reviews/`, миграция 00005) |
 | 6 | Kafka, outbox, config propagation | ❌ |
 | 7 | Events API, Kafka ingestion, dedup | ❌ |
 | 8 | Exposures, attribution, ClickHouse | ❌ |
@@ -145,10 +148,9 @@ Analytics ──→ Kafka ──→ ClickHouse (facts)
 
 ### Критические проблемы
 
-1. **Миграция 00006 сломана** — синтаксические ошибки: `text(64)`, stray `)`, неправильное имя FK, `NULLABLE` не является SQL
-2. **Нет миграций 00004, 00005** — пропуск в нумерации
-3. **Нет Approver Groups** — сущность описана в task.md, нет миграции и кода
-4. **Нет Audit Records** — сущность описана в task.md, нет миграции и кода
+1. **Миграция 00004 починена** — убран FK на несуществующий `reviews`, добавлены `owner_id`, `version`, `guardrail_paused`, `completion_decision/reason`; function обёрнут в `StatementBegin/End` (goose резал тело по `;`). Применяется чисто (up/down проверены).
+2. **Нет Approver Groups** — сущность описана в task.md, нет миграции и кода (review в experiments — заглушка до Phase 8)
+3. **Нет Audit Records** — сущность описана в task.md, нет миграции и кода
 
 ---
 
@@ -388,6 +390,10 @@ go test ./pkg/... -short -count=1
 | 2026-09-01 | Services: runtime skeleton (Fiber v3, port :8082), analytics skeleton (Fiber v3, port :8083) |
 | 2026-09-01 | Docker: `Dockerfile` (multi-stage, ARG SERVICE/PORT), `docker-compose.yml` (8 services), nginx reverse proxy |
 | 2026-09-01 | Makefile: rewritten for developer workflow — `run-local` (fast restart), `dev-up` (infra only), `up` (docker compose), `check`, `dev-status` |
+| 2026-09-14 | Experiments: CRUD + lifecycle (Phase 6+9) — `services/panel/domain/experiments/`, миграция 00004 починена (owner/version/guardrail_paused/completion, StatementBegin/End, без FK reviews), review — заглушка, internal pause/rollback за admin-группой |
+| 2026-09-14 | Runtime decide: snapshot v2 (experiments), xxhash64 buckets, allocation, decision_id, degraded/stale; композер `services/panel/snapshot/`; `tests/e2e/runtime/`; фикс `findConfigFile` для абсолютного CONFIG_NAME; targeting — заглушка, participation policy отложена |
+| 2026-09-14 | Review fixes: approver может ревьюить чужие эксперименты (§6.1); unknown flag → 400 (§7.5); `test-e2e -p 1`; `CreateVersion` FOR UPDATE; `subject_id` max 128; D-05 зафиксирован на `experiment_id`; пустой targeting `{}` = match |
+| 2026-09-14 | Review workflow (Phase 8): группы апруверов + пороги + треды комментариев с resolve — `services/panel/domain/reviews/`, миграции 00005/00006, статус `rejected` у эксперимента, D-10 через APPROVED-ревью; стабы `/approve` удалены |
 
 ---
 

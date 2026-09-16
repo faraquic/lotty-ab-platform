@@ -247,13 +247,13 @@ func TestListFlags(t *testing.T) {
 	if !result.Success {
 		t.Error("expected success=true")
 	}
-	if len(result.Data.Data) < 2 {
-		t.Errorf("expected at least 2 flags, got %d", len(result.Data.Data))
+	if len(result.Data) < 2 {
+		t.Errorf("expected at least 2 flags, got %d", len(result.Data))
 	}
 
 	foundA := false
 	foundB := false
-	for _, f := range result.Data.Data {
+	for _, f := range result.Data {
 		if f.Key == keyA {
 			foundA = true
 		}
@@ -268,7 +268,7 @@ func TestListFlags(t *testing.T) {
 		t.Errorf("%s not found in list", keyB)
 	}
 
-	for _, f := range result.Data.Data {
+	for _, f := range result.Data {
 		if f.CreatedBy != nil {
 			t.Error("list items should not have created_by")
 		}
@@ -277,17 +277,17 @@ func TestListFlags(t *testing.T) {
 		}
 	}
 
-	if result.Data.Meta.Limit != 100 {
-		t.Errorf("meta.limit: got %d, want 100", result.Data.Meta.Limit)
+	if result.Meta.Limit != 100 {
+		t.Errorf("meta.limit: got %d, want 100", result.Meta.Limit)
 	}
-	if result.Data.Meta.Offset != 0 {
-		t.Errorf("meta.offset: got %d, want 0", result.Data.Meta.Offset)
+	if result.Meta.Offset != 0 {
+		t.Errorf("meta.offset: got %d, want 0", result.Meta.Offset)
 	}
-	if result.Data.Meta.Count != len(result.Data.Data) {
-		t.Errorf("meta.count: got %d, want %d", result.Data.Meta.Count, len(result.Data.Data))
+	if result.Meta.Count != len(result.Data) {
+		t.Errorf("meta.count: got %d, want %d", result.Meta.Count, len(result.Data))
 	}
-	if result.Data.Meta.Total < int64(result.Data.Meta.Count) {
-		t.Errorf("meta.total (%d) < meta.count (%d)", result.Data.Meta.Total, result.Data.Meta.Count)
+	if result.Meta.Total < int64(result.Meta.Count) {
+		t.Errorf("meta.total (%d) < meta.count (%d)", result.Meta.Total, result.Meta.Count)
 	}
 }
 
@@ -307,27 +307,27 @@ func TestListFlags_Pagination(t *testing.T) {
 
 	result := decodePaginatedFlagsResponse(t, resp)
 
-	if len(result.Data.Data) != 2 {
-		t.Errorf("limit=2: got %d flags, want 2", len(result.Data.Data))
+	if len(result.Data) != 2 {
+		t.Errorf("limit=2: got %d flags, want 2", len(result.Data))
 	}
-	if result.Data.Meta.Limit != 2 {
-		t.Errorf("meta.limit: got %d, want 2", result.Data.Meta.Limit)
+	if result.Meta.Limit != 2 {
+		t.Errorf("meta.limit: got %d, want 2", result.Meta.Limit)
 	}
-	if !result.Data.Meta.HasNext {
+	if !result.Meta.HasNext {
 		t.Error("expected has_next=true on first page")
 	}
 
-	resp2 := doRequest(http.MethodGet, fmt.Sprintf("/api/v1/panel/flags?limit=2&offset=%d", base.Data.Meta.Total+2), adminToken, nil)
+	resp2 := doRequest(http.MethodGet, fmt.Sprintf("/api/v1/panel/flags?limit=2&offset=%d", base.Meta.Total+2), adminToken, nil)
 	defer resp2.Body.Close()
 
 	requireStatus(t, resp2, http.StatusOK)
 
 	result2 := decodePaginatedFlagsResponse(t, resp2)
 
-	if len(result2.Data.Data) != 1 {
-		t.Errorf("offset at baseline+2: got %d flags, want 1", len(result2.Data.Data))
+	if len(result2.Data) != 1 {
+		t.Errorf("offset at baseline+2: got %d flags, want 1", len(result2.Data))
 	}
-	if result2.Data.Meta.HasNext {
+	if result2.Meta.HasNext {
 		t.Error("expected has_next=false on last page")
 	}
 }
@@ -346,16 +346,16 @@ func TestListFlags_OffsetBeyondTotal(t *testing.T) {
 	requireStatus(t, resp, http.StatusOK)
 	result := decodePaginatedFlagsResponse(t, resp)
 
-	if len(result.Data.Data) != 0 {
-		t.Errorf("offset beyond total: got %d flags, want 0", len(result.Data.Data))
+	if len(result.Data) != 0 {
+		t.Errorf("offset beyond total: got %d flags, want 0", len(result.Data))
 	}
-	if result.Data.Meta.Count != 0 {
-		t.Errorf("meta.count: got %d, want 0", result.Data.Meta.Count)
+	if result.Meta.Count != 0 {
+		t.Errorf("meta.count: got %d, want 0", result.Meta.Count)
 	}
-	if result.Data.Meta.Total < base.Data.Meta.Total+2 {
-		t.Errorf("meta.total (%d) should be >= baseline+2 (%d)", result.Data.Meta.Total, base.Data.Meta.Total+2)
+	if result.Meta.Total < base.Meta.Total+2 {
+		t.Errorf("meta.total (%d) should be >= baseline+2 (%d)", result.Meta.Total, base.Meta.Total+2)
 	}
-	if result.Data.Meta.HasNext {
+	if result.Meta.HasNext {
 		t.Error("expected has_next=false when offset beyond total")
 	}
 }

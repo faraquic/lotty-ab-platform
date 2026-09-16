@@ -572,6 +572,986 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /experiments:
+    post:
+      tags: [experiments]
+      summary: Create an experiment
+      description: Creates a draft experiment with version 1 (fresh assignment salt). Variants are optional at creation and can be set later while draft.
+      operationId: createExperiment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExperimentRequest"
+      responses:
+        "200":
+          description: Experiment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExperimentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    get:
+      tags: [experiments]
+      summary: List experiments
+      operationId: listExperiments
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ExperimentStatus"
+      responses:
+        "200":
+          description: List of experiments
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExperimentListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /experiments/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Experiment ID
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      tags: [experiments]
+      summary: Get an experiment by ID
+      description: Returns the experiment with its current version and variants.
+      operationId: getExperiment
+      responses:
+        "200":
+          description: Experiment found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExperimentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    patch:
+      tags: [experiments]
+      summary: Update a draft experiment
+      description: Only name and description of a draft experiment can change. Requires the current version for optimistic locking.
+      operationId: updateExperiment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateExperimentRequest"
+      responses:
+        "200":
+          description: Experiment updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExperimentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /experiments/{id}/versions:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Experiment ID
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      tags: [experiments]
+      summary: Create a new experiment version
+      description: Any distribution-affecting change creates a new version with a fresh assignment salt. Not allowed for running experiments. A new version after approval resets the experiment to draft.
+      operationId: createExperimentVersion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExperimentVersionRequest"
+      responses:
+        "200":
+          description: Version created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExperimentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /experiments/{id}/variants:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Experiment ID
+        schema:
+          type: string
+          format: uuid
+
+    put:
+      tags: [experiments]
+      summary: Replace variants of the current version
+      description: Only allowed while the experiment is draft. Requires at least 2 variants, exactly one control, and weights summing to the version allocation.
+      operationId: setExperimentVariants
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetExperimentVariantsRequest"
+      responses:
+        "200":
+          description: Variants replaced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExperimentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /experiments/{id}/submit:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Experiment ID
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      tags: [experiments]
+      summary: Submit a draft experiment for review
+      description: Requires a complete current version (at least 2 variants, weights sum to allocation).
+      operationId: submitExperiment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExperimentTransitionRequest"
+      responses:
+        "200":
+          description: Experiment submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExperimentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /experiments/{id}/start:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Experiment ID
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      tags: [experiments]
+      summary: Start an approved experiment
+      description: Only one running or paused experiment may reference the same flag.
+      operationId: startExperiment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExperimentTransitionRequest"
+      responses:
+        "200":
+          description: Experiment started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExperimentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /experiments/{id}/pause:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Experiment ID
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      tags: [experiments]
+      summary: Pause a running experiment
+      operationId: pauseExperiment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExperimentTransitionRequest"
+      responses:
+        "200":
+          description: Experiment paused
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExperimentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /experiments/{id}/resume:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Experiment ID
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      tags: [experiments]
+      summary: Resume a paused experiment
+      description: A pause initiated by a guardrail requires an admin override to resume.
+      operationId: resumeExperiment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExperimentTransitionRequest"
+      responses:
+        "200":
+          description: Experiment resumed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExperimentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /experiments/{id}/complete:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Experiment ID
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      tags: [experiments]
+      summary: Complete a running or paused experiment
+      description: Requires a decision (rollout_winner, rollback, no_effect) and a reason. A rollout winner additionally requires the winning variant and updates the flag default.
+      operationId: completeExperiment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompleteExperimentRequest"
+      responses:
+        "200":
+          description: Experiment completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExperimentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /experiments/{id}/rollout:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Experiment ID
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      tags: [experiments]
+      summary: Roll out the winning variant
+      description: Discrete rollout action. Sets the flag default to the winner value and completes the experiment.
+      operationId: rolloutExperiment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RolloutExperimentRequest"
+      responses:
+        "200":
+          description: Winner rolled out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExperimentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /experiments/{id}/archive:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Experiment ID
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      tags: [experiments]
+      summary: Archive a completed experiment
+      operationId: archiveExperiment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExperimentTransitionRequest"
+      responses:
+        "200":
+          description: Experiment archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExperimentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /internal/experiments/{id}/pause:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Experiment ID
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      tags: [experiments]
+      summary: Pause an experiment from automation
+      description: Internal control API used by the guardrail evaluator. Marks the experiment as guardrail-paused.
+      operationId: internalPauseExperiment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExperimentTransitionRequest"
+      responses:
+        "200":
+          description: Experiment paused
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExperimentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /internal/experiments/{id}/rollback:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Experiment ID
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      tags: [experiments]
+      summary: Roll back an experiment from automation
+      description: Internal control API used by the guardrail evaluator. Stops experimental assignment and marks the experiment as guardrail-paused.
+      operationId: internalRollbackExperiment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExperimentTransitionRequest"
+      responses:
+        "200":
+          description: Experiment rolled back
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExperimentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /approver-groups:
+    post:
+      tags: [reviews]
+      summary: Create an approver group
+      operationId: createApproverGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateApproverGroupRequest"
+      responses:
+        "200":
+          description: Group created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApproverGroupResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    get:
+      tags: [reviews]
+      summary: List approver groups
+      operationId: listApproverGroups
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: List of groups
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApproverGroupListResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /approver-groups/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      tags: [reviews]
+      summary: Get an approver group
+      operationId: getApproverGroup
+      responses:
+        "200":
+          description: Group found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApproverGroupResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    patch:
+      tags: [reviews]
+      summary: Update an approver group
+      operationId: updateApproverGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateApproverGroupRequest"
+      responses:
+        "200":
+          description: Group updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApproverGroupResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /approver-groups/{id}/members:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      tags: [reviews]
+      summary: Add a group member
+      operationId: addGroupMember
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddGroupMemberRequest"
+      responses:
+        "200":
+          description: Member added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApproverGroupResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /approver-groups/{id}/members/{user_id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    delete:
+      tags: [reviews]
+      summary: Remove a group member
+      description: Fails when removal would drop below min_approvals.
+      operationId: removeGroupMember
+      responses:
+        "200":
+          description: Member removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApproverGroupResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /experimenters/{id}/group:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Experimenter user ID
+        schema:
+          type: string
+          format: uuid
+
+    put:
+      tags: [reviews]
+      summary: Assign an approver group to an experimenter
+      description: Omit group_id (null) to unassign and fall back to any admin/approver with min_approvals=1.
+      operationId: setExperimenterGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetExperimenterGroupRequest"
+      responses:
+        "200":
+          description: Assignment updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /reviews:
+    get:
+      tags: [reviews]
+      summary: Review queue
+      operationId: listReviews
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ReviewStatus"
+      responses:
+        "200":
+          description: List of reviews
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /reviews/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      tags: [reviews]
+      summary: Get a review with approvals and comments
+      operationId: getReview
+      responses:
+        "200":
+          description: Review found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /reviews/{id}/approvals:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      tags: [reviews]
+      summary: Act on a review
+      description: One action per reviewer. Approve counts toward the group threshold; reaching it approves the experiment. Reject rejects immediately; request-changes returns the experiment to draft.
+      operationId: actOnReview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActOnReviewRequest"
+      responses:
+        "200":
+          description: Action recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /reviews/{id}/comments:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      tags: [reviews]
+      summary: Comment on a review
+      description: Pass parent_id to reply in a thread (one level).
+      operationId: addReviewComment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddReviewCommentRequest"
+      responses:
+        "200":
+          description: Comment added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewCommentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /reviews/comments/{cid}/resolve:
+    parameters:
+      - name: cid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    patch:
+      tags: [reviews]
+      summary: Resolve or reopen a comment thread
+      description: Author or admin only.
+      operationId: resolveReviewComment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveReviewCommentRequest"
+      responses:
+        "200":
+          description: Comment updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewCommentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /reviews/comments/{cid}:
+    parameters:
+      - name: cid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    delete:
+      tags: [reviews]
+      summary: Delete a comment
+      description: Author or admin only. Soft delete.
+      operationId: deleteReviewComment
+      responses:
+        "204":
+          description: Comment deleted
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -642,6 +1622,18 @@ components:
             error:
               code: UNAUTHORIZED
               message: missing or malformed token
+
+    UnprocessableEntity:
+      description: Semantic validation error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            success: false
+            error:
+              code: UNPROCESSABLE_ENTITY
+              message: invalid variants
 
     InternalError:
       description: Internal server error
@@ -815,10 +1807,13 @@ components:
               enum:
                 [
                   BAD_REQUEST,
+                  UNAUTHORIZED,
                   NOT_FOUND,
                   PAYLOAD_TOO_LARGE,
                   CONFLICT,
                   FORBIDDEN,
+                  UNPROCESSABLE_ENTITY,
+                  SERVICE_UNAVAILABLE,
                   INTERNAL_SERVER_ERROR,
                 ]
             message:
@@ -863,6 +1858,8 @@ components:
               $ref: "#/components/schemas/ComponentStatus"
             cache:
               $ref: "#/components/schemas/ComponentStatus"
+            snapshot:
+              $ref: "#/components/schemas/ComponentStatus"
             storage:
               $ref: "#/components/schemas/ComponentStatus"
       required: [service, version, environment, timestamp, components]
@@ -899,8 +1896,10 @@ components:
           maxLength: 4096
         created_by:
           $ref: "#/components/schemas/User"
+          nullable: true
         updated_by:
           $ref: "#/components/schemas/User"
+          nullable: true
         created_at:
           type: string
           format: date-time
@@ -914,8 +1913,6 @@ components:
           name,
           type,
           default_value,
-          created_by,
-          updated_by,
           created_at,
           updated_at,
         ]
@@ -1069,8 +2066,8 @@ components:
           maxLength: 128
         level:
           type: number
-          exclusiveMinimum: 0
-          exclusiveMaximum: 1
+          exclusiveMinimum: false
+          exclusiveMaximum: true
         numerator:
           $ref: "#/components/schemas/EventRef"
         denominator:
@@ -1120,8 +2117,10 @@ components:
           $ref: "#/components/schemas/MetricStatus"
         created_by:
           $ref: "#/components/schemas/User"
+          nullable: true
         updated_by:
           $ref: "#/components/schemas/User"
+          nullable: true
         created_at:
           type: string
           format: date-time
@@ -1138,8 +2137,6 @@ components:
           attribution,
           is_builtin,
           status,
-          created_by,
-          updated_by,
           created_at,
           updated_at,
         ]
@@ -1259,3 +2256,574 @@ components:
           created_at,
           updated_at,
         ]
+
+    ExperimentStatus:
+      type: string
+      enum: [draft, review, approved, running, paused, completed, archived, rejected]
+
+    CompletionDecision:
+      type: string
+      enum: [rollout_winner, rollback, no_effect]
+
+    ExperimentVariantInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        value:
+          description: Variant value as JSON (must match the flag type on rollout)
+        weight_bp:
+          type: integer
+          minimum: 1
+        is_control:
+          type: boolean
+      required: [name, value, weight_bp, is_control]
+
+    ExperimentVariant:
+      allOf:
+        - $ref: "#/components/schemas/ExperimentVariantInput"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+          required: [id]
+
+    ExperimentVersion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        experiment_id:
+          type: string
+          format: uuid
+        version_num:
+          type: integer
+        review_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Linked review, if the version was submitted
+        weights_total:
+          type: integer
+        targeting:
+          type: object
+          nullable: true
+        distribution_salt:
+          type: string
+        created_by:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        [
+          id,
+          experiment_id,
+          version_num,
+          weights_total,
+          distribution_salt,
+          created_by,
+          created_at,
+          updated_at,
+        ]
+
+    Experiment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key
+        flag_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+        description:
+          type: string
+          maxLength: 4096
+          nullable: true
+        status:
+          $ref: "#/components/schemas/ExperimentStatus"
+        current_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        owner_id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          description: Optimistic locking version, increments on every mutation
+        guardrail_paused:
+          type: boolean
+        completion_decision:
+          $ref: "#/components/schemas/CompletionDecision"
+          nullable: true
+        completion_reason:
+          type: string
+          nullable: true
+        created_by:
+          $ref: "#/components/schemas/User"
+          nullable: true
+        updated_by:
+          $ref: "#/components/schemas/User"
+          nullable: true
+        current_version:
+          $ref: "#/components/schemas/ExperimentVersion"
+          nullable: true
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExperimentVariant"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        [
+          id,
+          flag_id,
+          name,
+          status,
+          owner_id,
+          version,
+          guardrail_paused,
+          created_at,
+          updated_at,
+        ]
+
+    CreateExperimentRequest:
+      type: object
+      properties:
+        flag_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+        description:
+          type: string
+          maxLength: 4096
+        weights_total:
+          type: integer
+          minimum: 1
+          maximum: 10000
+          default: 10000
+        targeting:
+          type: object
+          description: Targeting expression as a JSON object (full DSL lands in a later milestone)
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExperimentVariantInput"
+      required: [flag_id, name]
+
+    UpdateExperimentRequest:
+      type: object
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+        description:
+          type: string
+          maxLength: 4096
+      required: [version]
+      minProperties: 1
+
+    CreateExperimentVersionRequest:
+      type: object
+      properties:
+        version:
+          type: integer
+          minimum: 1
+          description: Current experiment version for optimistic locking
+        weights_total:
+          type: integer
+          minimum: 1
+          maximum: 10000
+          default: 10000
+        targeting:
+          type: object
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExperimentVariantInput"
+      required: [version]
+
+    SetExperimentVariantsRequest:
+      type: object
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        variants:
+          type: array
+          minItems: 2
+          items:
+            $ref: "#/components/schemas/ExperimentVariantInput"
+      required: [version, variants]
+
+    ExperimentTransitionRequest:
+      type: object
+      properties:
+        version:
+          type: integer
+          minimum: 1
+          description: Current experiment version for optimistic locking
+      required: [version]
+
+    CompleteExperimentRequest:
+      type: object
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        decision:
+          $ref: "#/components/schemas/CompletionDecision"
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        winner_variant_id:
+          type: string
+          format: uuid
+          description: Required when decision is rollout_winner
+      required: [version, decision, reason]
+
+    RolloutExperimentRequest:
+      type: object
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        winner_variant_id:
+          type: string
+          format: uuid
+      required: [version, reason, winner_variant_id]
+
+    ExperimentResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/Experiment"
+      required: [success, data]
+
+    ExperimentListResponse:
+      type: object
+      required: [success, data, meta]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Experiment"
+        meta:
+          $ref: "#/components/schemas/PaginationMeta"
+
+    ReviewStatus:
+      type: string
+      enum: [open, approved, changes_requested, rejected]
+
+    ApprovalDecision:
+      type: string
+      enum: [approve, request_changes, reject]
+
+    ApproverGroupMember:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+        avatar_url:
+          type: string
+          format: uri
+          nullable: true
+      required: [id, full_name, email, role]
+
+    ApproverGroup:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        min_approvals:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum: [active, archived]
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApproverGroupMember"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, name, min_approvals, status, members, created_at, updated_at]
+
+    CreateApproverGroupRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+        description:
+          type: string
+          maxLength: 4096
+        min_approvals:
+          type: integer
+          minimum: 1
+      required: [name, min_approvals]
+
+    UpdateApproverGroupRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+        description:
+          type: string
+          maxLength: 4096
+        min_approvals:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum: [active, archived]
+      minProperties: 1
+
+    AddGroupMemberRequest:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+      required: [user_id]
+
+    SetExperimenterGroupRequest:
+      type: object
+      properties:
+        group_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Null unassigns the group (fallback to any admin/approver).
+
+    ReviewApproval:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        reviewer_id:
+          type: string
+          format: uuid
+        decision:
+          $ref: "#/components/schemas/ApprovalDecision"
+        comment:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+      required: [id, reviewer_id, decision, created_at]
+
+    ReviewComment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        author_id:
+          type: string
+          format: uuid
+        parent_id:
+          type: string
+          format: uuid
+          nullable: true
+        body:
+          type: string
+        resolved:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        replies:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReviewComment"
+      required: [id, author_id, body, resolved, created_at, updated_at, replies]
+
+    Review:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        experiment_id:
+          type: string
+          format: uuid
+        version_id:
+          type: string
+          format: uuid
+        version_num:
+          type: integer
+        status:
+          $ref: "#/components/schemas/ReviewStatus"
+        approvals:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReviewApproval"
+        comments:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReviewComment"
+        created_by:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, experiment_id, version_id, version_num, status, approvals, comments, created_by, created_at, updated_at]
+
+    ActOnReviewRequest:
+      type: object
+      properties:
+        decision:
+          $ref: "#/components/schemas/ApprovalDecision"
+        version:
+          type: integer
+          minimum: 1
+          description: Current experiment version for optimistic locking
+        comment:
+          type: string
+          maxLength: 4096
+      required: [decision, version]
+
+    AddReviewCommentRequest:
+      type: object
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        parent_id:
+          type: string
+          format: uuid
+          description: Reply target for one-level threads
+      required: [body]
+
+    ResolveReviewCommentRequest:
+      type: object
+      properties:
+        resolved:
+          type: boolean
+      required: [resolved]
+
+    ApproverGroupResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/ApproverGroup"
+      required: [success, data]
+
+    ApproverGroupListResponse:
+      type: object
+      required: [success, data, meta]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApproverGroup"
+        meta:
+          $ref: "#/components/schemas/PaginationMeta"
+
+    ReviewResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/Review"
+      required: [success, data]
+
+    ReviewListResponse:
+      type: object
+      required: [success, data, meta]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Review"
+        meta:
+          $ref: "#/components/schemas/PaginationMeta"
+
+    ReviewCommentResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/ReviewComment"
+      required: [success, data]

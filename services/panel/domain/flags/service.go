@@ -6,6 +6,7 @@ import (
 
 	"github.com/faraquic/lotty-ab-platform/pkg/api"
 	"github.com/faraquic/lotty-ab-platform/pkg/logger"
+	panelsnapshot "github.com/faraquic/lotty-ab-platform/services/panel/snapshot"
 	"go.uber.org/zap"
 )
 
@@ -25,11 +26,11 @@ type FlagRepo interface {
 
 type Service struct {
 	repo      FlagRepo
-	refresher SnapshotRefresher
+	refresher panelsnapshot.Refresher
 	log       *zap.Logger
 }
 
-func NewService(repo FlagRepo, refresher SnapshotRefresher, log *zap.Logger) *Service {
+func NewService(repo FlagRepo, refresher panelsnapshot.Refresher, log *zap.Logger) *Service {
 	return &Service{repo, refresher, log}
 }
 

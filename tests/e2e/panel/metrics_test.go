@@ -320,13 +320,13 @@ func TestListMetrics(t *testing.T) {
 	if !result.Success {
 		t.Error("expected success=true")
 	}
-	if len(result.Data.Data) < 2 {
-		t.Errorf("expected at least 2 metrics, got %d", len(result.Data.Data))
+	if len(result.Data) < 2 {
+		t.Errorf("expected at least 2 metrics, got %d", len(result.Data))
 	}
 
 	foundA := false
 	foundB := false
-	for _, m := range result.Data.Data {
+	for _, m := range result.Data {
 		if m.Key == keyA {
 			foundA = true
 		}
@@ -341,7 +341,7 @@ func TestListMetrics(t *testing.T) {
 		t.Errorf("%s not found in list", keyB)
 	}
 
-	for _, m := range result.Data.Data {
+	for _, m := range result.Data {
 		if m.CreatedBy != nil {
 			t.Error("list items should not have created_by")
 		}
@@ -350,11 +350,11 @@ func TestListMetrics(t *testing.T) {
 		}
 	}
 
-	if result.Data.Meta.Count != len(result.Data.Data) {
-		t.Errorf("meta.count: got %d, want %d", result.Data.Meta.Count, len(result.Data.Data))
+	if result.Meta.Count != len(result.Data) {
+		t.Errorf("meta.count: got %d, want %d", result.Meta.Count, len(result.Data))
 	}
-	if result.Data.Meta.Total < int64(result.Data.Meta.Count) {
-		t.Errorf("meta.total (%d) < meta.count (%d)", result.Data.Meta.Total, result.Data.Meta.Count)
+	if result.Meta.Total < int64(result.Meta.Count) {
+		t.Errorf("meta.total (%d) < meta.count (%d)", result.Meta.Total, result.Meta.Count)
 	}
 }
 
@@ -370,16 +370,16 @@ func TestListMetrics_Pagination(t *testing.T) {
 
 	result := decodePaginatedMetricsResponse(t, resp)
 
-	if len(result.Data.Data) != 2 {
-		t.Errorf("limit=2: got %d metrics, want 2", len(result.Data.Data))
+	if len(result.Data) != 2 {
+		t.Errorf("limit=2: got %d metrics, want 2", len(result.Data))
 	}
-	if result.Data.Meta.Limit != 2 {
-		t.Errorf("meta.limit: got %d, want 2", result.Data.Meta.Limit)
+	if result.Meta.Limit != 2 {
+		t.Errorf("meta.limit: got %d, want 2", result.Meta.Limit)
 	}
-	if result.Data.Meta.Offset != 0 {
-		t.Errorf("meta.offset: got %d, want 0", result.Data.Meta.Offset)
+	if result.Meta.Offset != 0 {
+		t.Errorf("meta.offset: got %d, want 0", result.Meta.Offset)
 	}
-	if !result.Data.Meta.HasNext {
+	if !result.Meta.HasNext {
 		t.Error("expected has_next=true on first page")
 	}
 }
@@ -391,13 +391,13 @@ func TestListMetrics_OffsetBeyondTotal(t *testing.T) {
 	requireStatus(t, resp, http.StatusOK)
 	result := decodePaginatedMetricsResponse(t, resp)
 
-	if len(result.Data.Data) != 0 {
-		t.Errorf("offset beyond total: got %d metrics, want 0", len(result.Data.Data))
+	if len(result.Data) != 0 {
+		t.Errorf("offset beyond total: got %d metrics, want 0", len(result.Data))
 	}
-	if result.Data.Meta.Count != 0 {
-		t.Errorf("meta.count: got %d, want 0", result.Data.Meta.Count)
+	if result.Meta.Count != 0 {
+		t.Errorf("meta.count: got %d, want 0", result.Meta.Count)
 	}
-	if result.Data.Meta.HasNext {
+	if result.Meta.HasNext {
 		t.Error("expected has_next=false when offset beyond total")
 	}
 }
@@ -413,14 +413,14 @@ func TestListMetrics_ExcludesArchived(t *testing.T) {
 	defer defaultResp.Body.Close()
 	defaultResult := decodePaginatedMetricsResponse(t, defaultResp)
 
-	for _, m := range defaultResult.Data.Data {
+	for _, m := range defaultResult.Data {
 		if m.Key == keyArchived {
 			t.Error("archived metric should not appear in default list")
 		}
 	}
 
 	defaultFound := false
-	for _, m := range defaultResult.Data.Data {
+	for _, m := range defaultResult.Data {
 		if m.Key == keyActive {
 			defaultFound = true
 		}
@@ -434,7 +434,7 @@ func TestListMetrics_ExcludesArchived(t *testing.T) {
 	archivedResult := decodePaginatedMetricsResponse(t, archivedResp)
 
 	foundArchived := false
-	for _, m := range archivedResult.Data.Data {
+	for _, m := range archivedResult.Data {
 		if m.Key == keyArchived {
 			foundArchived = true
 		}

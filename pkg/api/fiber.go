@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/goccy/go-json"
 	"github.com/go-playground/validator/v10"
+	"github.com/goccy/go-json"
 	"github.com/gofiber/fiber/v3"
 )
 

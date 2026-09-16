@@ -82,9 +82,23 @@ const (
 )
 
 const (
-	FieldSnapshotFlagCount = "snapshot.flag_count"
-	FieldSnapshotStatus    = "snapshot.status"
-	FieldSnapshotMsg       = "snapshot.message"
-	FieldQueueLen          = "queue.len"
-	FieldQueueCap          = "queue.cap"
+	FieldExperimentID      = "experiment.id"
+	FieldExperimentName    = "experiment.name"
+	FieldExperimentStatus  = "experiment.status"
+	FieldExperimentVersion = "experiment.version"
+)
+
+const (
+	FieldGroupID      = "group.id"
+	FieldReviewID     = "review.id"
+	FieldReviewStatus = "review.status"
+)
+
+const (
+	FieldSnapshotFlagCount       = "snapshot.flag_count"
+	FieldSnapshotExperimentCount = "snapshot.experiment_count"
+	FieldSnapshotStatus          = "snapshot.status"
+	FieldSnapshotMsg             = "snapshot.message"
+	FieldQueueLen                = "queue.len"
+	FieldQueueCap                = "queue.cap"
 )

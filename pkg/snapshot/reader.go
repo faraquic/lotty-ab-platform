@@ -17,7 +17,9 @@ const watchInterval = 30 * time.Second
 type Reader struct {
 	r      *rueidis.Client
 	flags  atomic.Pointer[map[string]FlagSnapshot]
+	exps   atomic.Pointer[map[string]ExperimentSnapshot]
 	rev    atomic.Pointer[Revision]
+	loaded atomic.Int64
 	log    *zap.Logger
 	done   chan struct{}
 	notify chan struct{}
@@ -34,8 +36,7 @@ func NewReader(r *rueidis.Client, log *zap.Logger) *Reader {
 		notify: make(chan struct{}, 1),
 	}
 	if s, err := rr.get(); err == nil {
-		rr.flags.Store(snapshotToMap(s))
-		rr.rev.Store(s.Revision)
+		rr.store(s)
 	}
 	go rr.subscribe()
 	go rr.watch()
@@ -48,8 +49,7 @@ func NewSnapshotManager(r *rueidis.Client, log *zap.Logger) (*SnapshotManager, e
 		if s, err := rr.get(); err != nil {
 			return nil, err
 		} else {
-			rr.flags.Store(snapshotToMap(s))
-			rr.rev.Store(s.Revision)
+			rr.store(s)
 		}
 	}
 	return rr, nil
@@ -67,7 +67,34 @@ func (rr *Reader) Current() *Snapshot {
 	for _, v := range *m {
 		flags = append(flags, v)
 	}
-	return &Snapshot{Revision: rev, Flags: flags}
+	var exps []ExperimentSnapshot
+	if em := rr.exps.Load(); em != nil {
+		exps = make([]ExperimentSnapshot, 0, len(*em))
+		for _, v := range *em {
+			exps = append(exps, v)
+		}
+	}
+	return &Snapshot{Revision: rev, Flags: flags, Experiments: exps}
+}
+
+func (rr *Reader) store(s *Snapshot) {
+	rr.flags.Store(snapshotToMap(s))
+	rr.exps.Store(experimentsToMap(s))
+	rr.rev.Store(s.Revision)
+	rr.loaded.Store(time.Now().UnixNano())
+}
+
+func (rr *Reader) Age() time.Duration {
+	ts := rr.loaded.Load()
+	if ts == 0 {
+		return -1
+	}
+	return time.Since(time.Unix(0, ts))
+}
+
+func (rr *Reader) Stale(maxAge time.Duration) bool {
+	age := rr.Age()
+	return age < 0 || age > maxAge
 }
 
 func (rr *Reader) Flags() map[string]FlagSnapshot {
@@ -84,6 +111,15 @@ func (rr *Reader) GetFlag(key string) (FlagSnapshot, bool) {
 		return FlagSnapshot{}, false
 	}
 	v, ok := (*m)[key]
+	return v, ok
+}
+
+func (rr *Reader) GetExperiment(flagKey string) (ExperimentSnapshot, bool) {
+	m := rr.exps.Load()
+	if m == nil {
+		return ExperimentSnapshot{}, false
+	}
+	v, ok := (*m)[flagKey]
 	return v, ok
 }
 
@@ -148,14 +184,13 @@ func (rr *Reader) checkUpdate() error {
 		if err != nil {
 			return err
 		}
-		rr.flags.Store(snapshotToMap(s))
-		rr.rev.Store(s.Revision)
+		rr.store(s)
 		rr.log.Info("snapshot updated", zap.String(logger.FieldCacheKeyNS, keySnapshot))
 	}
 	return nil
 }
 
-func (rr *Reader) Get() (*Snapshot, error) { return rr.get() }
+func (rr *Reader) Get() (*Snapshot, error)         { return rr.get() }
 func (rr *Reader) GetRevision() (*Revision, error) { return rr.getRevision() }
 
 func (rr *Reader) get() (*Snapshot, error) {
@@ -192,6 +227,14 @@ func snapshotToMap(s *Snapshot) *map[string]FlagSnapshot {
 	m := make(map[string]FlagSnapshot, len(s.Flags))
 	for _, f := range s.Flags {
 		m[f.Key] = f
+	}
+	return &m
+}
+
+func experimentsToMap(s *Snapshot) *map[string]ExperimentSnapshot {
+	m := make(map[string]ExperimentSnapshot, len(s.Experiments))
+	for _, e := range s.Experiments {
+		m[e.FlagKey] = e
 	}
 	return &m
 }
