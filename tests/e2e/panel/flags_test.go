@@ -555,7 +555,7 @@ func TestViewerCannotManageFlags(t *testing.T) {
 
 	targetID, _ := createFlag(t, "viewer-target-flag", "string", "test", "Viewer Target Flag")
 
-	t.Run("can create flag", func(t *testing.T) {
+	t.Run("cannot create flag", func(t *testing.T) {
 		resp := doRequest(http.MethodPost, "/api/v1/panel/flags", viewerToken,
 			jsonBody(map[string]any{
 				"key":           "viewer-create-" + runID,
@@ -564,7 +564,7 @@ func TestViewerCannotManageFlags(t *testing.T) {
 				"default_value": "test",
 			}))
 		defer resp.Body.Close()
-		requireStatus(t, resp, http.StatusOK)
+		requireStatus(t, resp, http.StatusForbidden)
 	})
 
 	t.Run("can list flags", func(t *testing.T) {
@@ -579,17 +579,17 @@ func TestViewerCannotManageFlags(t *testing.T) {
 		requireStatus(t, resp, http.StatusOK)
 	})
 
-	t.Run("can update flag", func(t *testing.T) {
+	t.Run("cannot update flag", func(t *testing.T) {
 		resp := doRequest(http.MethodPatch, fmt.Sprintf("/api/v1/panel/flags/%s", targetID), viewerToken,
 			jsonBody(map[string]any{"default_value": "updated"}))
 		defer resp.Body.Close()
-		requireStatus(t, resp, http.StatusOK)
+		requireStatus(t, resp, http.StatusForbidden)
 	})
 
-	t.Run("can delete flag", func(t *testing.T) {
+	t.Run("cannot delete flag", func(t *testing.T) {
 		resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/v1/panel/flags/%s", targetID), viewerToken, nil)
 		defer resp.Body.Close()
-		requireStatus(t, resp, http.StatusNoContent)
+		requireStatus(t, resp, http.StatusForbidden)
 	})
 }
 
