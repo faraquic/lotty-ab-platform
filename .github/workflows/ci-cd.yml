@@ -61,9 +61,7 @@ jobs:
         run: make dev-up
 
       - name: Go end-to-end tests
-        env:
-          E2E_TEST: "1"
-        run: go test ./tests/e2e/... -p 1 -count=1
+        run: make test-e2e
 
       - name: Stop integration infrastructure
         if: always()
