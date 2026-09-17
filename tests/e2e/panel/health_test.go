@@ -23,8 +23,9 @@ type healthReadyResponse struct {
 }
 
 type healthCompStatus struct {
-	Status  string `json:"status"`
-	Message string `json:"message,omitempty"`
+	Status      string `json:"status"`
+	Criticality string `json:"criticality"`
+	Message     string `json:"message,omitempty"`
 }
 
 func TestHealth_Liveness(t *testing.T) {
@@ -90,6 +91,24 @@ func TestHealth_Readiness(t *testing.T) {
 		}
 		if comp.Status != "ok" {
 			t.Errorf("component %q status: got %q, want %q", name, comp.Status, "ok")
+		}
+	}
+
+	wantCriticality := map[string]string{
+		"service":  "required",
+		"database": "required",
+		"cache":    "required",
+		"snapshot": "required",
+		"storage":  "optional",
+	}
+	for name, want := range wantCriticality {
+		comp, ok := result.Components[name]
+		if !ok {
+			t.Errorf("components missing %q", name)
+			continue
+		}
+		if comp.Criticality != want {
+			t.Errorf("component %q criticality: got %q, want %q", name, comp.Criticality, want)
 		}
 	}
 }

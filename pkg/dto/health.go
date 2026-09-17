@@ -7,9 +7,26 @@ const (
 	StatusUnavailable = "unavailable"
 )
 
+type Criticality string
+
+const (
+	CriticalityRequired Criticality = "required"
+	CriticalityOptional Criticality = "optional"
+)
+
+func (c Criticality) Valid() bool {
+	switch c {
+	case CriticalityRequired, CriticalityOptional:
+		return true
+	default:
+		return false
+	}
+}
+
 type ComponentStatus struct {
-	Status  string `json:"status"`
-	Message string `json:"message,omitempty"`
+	Status      string      `json:"status"`
+	Criticality Criticality `json:"criticality"`
+	Message     string      `json:"message,omitempty"`
 }
 
 type ReadyResponse struct {

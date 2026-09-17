@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Lotty AB Platform — Panel API
   description: Control plane API.
-  version: 0.0.0_dev
+  version: dev
 
 servers:
   - url: http://localhost:8081/api/v1/panel
@@ -1827,10 +1827,14 @@ components:
         status:
           type: string
           enum: [ok, unavailable]
+        criticality:
+          type: string
+          enum: [required, optional]
+          description: Impact of this component on service readiness
         message:
           type: string
           description: Human-readable detail, present when status is not ok
-      required: [status]
+      required: [status, criticality]
 
     ReadyResponse:
       type: object
@@ -1906,16 +1910,7 @@ components:
         updated_at:
           type: string
           format: date-time
-      required:
-        [
-          id,
-          key,
-          name,
-          type,
-          default_value,
-          created_at,
-          updated_at,
-        ]
+      required: [id, key, name, type, default_value, created_at, updated_at]
 
     CreateFlagRequest:
       type: object
@@ -2259,7 +2254,17 @@ components:
 
     ExperimentStatus:
       type: string
-      enum: [draft, review, approved, running, paused, completed, archived, rejected]
+      enum:
+        [
+          draft,
+          review,
+          approved,
+          running,
+          paused,
+          completed,
+          archived,
+          rejected,
+        ]
 
     CompletionDecision:
       type: string
@@ -2601,7 +2606,8 @@ components:
         updated_at:
           type: string
           format: date-time
-      required: [id, name, min_approvals, status, members, created_at, updated_at]
+      required:
+        [id, name, min_approvals, status, members, created_at, updated_at]
 
     CreateApproverGroupRequest:
       type: object
@@ -2734,7 +2740,19 @@ components:
         updated_at:
           type: string
           format: date-time
-      required: [id, experiment_id, version_id, version_num, status, approvals, comments, created_by, created_at, updated_at]
+      required:
+        [
+          id,
+          experiment_id,
+          version_id,
+          version_num,
+          status,
+          approvals,
+          comments,
+          created_by,
+          created_at,
+          updated_at,
+        ]
 
     ActOnReviewRequest:
       type: object

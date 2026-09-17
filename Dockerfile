@@ -1,22 +1,26 @@
 FROM golang:1.27-alpine AS build
 
-ARG SERVICE
-ARG PORT
-ARG VERSION=dev
-
-
 WORKDIR /src
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,id=labp-go-mod,target=/go/pkg/mod \
+    go mod download
 
-COPY . .
+COPY pkg/ ./pkg/
+ARG SERVICE
+COPY services/${SERVICE}/ ./services/${SERVICE}/
+ARG VERSION=dev
 
-RUN CGO_ENABLED=0 go build -v \
-    -ldflags "-X github.com/faraquic/lotty-ab-platform/pkg/config.ServiceVersion=${VERSION}" \
+RUN --mount=type=cache,id=labp-go-mod,target=/go/pkg/mod \
+    --mount=type=cache,id=labp-go-build,target=/root/.cache/go-build \
+    CGO_ENABLED=0 go build -trimpath -buildvcs=false \
+    -ldflags "-s -w -X github.com/faraquic/lotty-ab-platform/pkg/config.ServiceVersion=${VERSION}" \
     -o /bin/service \
     ./services/${SERVICE}
 
 FROM alpine:3
+
+ARG PORT
+ENV PORT=${PORT}
 
 COPY --from=build /bin/service /bin/service
 

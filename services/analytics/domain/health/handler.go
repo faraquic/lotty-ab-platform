@@ -35,7 +35,7 @@ func (h *Handler) ready(c fiber.Ctx) {
 		Environment: h.environment,
 		Timestamp:   time.Now().UTC(),
 		Components: map[string]dto.ComponentStatus{
-			"service": {Status: dto.StatusOK},
+			"service": {Status: dto.StatusOK, Criticality: dto.CriticalityRequired},
 		},
 	}
 

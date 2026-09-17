@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LABP</title>
+    <!-- Mirrors Mantine ColorSchemeScript (defaultColorScheme="auto",
+         localStorageKey="labp-color-scheme") to avoid theme flash -->
+    <script>
+      try {
+        var _colorScheme = window.localStorage.getItem('labp-color-scheme');
+        var colorScheme =
+          _colorScheme === 'light' || _colorScheme === 'dark' || _colorScheme === 'auto'
+            ? _colorScheme
+            : 'auto';
+        var computedColorScheme =
+          colorScheme !== 'auto'
+            ? colorScheme
+            : window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light';
+        document.documentElement.setAttribute('data-mantine-color-scheme', computedColorScheme);
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Lotty AB Platform — Analytics API
   description: Event ingestion and attribution plane.
-  version: 0.0.0_dev
+  version: dev
 
 servers:
   - url: http://localhost:8083/api/v1/analytics
@@ -58,9 +58,13 @@ components:
         status:
           type: string
           enum: [ok, unavailable]
+        criticality:
+          type: string
+          enum: [required, optional]
+          description: Impact of this component on service readiness
         message:
           type: string
-      required: [status]
+      required: [status, criticality]
 
     ReadyResponse:
       type: object

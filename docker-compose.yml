@@ -8,6 +8,7 @@ services:
       POSTGRES_DB: labp
       POSTGRES_USER: lotty
       POSTGRES_PASSWORD: lottypassword
+      PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - lotty-pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -30,7 +31,7 @@ services:
       retries: 10
 
   s3:
-    image: docker.io/minio/minio:latest
+    image: quay.io/minio/minio:latest
     container_name: labp-s3
     ports:
       - "9000:9000"
@@ -42,7 +43,17 @@ services:
       - lotty-s3data:/data
     command: server /data --console-address ":9001"
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test:
+        [
+          "CMD",
+          "curl",
+          "--fail",
+          "--silent",
+          "--show-error",
+          "--max-time",
+          "2",
+          "http://127.0.0.1:9000/minio/health/ready",
+        ]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -111,6 +122,28 @@ services:
       - ./config.docker.json:/labp/config.docker.json:ro
     restart: unless-stopped
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: labp-frontend
+    expose:
+      - "80"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1/health",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   nginx:
     image: docker.io/library/nginx:alpine
     container_name: labp-nginx
@@ -122,6 +155,7 @@ services:
       - panel
       - runtime
       - analytics
+      - frontend
     restart: unless-stopped
 
 volumes:

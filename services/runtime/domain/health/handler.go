@@ -61,7 +61,7 @@ func (h *Handler) ready(c fiber.Ctx) {
 		Environment: h.environment,
 		Timestamp:   time.Now().UTC(),
 		Components: map[string]dto.ComponentStatus{
-			"service":  {Status: dto.StatusOK},
+			"service":  {Status: dto.StatusOK, Criticality: dto.CriticalityRequired},
 			"cache":    cache,
 			"snapshot": snap,
 		},
@@ -72,30 +72,30 @@ func (h *Handler) ready(c fiber.Ctx) {
 
 func (h *Handler) checkCache(ctx context.Context) dto.ComponentStatus {
 	if h.redis == nil {
-		return dto.ComponentStatus{Status: dto.StatusUnavailable, Message: "redis not connected"}
+		return dto.ComponentStatus{Status: dto.StatusUnavailable, Criticality: dto.CriticalityRequired, Message: "redis not connected"}
 	}
 
 	if err := (*h.redis).Do(ctx, (*h.redis).B().Ping().Build()).Error(); err != nil {
 		h.log.Warn("health check: redis ping failed", zap.Error(err))
-		return dto.ComponentStatus{Status: dto.StatusUnavailable, Message: err.Error()}
+		return dto.ComponentStatus{Status: dto.StatusUnavailable, Criticality: dto.CriticalityRequired, Message: "cache unavailable"}
 	}
 
-	return dto.ComponentStatus{Status: dto.StatusOK}
+	return dto.ComponentStatus{Status: dto.StatusOK, Criticality: dto.CriticalityRequired}
 }
 
 func (h *Handler) checkSnapshot(ctx context.Context) dto.ComponentStatus {
 	if h.snapshot == nil {
-		return dto.ComponentStatus{Status: dto.StatusUnavailable, Message: "snapshot storage not initialized"}
+		return dto.ComponentStatus{Status: dto.StatusUnavailable, Criticality: dto.CriticalityRequired, Message: "snapshot storage not initialized"}
 	}
 
 	exists, err := h.snapshot.Exists(ctx)
 	if err != nil {
 		h.log.Warn("health check: snapshot exists failed", zap.Error(err))
-		return dto.ComponentStatus{Status: dto.StatusUnavailable, Message: err.Error()}
+		return dto.ComponentStatus{Status: dto.StatusUnavailable, Criticality: dto.CriticalityRequired, Message: "snapshot unavailable"}
 	}
 	if !exists {
-		return dto.ComponentStatus{Status: dto.StatusUnavailable, Message: "snapshot not found"}
+		return dto.ComponentStatus{Status: dto.StatusUnavailable, Criticality: dto.CriticalityRequired, Message: "snapshot not found"}
 	}
 
-	return dto.ComponentStatus{Status: dto.StatusOK}
+	return dto.ComponentStatus{Status: dto.StatusOK, Criticality: dto.CriticalityRequired}
 }

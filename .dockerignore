@@ -1,0 +1,8 @@
+**
+!go.mod
+!go.sum
+!pkg/
+!pkg/**
+!services/
+!services/**
+**/*_test.go

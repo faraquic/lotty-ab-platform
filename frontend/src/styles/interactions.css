@@ -1,0 +1,375 @@
+/* Dark Mode stylekit interactions, implemented without Tailwind.
+   Primary glow button: green analog of the stylekit blue button. */
+
+.btn-glow-green {
+  --button-bg: #16a34a;
+  --button-hover: #15803d;
+  --button-color: #fff;
+  --button-bd: 1px solid transparent;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  transition:
+    background-color 250ms ease,
+    box-shadow 250ms ease,
+    transform 250ms ease;
+}
+
+:root[data-mantine-color-scheme='dark'] .btn-glow-green {
+  --button-bg: #22c55e;
+  --button-hover: #16a34a;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+@media (hover: hover) {
+  .btn-glow-green:not(:disabled):hover {
+    background-color: var(--button-hover);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.15),
+      0 4px 12px rgba(22, 163, 74, 0.2);
+  }
+
+  :root[data-mantine-color-scheme='dark'] .btn-glow-green:not(:disabled):hover {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.2),
+      0 4px 12px rgba(34, 197, 94, 0.15);
+  }
+}
+
+.btn-glow-green:active {
+  transform: scale(0.98);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.btn-glow-green:focus-visible {
+  outline: 2px solid #16a34a;
+  outline-offset: 2px;
+}
+
+:root[data-mantine-color-scheme='dark'] .btn-glow-green:focus-visible {
+  outline-color: #22c55e;
+}
+
+.btn-glow-green:disabled {
+  box-shadow: none;
+  transform: none;
+}
+
+/* Single-word accent: green-600 on light, green-500 on dark. */
+.accent-word {
+  color: #16a34a;
+}
+
+:root[data-mantine-color-scheme='dark'] .accent-word {
+  color: #22c55e;
+}
+
+/* Login backdrop + app content backdrop. */
+.login-bg,
+.app-bg {
+  background-color: #fafafa;
+}
+
+.login-bg {
+  min-height: 100dvh;
+}
+
+:root[data-mantine-color-scheme='dark'] .login-bg,
+:root[data-mantine-color-scheme='dark'] .app-bg {
+  background-color: #121212;
+}
+
+/* Top header bar: same frosted neutral surface as the bottom bar,
+   instead of the default Mantine body color. */
+.app-header {
+  background-color: rgba(255, 255, 255, 0.85);
+  border-color: #e5e5e5;
+  backdrop-filter: blur(8px);
+}
+
+:root[data-mantine-color-scheme='dark'] .app-header {
+  background-color: rgba(23, 23, 23, 0.85);
+  border-color: #333333;
+}
+
+/* Green edge glow for inputs: text, password and dropdown lists
+   (including the BottomBar selects). Opaque neutral fill instead of the
+   slate Mantine default; in dark mode inputs sit slightly below the surface
+   so they look inset. Hover/focus tint the border green, focus adds a thin
+   solid ring with no blurred neon glow. Error state keeps red styling. */
+.mantine-TextInput-input:not([data-error]),
+.mantine-PasswordInput-input:not([data-error]),
+.mantine-Select-input:not([data-error]) {
+  background-color: #ffffff;
+  border-color: #d4d4d4;
+  transition:
+    border-color 300ms ease,
+    box-shadow 300ms ease,
+    background-color 300ms ease;
+}
+
+:root[data-mantine-color-scheme='dark'] .mantine-TextInput-input:not([data-error]),
+:root[data-mantine-color-scheme='dark'] .mantine-PasswordInput-input:not([data-error]),
+:root[data-mantine-color-scheme='dark'] .mantine-Select-input:not([data-error]) {
+  background-color: #0a0a0a;
+  border-color: #262626;
+}
+
+@media (hover: hover) {
+  .mantine-TextInput-input:not([data-error]):hover,
+  .mantine-PasswordInput-input:not([data-error]):hover,
+  .mantine-Select-input:not([data-error]):hover {
+    border-color: #16a34a;
+  }
+
+  :root[data-mantine-color-scheme='dark'] .mantine-TextInput-input:not([data-error]):hover,
+  :root[data-mantine-color-scheme='dark'] .mantine-PasswordInput-input:not([data-error]):hover,
+  :root[data-mantine-color-scheme='dark'] .mantine-Select-input:not([data-error]):hover {
+    border-color: #22c55e;
+  }
+}
+
+.mantine-TextInput-input:not([data-error]):focus,
+.mantine-TextInput-input:not([data-error]):focus-within,
+.mantine-PasswordInput-input:not([data-error]):focus,
+.mantine-PasswordInput-input:not([data-error]):focus-within,
+.mantine-Select-input:not([data-error]):focus,
+.mantine-Select-input:not([data-error]):focus-within {
+  border-color: #16a34a;
+  box-shadow: 0 0 0 1px #16a34a;
+  outline: none;
+}
+
+:root[data-mantine-color-scheme='dark'] .mantine-TextInput-input:not([data-error]):focus,
+:root[data-mantine-color-scheme='dark'] .mantine-TextInput-input:not([data-error]):focus-within,
+:root[data-mantine-color-scheme='dark'] .mantine-PasswordInput-input:not([data-error]):focus,
+:root[data-mantine-color-scheme='dark'] .mantine-PasswordInput-input:not([data-error]):focus-within,
+:root[data-mantine-color-scheme='dark'] .mantine-Select-input:not([data-error]):focus,
+:root[data-mantine-color-scheme='dark'] .mantine-Select-input:not([data-error]):focus-within {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 1px #22c55e;
+}
+
+/* Bottom bar panel: frosted neutral surface.
+   Constrained to fit content; no empty stretching on small screens. */
+.panel-illuminate {
+  background-color: rgba(255, 255, 255, 0.85);
+  border-color: #e5e5e5;
+  backdrop-filter: blur(8px);
+  width: fit-content;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+  transition:
+    background-color 300ms ease,
+    border-color 300ms ease,
+    box-shadow 300ms ease;
+}
+
+.panel-illuminate > .mantine-Group-root {
+  width: max-content;
+  max-width: 100%;
+}
+
+@media (max-width: 420px) {
+  .panel-illuminate > .mantine-Group-root {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+:root[data-mantine-color-scheme='dark'] .panel-illuminate {
+  background-color: rgba(23, 23, 23, 0.85);
+  border-color: #333333;
+}
+
+@media (hover: hover) {
+  :root[data-mantine-color-scheme='dark'] .panel-illuminate:hover {
+    border-color: rgba(34, 197, 94, 0.55);
+    box-shadow: 0 0 12px rgba(34, 197, 94, 0.18);
+  }
+
+  :root[data-mantine-color-scheme='light'] .panel-illuminate:hover {
+    border-color: rgba(22, 163, 74, 0.5);
+    box-shadow: 0 0 10px rgba(22, 163, 74, 0.14);
+  }
+}
+
+/* Cursor is on an inner control: only the control glows, the card stays calm. */
+@media (hover: hover) {
+  :root[data-mantine-color-scheme='light']
+    .panel-illuminate:has(.mantine-Select-input:hover):hover {
+    border-color: #e5e5e5;
+    box-shadow: none;
+  }
+
+  :root[data-mantine-color-scheme='dark'] .panel-illuminate:has(.mantine-Select-input:hover):hover {
+    border-color: #333333;
+    background-color: rgba(23, 23, 23, 0.85);
+    box-shadow: none;
+  }
+}
+
+/* App sidebar navigation: dimmed text on transparent, neutral wash on hover,
+   green alpha fill for the active item. Unlayered so it wins over Mantine's
+   own NavLink hover/active backgrounds. */
+.app-nav-link {
+  color: var(--mantine-color-dimmed);
+}
+
+@media (hover: hover) {
+  .app-nav-link:hover {
+    color: var(--mantine-color-text);
+    background-color: rgba(163, 163, 163, 0.08);
+  }
+
+  .app-nav-link[data-active]:hover {
+    background-color: rgba(22, 163, 74, 0.12);
+  }
+}
+
+.app-nav-link[data-active] {
+  color: #15803d;
+  background-color: rgba(22, 163, 74, 0.12);
+}
+
+:root[data-mantine-color-scheme='dark'] .app-nav-link[data-active] {
+  color: #22c55e;
+}
+
+/* Public status page: one coherent service surface system.
+   Collapsed / hover / expanded all derive from --mantine-color-default via
+   color-mix, so both color schemes stay in the same hue family — no gray
+   jumps. Borders use a softened --mantine-color-default-border, slightly
+   more visible on hover/expanded. Uses the public Accordion `classNames` API
+   (`status-accordion` / `status-service-item` / `status-service-control`)
+   plus the `[data-active]` attribute Mantine sets on the expanded item —
+   no hashed internals targeted. Mantine's own Accordion control hover is
+   neutralized: it painted a conflicting gray rectangle over the item. */
+.status-service-item {
+  border-color: color-mix(in srgb, var(--mantine-color-default-border) 45%, transparent);
+  background-color: var(--mantine-color-default);
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+
+.status-service-item[data-active] {
+  border-color: color-mix(in srgb, var(--mantine-color-default-border) 60%, transparent);
+
+  background-color: color-mix(in srgb, var(--mantine-color-default) 96%, black 4%);
+}
+
+.status-service-item[data-active]:hover {
+  border-color: color-mix(in srgb, var(--mantine-color-default-border) 70%, transparent);
+
+  background-color: color-mix(in srgb, var(--mantine-color-default) 94%, black 6%);
+}
+
+@media (hover: hover) {
+  .status-service-item:not([data-active]):hover {
+    border-color: color-mix(in srgb, var(--mantine-color-default-border) 65%, transparent);
+    background-color: color-mix(in srgb, var(--mantine-color-default) 93%, white);
+  }
+
+  .status-service-control:hover {
+    background-color: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-glow-green,
+  .btn-glow-green:hover,
+  .btn-glow-green:active,
+  .panel-illuminate,
+  .panel-illuminate:hover,
+  .mantine-TextInput-input,
+  .mantine-PasswordInput-input,
+  .mantine-Select-input {
+    transform: none;
+    transition: none;
+    animation: none;
+  }
+}
+
+/* Global status indicator: segmented ring with a centered status icon.
+   Both layers share one grid cell, so the icon sits exactly in the ring
+   center; color is inherited from the container (status color). */
+.status-indicator {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.status-indicator > * {
+  grid-area: 1 / 1;
+}
+
+.status-button-indicator {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  line-height: 0;
+  animation: status-button-pulse 2.4s ease-in-out infinite;
+}
+
+.status-button-indicator::after {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: currentColor;
+  content: '';
+}
+
+.status-button-indicator-loading {
+  color: #a3a3a3;
+}
+
+:root[data-mantine-color-scheme='dark'] .status-button-indicator-loading {
+  color: #525252;
+}
+
+.status-button-indicator-operational {
+  color: #16a34a;
+}
+
+.status-button-indicator-partial {
+  color: #ca8a04;
+}
+
+.status-button-indicator-outage {
+  color: #dc2626;
+}
+
+@keyframes status-button-pulse {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 0 currentColor);
+    transform: scale(1);
+  }
+
+  50% {
+    filter: drop-shadow(0 0 4px currentColor);
+    transform: scale(1.08);
+  }
+}
+
+/* Segmented status spinner: 6-arc SVG ring, only the group rotates. */
+.segmented-spinner__group {
+  transform-box: view-box;
+  transform-origin: 32px 32px;
+  animation: segmented-spinner-rotate var(--spinner-duration, 1.2s) linear infinite;
+}
+
+@keyframes segmented-spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-button-indicator,
+  .segmented-spinner__group {
+    animation: none;
+  }
+}

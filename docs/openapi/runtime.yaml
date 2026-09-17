@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Lotty AB Platform — Runtime API
   description: Runtime decision plane — deterministic variant delivery from in-memory snapshot.
-  version: 0.0.0_dev
+  version: dev
 
 servers:
   - url: http://localhost:8082/api/v1/runtime
@@ -229,9 +229,13 @@ components:
         status:
           type: string
           enum: [ok, unavailable]
+        criticality:
+          type: string
+          enum: [required, optional]
+          description: Impact of this component on service readiness
         message:
           type: string
-      required: [status]
+      required: [status, criticality]
 
     ReadyResponse:
       type: object
@@ -265,7 +269,13 @@ components:
           properties:
             code:
               type: string
-              enum: [BAD_REQUEST, PAYLOAD_TOO_LARGE, SNAPSHOT_UNAVAILABLE, INTERNAL_SERVER_ERROR]
+              enum:
+                [
+                  BAD_REQUEST,
+                  PAYLOAD_TOO_LARGE,
+                  SNAPSHOT_UNAVAILABLE,
+                  INTERNAL_SERVER_ERROR,
+                ]
             message:
               type: string
           required: [code, message]

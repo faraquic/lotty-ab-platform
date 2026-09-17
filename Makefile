@@ -15,6 +15,9 @@ LDFLAGS := -X github.com/faraquic/lotty-ab-platform/pkg/config.ServiceVersion=$(
 PANEL_BIN     ?= bin/panel
 RUNTIME_BIN   ?= bin/runtime
 ANALYTICS_BIN ?= bin/analytics
+FRONTEND_DIR  ?= frontend
+FRONTEND_PORT ?= 5173
+FRONTEND_PID  ?= /tmp/labp-frontend.pid
 
 PANEL_PORT     ?= 8081
 RUNTIME_PORT   ?= 8082
@@ -32,7 +35,7 @@ REDIS_IMAGE ?= docker.io/library/redis:8-alpine
 REDIS_NAME  ?= labp-redis
 REDIS_PORT  ?= 6379
 
-S3_IMAGE        ?= docker.io/minio/minio:latest
+S3_IMAGE        ?= quay.io/minio/minio:latest
 S3_NAME         ?= labp-s3
 S3_PORT         ?= 9000
 S3_CONSOLE_PORT ?= 9001
@@ -66,7 +69,7 @@ help:
 	@echo "  dev-clean       stop infra and remove volumes"
 	@echo "  dev-status      check which infra containers are running"
 	@echo ""
-	@echo "  run-local       build + restart all services (fast, no infra restart)"
+	@echo "  run-local       build + restart Go services and frontend"
 	@echo "  stop-local      stop all service binaries"
 	@echo "  restart-local   stop + run-local"
 	@echo "  logs-local      tail panel + runtime + analytics stdout"
@@ -74,14 +77,16 @@ help:
 	@echo "  run-panel       build + run only panel"
 	@echo "  run-runtime     build + run only runtime"
 	@echo "  run-analytics   build + run only analytics"
+	@echo "  run-frontend    run Vite development server"
 	@echo ""
 	@echo "Build:"
 	@echo "  build           compile panel    -> $(PANEL_BIN)"
 	@echo "  build-runtime   compile runtime  -> $(RUNTIME_BIN)"
 	@echo "  build-analytics compile analytics -> $(ANALYTICS_BIN)"
-	@echo "  build-all       compile all three"
+	@echo "  build-frontend  compile frontend production bundle"
+	@echo "  build-all       compile all services"
 	@echo "  vet             go vet ./..."
-	@echo "  check           build + vet + gofmt"
+	@echo "  check           build + vet + gofmt + frontend checks"
 	@echo ""
 	@echo "Docker Compose (full stack):"
 	@echo "  up              build + start all services in docker compose"
@@ -106,11 +111,12 @@ help:
 .PHONY: dev-up
 dev-up: pg-up redis-up s3-up
 	@echo "Waiting for S3..."
-	@for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do \
-		$(CONTAINER_ENGINE) inspect --format='{{.State.Health.Status}}' $(S3_NAME) 2>/dev/null | grep -q healthy && break; \
+	@ready=0; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do \
+		if $(CONTAINER_ENGINE) exec $(S3_NAME) curl --fail --silent --show-error --max-time 2 http://127.0.0.1:9000/minio/health/ready >/dev/null 2>&1; then ready=1; break; fi; \
 		echo "  waiting... ($$i)"; \
 		sleep 2; \
-	done
+	done; \
+	if [ "$$ready" != 1 ]; then echo "S3 readiness timed out. Run 'make s3-logs' for details."; exit 1; fi
 	$(MAKE) s3-provision
 
 .PHONY: dev-down
@@ -130,11 +136,12 @@ dev-status:
 # ─── Local development (fast restart) ────────────────────────────────────────
 
 .PHONY: run-local
-run-local: build-all _ensure-infra
+run-local: build-panel build-runtime build-analytics _ensure-infra
 	@echo "Stopping old services..."
 	@-pkill -f 'bin/panel' 2>/dev/null; sleep 0.2
 	@-pkill -f 'bin/runtime' 2>/dev/null; sleep 0.2
 	@-pkill -f 'bin/analytics' 2>/dev/null; sleep 0.2
+	@$(MAKE) _start-frontend
 	@echo "Starting panel  on :$(PANEL_PORT)..."
 	@./$(PANEL_BIN) &
 	@echo "Starting runtime on :$(RUNTIME_PORT)..."
@@ -147,6 +154,7 @@ run-local: build-all _ensure-infra
 	@echo "  panel     http://localhost:$(PANEL_PORT)/api/v1/panel/"
 	@echo "  runtime   http://localhost:$(RUNTIME_PORT)/api/v1/runtime/"
 	@echo "  analytics http://localhost:$(ANALYTICS_PORT)/api/v1/analytics/"
+	@echo "  frontend  http://localhost:$(FRONTEND_PORT)"
 	@echo ""
 	@echo "  make stop-local    stop all"
 	@echo "  make logs-local    tail logs"
@@ -156,6 +164,7 @@ stop-local:
 	@-pkill -f 'bin/panel' 2>/dev/null || true
 	@-pkill -f 'bin/runtime' 2>/dev/null || true
 	@-pkill -f 'bin/analytics' 2>/dev/null || true
+	@$(MAKE) _stop-frontend
 	@echo "All services stopped."
 
 .PHONY: restart-local
@@ -185,6 +194,20 @@ run-analytics: build-analytics _ensure-infra
 	@echo "Starting analytics on :$(ANALYTICS_PORT)..."
 	@./$(ANALYTICS_BIN)
 
+.PHONY: run-frontend
+run-frontend:
+	cd $(FRONTEND_DIR) && pnpm dev --host 0.0.0.0 --port $(FRONTEND_PORT)
+
+.PHONY: _start-frontend
+_start-frontend: _stop-frontend
+	@echo "Starting frontend on :$(FRONTEND_PORT)..."
+	@cd $(FRONTEND_DIR) && pnpm dev --host 0.0.0.0 --port $(FRONTEND_PORT) > /tmp/labp-frontend.log 2>&1 & echo $$! > $(FRONTEND_PID)
+
+.PHONY: _stop-frontend
+_stop-frontend:
+	@if test -f $(FRONTEND_PID); then kill $$(cat $(FRONTEND_PID)) 2>/dev/null || true; rm -f $(FRONTEND_PID); fi
+	@for pid in $$(ps -eo pid=,comm=,args= | awk '$$2 ~ /^(node|node-MainThread|pnpm)$$/ && $$0 ~ /\/frontend\// { print $$1 }'); do kill $$pid 2>/dev/null || true; done
+
 # Internal: ensure infra is running, start if not
 .PHONY: _ensure-infra
 _ensure-infra:
@@ -212,21 +235,37 @@ build-runtime:
 build-analytics:
 	go build -v -ldflags "$(LDFLAGS)" -o $(ANALYTICS_BIN) ./services/analytics
 
+.PHONY: build-frontend
+build-frontend:
+	cd $(FRONTEND_DIR) && pnpm build
+
+.PHONY: frontend-check
+frontend-check:
+	cd $(FRONTEND_DIR) && pnpm typecheck && pnpm lint && pnpm build
+
 .PHONY: build-all
-build-all: build-panel build-runtime build-analytics
+build-all: build-panel build-runtime build-analytics build-frontend
 
 .PHONY: vet
 vet:
 	go vet ./...
 
 .PHONY: check
-check: build-all vet
+check: build-all vet frontend-check
 	@gofmt -l pkg/ services/ | grep -v '^$$' && echo "^^^ files need formatting" || echo "All clean."
 
 # ─── Docker Compose ──────────────────────────────────────────────────────────
 
 .PHONY: up
 up: check-engine
+	$(CONTAINER_ENGINE) compose up -d postgres redis s3
+	@ready=0; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do \
+		if $(CONTAINER_ENGINE) exec $(POSTGRES_NAME) pg_isready -U $(POSTGRES_USER) -d $(POSTGRES_DB) >/dev/null 2>&1; then ready=1; break; fi; \
+		echo "  waiting for PostgreSQL... ($$i)"; \
+		sleep 2; \
+	done; \
+	if [ "$$ready" != 1 ]; then echo "PostgreSQL readiness timed out. Run 'make pg-logs' for details."; exit 1; fi
+	$(MAKE) pg-migrate-up
 	$(CONTAINER_ENGINE) compose up -d --build
 
 .PHONY: down
@@ -334,7 +373,7 @@ s3-up: check-engine
 		--memory=$(MEMORY_LIMIT) \
 		--cpus=$(CPU_LIMIT) \
 		--pids-limit=$(PIDS_LIMIT) \
-		--health-cmd="mc ready local" \
+		--health-cmd="curl --fail --silent --show-error --max-time 2 http://127.0.0.1:9000/minio/health/ready" \
 		--health-interval=5s \
 		--health-timeout=3s \
 		--health-retries=10 \

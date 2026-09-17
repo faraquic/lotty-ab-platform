@@ -19,3 +19,5 @@ config.local.json
 
 # build artifacts
 bin/
+frontend/node_modules/
+frontend/dist/
