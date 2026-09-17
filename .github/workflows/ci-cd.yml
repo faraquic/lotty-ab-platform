@@ -105,6 +105,17 @@ jobs:
           DEV_SSH_PORT="${DEV_SSH_PORT:-22}"
           case "$DEV_SSH_PORT" in (*[!0-9]*|'') echo "DEV_SSH_PORT must be numeric"; exit 1;; esac
           test -n "$DEV_APP_DIR"
-          ssh -p "$DEV_SSH_PORT" "$DEV_USER@$DEV_HOST" "cd '$DEV_APP_DIR' && git fetch origin master && git reset --hard origin/master && CONFIG_FILE=config.dev.json CONFIG_NAME=config.dev.json make up"
+          case "$DEV_APP_DIR" in /*) ;; *) echo "DEV_APP_DIR must be an absolute path"; exit 1;; esac
+          ssh -p "$DEV_SSH_PORT" "$DEV_USER@$DEV_HOST" "DEV_APP_DIR='$DEV_APP_DIR' bash -s" <<'REMOTE'
+          set -e
+          if [ ! -d "$DEV_APP_DIR/.git" ]; then
+            mkdir -p "$(dirname "$DEV_APP_DIR")"
+            git clone git@github.com:faraquic/lotty-ab-platform.git "$DEV_APP_DIR"
+          fi
+          cd "$DEV_APP_DIR"
+          git fetch origin master
+          git reset --hard origin/master
+          CONFIG_FILE=config.dev.json CONFIG_NAME=config.dev.json make up
+          REMOTE
           ssh -p "$DEV_SSH_PORT" "$DEV_USER@$DEV_HOST" "curl --fail --silent --show-error --max-time 10 http://127.0.0.1:8080/health >/dev/null"
           ssh -p "$DEV_SSH_PORT" "$DEV_USER@$DEV_HOST" "curl --fail --silent --show-error --max-time 10 http://127.0.0.1:8080/api/v1/panel/health >/dev/null"

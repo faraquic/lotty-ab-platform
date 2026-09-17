@@ -8,11 +8,11 @@ The server must have:
 
 - Git access to `git@github.com:faraquic/lotty-ab-platform.git`.
 - Go 1.27, Podman or Docker Compose, and the project tools required by `make up`.
-- A checked-out copy of the repository.
+- A writable parent directory for `DEV_APP_DIR`; the workflow clones the repository there on the first deployment.
 - A valid `config.dev.json` in the repository.
 - Ports `8080`, `8081`, `8082`, `8083`, `5433`, `6379`, `9000`, and `9001` available as required by Compose.
 
-The deployment command updates the checkout to `origin/master` and runs `CONFIG_FILE=config.dev.json CONFIG_NAME=config.dev.json make up`. This starts the infrastructure, waits for PostgreSQL, applies migrations, and rebuilds the application containers with `environment: "dev"`.
+The deployment command creates the checkout when `DEV_APP_DIR/.git` is absent, otherwise updates it to `origin/master`, and runs `CONFIG_FILE=config.dev.json CONFIG_NAME=config.dev.json make up`. This starts the infrastructure, waits for PostgreSQL, applies migrations, and rebuilds the application containers with `environment: "dev"`.
 
 ## GitHub environment
 
