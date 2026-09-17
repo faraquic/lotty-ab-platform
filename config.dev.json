@@ -1,0 +1,38 @@
+{
+  "environment": "dev",
+  "auth": {
+    "jwt": {
+      "secret_key": "change-me"
+    },
+    "bootstrap": {
+      "full_name": "root",
+      "email": "root@labp.net",
+      "password_hash": "$argon2id$v=19$m=65536,t=1,p=4$6lGItC3BN+vvxDF42RRw2g$svLMZu6udCWh8/bjOlpP1S3syNanEwiQO17cbUaDvck"
+    }
+  },
+  "database": {
+    "postgres": {
+      "dsn": "postgres://lotty:lottypassword@postgres:5432/labp?sslmode=disable"
+    },
+    "redis": {
+      "address": "redis:6379"
+    },
+    "s3": {
+      "bucket": "labp",
+      "region": "us-east-1",
+      "endpoint": "http://s3:9000",
+      "access_key": "minioadmin",
+      "secret_key": "minioadmin"
+    }
+  },
+  "panel": {
+    "http": {
+      "address": "0.0.0.0:8081"
+    }
+  },
+  "runtime": {
+    "http": {
+      "address": "0.0.0.0:8082"
+    }
+  }
+}
