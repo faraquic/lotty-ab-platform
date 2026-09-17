@@ -6,7 +6,7 @@ The GitHub Actions workflow in `.github/workflows/ci-cd.yml` runs checks for pul
 
 The server must have:
 
-- Git access to `git@github.com:faraquic/lotty-ab-platform.git`.
+- Outbound HTTPS access to `github.com` so the deployment checkout can use the public repository.
 - Go 1.27, Podman or Docker Compose, and the project tools required by `make up`.
 - A writable parent directory for `DEV_APP_DIR`; the workflow clones the repository there on the first deployment.
 - A valid `config.dev.json` in the repository.
@@ -30,7 +30,7 @@ The deploy job runs only for a successful push to `master`. Pull requests run te
 ## First-time server setup
 
 ```bash
-git clone git@github.com:faraquic/lotty-ab-platform.git /srv/lotty-ab-platform
+git clone https://github.com/faraquic/lotty-ab-platform.git /srv/lotty-ab-platform
 cd /srv/lotty-ab-platform
 make dev-up
 CONFIG_FILE=config.dev.json CONFIG_NAME=config.dev.json make up

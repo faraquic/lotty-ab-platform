@@ -110,9 +110,10 @@ jobs:
           set -e
           if [ ! -d "$DEV_APP_DIR/.git" ]; then
             mkdir -p "$(dirname "$DEV_APP_DIR")"
-            git clone git@github.com:faraquic/lotty-ab-platform.git "$DEV_APP_DIR"
+            git clone https://github.com/faraquic/lotty-ab-platform.git "$DEV_APP_DIR"
           fi
           cd "$DEV_APP_DIR"
+          git remote set-url origin https://github.com/faraquic/lotty-ab-platform.git
           git fetch origin master
           git reset --hard origin/master
           CONFIG_FILE=config.dev.json CONFIG_NAME=config.dev.json make up
