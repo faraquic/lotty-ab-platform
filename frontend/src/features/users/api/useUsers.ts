@@ -29,12 +29,16 @@ export interface UsersListParams {
   offset: number;
 }
 
-export function useUsersList(params: UsersListParams): UseQueryResult<UserListResponse, UsersApiError> {
+export function useUsersList(
+  params: UsersListParams,
+  enabled = true,
+): UseQueryResult<UserListResponse, UsersApiError> {
   const { limit, offset } = params;
   return useQuery<UserListResponse, UsersApiError>({
     queryKey: usersListQueryKey(limit, offset),
     queryFn: () => listUsers(limit, offset),
     placeholderData: (previous) => previous,
+    enabled,
   });
 }
 

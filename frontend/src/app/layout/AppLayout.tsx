@@ -10,7 +10,7 @@ import {
   Title,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconFlag, IconHome, IconUsers } from '@tabler/icons-react';
+import { IconChartBar, IconFlag, IconFlask, IconHome, IconInbox, IconUsers } from '@tabler/icons-react';
 import { useTranslation } from 'react-i18next';
 import { Link, Outlet, useLocation } from 'react-router';
 import { LogoutButton } from '@/features/auth/LogoutButton';
@@ -97,6 +97,36 @@ export function AppLayout() {
             active={location.pathname === '/flags' || location.pathname.startsWith('/flags/')}
             onClick={closeNav}
             aria-label={t('flags.title')}
+            className="app-nav-link"
+          />
+          <NavLink
+            label={t('experiments.title')}
+            leftSection={<IconFlask size={16} />}
+            component={Link}
+            to="/experiments"
+            active={location.pathname.startsWith('/experiments')}
+            onClick={closeNav}
+            aria-label={t('experiments.title')}
+            className="app-nav-link"
+          />
+          <NavLink
+            label={t('reviews.title')}
+            leftSection={<IconInbox size={16} />}
+            component={Link}
+            to="/reviews"
+            active={location.pathname === '/reviews' || location.pathname.startsWith('/reviews/')}
+            onClick={closeNav}
+            aria-label={t('reviews.title')}
+            className="app-nav-link"
+          />
+          <NavLink
+            label={t('metrics.title')}
+            leftSection={<IconChartBar size={16} />}
+            component={Link}
+            to="/metrics"
+            active={location.pathname === '/metrics' || location.pathname.startsWith('/metrics/')}
+            onClick={closeNav}
+            aria-label={t('metrics.title')}
             className="app-nav-link"
           />
           </Stack>
