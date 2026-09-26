@@ -12,6 +12,7 @@ import {
   updateFlag,
 } from './flags';
 import type { FlagsApiError } from '../types';
+import type { FlagsListFilters } from './flags';
 import type {
   CreateFlagRequest,
   Flag,
@@ -24,14 +25,17 @@ export { FLAGS_PAGE_SIZE };
 export interface FlagsListParams {
   limit: number;
   offset: number;
+  q?: string;
 }
 
 export function useFlagsList(params: FlagsListParams): UseQueryResult<FlagListResponse, FlagsApiError> {
-  const { limit, offset } = params;
+  const { limit, offset, q } = params;
+  const filters: FlagsListFilters = { limit, offset, ...(q !== undefined ? { q } : {}) };
   return useQuery<FlagListResponse, FlagsApiError>({
-    queryKey: flagsListQueryKey(limit, offset),
-    queryFn: () => listFlags(limit, offset),
+    queryKey: flagsListQueryKey(filters),
+    queryFn: () => listFlags(filters),
     placeholderData: (previous) => previous,
+    refetchInterval: 60_000,
   });
 }
 

@@ -25,11 +25,11 @@ var (
 type UserRepo interface {
 	Create(ctx context.Context, u User) (string, error)
 	GetByID(ctx context.Context, id string) (User, error)
-	List(ctx context.Context, limit, offset int) ([]User, error)
+	List(ctx context.Context, limit, offset int, filter ListFilter) ([]User, error)
 	Update(ctx context.Context, id string, email *string, role *Role) (User, error)
 	Delete(ctx context.Context, id string) error
 	UpdateAvatarURL(ctx context.Context, id string, avatarURL string) error
-	Count(ctx context.Context) (int64, error)
+	Count(ctx context.Context, filter ListFilter) (int64, error)
 	CountAdmins(ctx context.Context) (int64, error)
 }
 
@@ -90,7 +90,7 @@ func (s *Service) GetByID(ctx context.Context, id string) (UserResponse, error) 
 	return ToResponse(u), nil
 }
 
-func (s *Service) List(ctx context.Context, limit, offset int) (PaginatedUserResponse, error) {
+func (s *Service) List(ctx context.Context, limit, offset int, filter ListFilter) (PaginatedUserResponse, error) {
 	if limit < 1 || limit > 100 {
 		limit = 20
 	}
@@ -98,12 +98,12 @@ func (s *Service) List(ctx context.Context, limit, offset int) (PaginatedUserRes
 		offset = 0
 	}
 
-	total, err := s.repo.Count(ctx)
+	total, err := s.repo.Count(ctx, filter)
 	if err != nil {
 		return PaginatedUserResponse{}, err
 	}
 
-	usersList, err := s.repo.List(ctx, limit, offset)
+	usersList, err := s.repo.List(ctx, limit, offset, filter)
 	if err != nil {
 		return PaginatedUserResponse{}, err
 	}
@@ -220,7 +220,7 @@ func (s *Service) EnsureBootstrapAdmin(ctx context.Context, fullName, email, pas
 		return false, errors.New("bootstrap.password_hash is required")
 	}
 
-	n, err := s.repo.Count(ctx)
+	n, err := s.repo.Count(ctx, ListFilter{})
 	if err != nil {
 		return false, fmt.Errorf("count users: %w", err)
 	}

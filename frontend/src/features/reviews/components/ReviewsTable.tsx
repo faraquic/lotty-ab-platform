@@ -1,16 +1,24 @@
-import { ActionIcon, Badge, Table, Text, Tooltip } from '@mantine/core';
-import { IconEye } from '@tabler/icons-react';
+import { ActionIcon, Badge, Group, Menu, Table, Text, Tooltip } from '@mantine/core';
+import { IconEye, IconFilter, IconFilterFilled } from '@tabler/icons-react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router';
 import { countComments, countUnresolvedComments, reviewStatusBadgeColor } from '../lib/threads';
-import type { Review } from '../types';
+import { REVIEW_STATUSES } from '../types';
+import type { Review, ReviewStatus } from '../types';
 
 interface ReviewsTableProps {
   reviews: Review[];
   experimentNames: Map<string, string>;
-  onView: (review: Review) => void;
+  status: ReviewStatus | null;
+  onStatusChange: (status: ReviewStatus | null) => void;
 }
 
-export function ReviewsTable({ reviews, experimentNames, onView }: ReviewsTableProps) {
+export function ReviewsTable({
+  reviews,
+  experimentNames,
+  status,
+  onStatusChange,
+}: ReviewsTableProps) {
   const { t } = useTranslation();
 
   return (
@@ -19,7 +27,44 @@ export function ReviewsTable({ reviews, experimentNames, onView }: ReviewsTableP
         <Table.Tr>
           <Table.Th>{t('reviews.experiment')}</Table.Th>
           <Table.Th>{t('reviews.version')}</Table.Th>
-          <Table.Th>{t('reviews.status')}</Table.Th>
+          <Table.Th>
+            <Group gap={4} wrap="nowrap">
+              {t('reviews.status')}
+              <Menu shadow="md" width={200} position="bottom-start">
+                <Menu.Target>
+                  <Tooltip label={t('reviews.statusFilter')}>
+                    <ActionIcon
+                      variant="subtle"
+                      size="sm"
+                      color={status === null ? undefined : 'cyan'}
+                      aria-label={t('reviews.statusFilter')}
+                    >
+                      {status === null ? <IconFilter size={14} /> : <IconFilterFilled size={14} />}
+                    </ActionIcon>
+                  </Tooltip>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  <Menu.Item
+                    onClick={() => {
+                      onStatusChange(null);
+                    }}
+                  >
+                    {t('reviews.statusFilterAll')}
+                  </Menu.Item>
+                  {REVIEW_STATUSES.map((value) => (
+                    <Menu.Item
+                      key={value}
+                      onClick={() => {
+                        onStatusChange(value);
+                      }}
+                    >
+                      {t(`reviews.statuses.${value}`)}
+                    </Menu.Item>
+                  ))}
+                </Menu.Dropdown>
+              </Menu>
+            </Group>
+          </Table.Th>
           <Table.Th>{t('reviews.approvals')}</Table.Th>
           <Table.Th>{t('reviews.comments')}</Table.Th>
           <Table.Th>{t('reviews.actions')}</Table.Th>
@@ -61,9 +106,8 @@ export function ReviewsTable({ reviews, experimentNames, onView }: ReviewsTableP
                 <Tooltip label={t('reviews.viewDetails')}>
                   <ActionIcon
                     variant="subtle"
-                    onClick={() => {
-                      onView(review);
-                    }}
+                    component={Link}
+                    to={`/reviews/${review.id}`}
                     aria-label={t('reviews.viewDetailsNamed', { id: review.id })}
                   >
                     <IconEye size={16} />

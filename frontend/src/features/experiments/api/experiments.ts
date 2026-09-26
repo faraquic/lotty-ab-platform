@@ -21,12 +21,18 @@ import type {
 
 export const EXPERIMENTS_PAGE_SIZE = 20;
 
+export interface ExperimentsListFilters {
+  limit: number;
+  offset: number;
+  status: ExperimentStatus | null;
+  q?: string;
+  flagId?: string;
+}
+
 export function experimentsListQueryKey(
-  limit: number,
-  offset: number,
-  status: ExperimentStatus | null,
-): [string, { limit: number; offset: number; status: string | null }] {
-  return ['experiments', { limit, offset, status }];
+  filters: ExperimentsListFilters,
+): [string, ExperimentsListFilters] {
+  return ['experiments', filters];
 }
 
 export const EXPERIMENTS_LIST_KEY_PREFIX = 'experiments';
@@ -90,19 +96,21 @@ function parseSingle(payload: unknown): Experiment {
   return parsed.data;
 }
 
-export interface ListExperimentsParams {
-  limit: number;
-  offset: number;
-  status: ExperimentStatus | null;
-}
+export type ListExperimentsParams = ExperimentsListFilters;
 
-export async function listExperiments(params: ListExperimentsParams): Promise<ExperimentListResponse> {
+export async function listExperiments(params: ExperimentsListFilters): Promise<ExperimentListResponse> {
   const query = new URLSearchParams({
     limit: String(params.limit),
     offset: String(params.offset),
   });
   if (params.status !== null) {
     query.set('status', params.status);
+  }
+  if (params.q !== undefined && params.q.length > 0) {
+    query.set('q', params.q);
+  }
+  if (params.flagId !== undefined && params.flagId.length > 0) {
+    query.set('flag_id', params.flagId);
   }
   const payload = await requestJson(`${PANEL_API_BASE_URL}/experiments?${query.toString()}`, {
     headers: { ...authHeaders() },

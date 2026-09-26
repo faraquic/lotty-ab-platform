@@ -136,13 +136,23 @@ func (r *Repository) GetGroup(ctx context.Context, id string, includeArchived bo
 	return g, nil
 }
 
-func (r *Repository) ListGroups(ctx context.Context, limit, offset int, includeArchived bool) ([]ApproverGroup, error) {
+func (r *Repository) ListGroups(ctx context.Context, limit, offset int, includeArchived bool, search *string) ([]ApproverGroup, error) {
 	q := `SELECT ` + groupColumns + ` FROM approver_groups g`
+	clauses := []string{}
+	args := []any{}
 	if !includeArchived {
-		q += ` WHERE g.status = 'active'`
+		clauses = append(clauses, `g.status = 'active'`)
 	}
-	q += ` ORDER BY g.name LIMIT $1 OFFSET $2`
-	rows, err := r.db.Query(ctx, q, limit, offset)
+	if search != nil {
+		args = append(args, "%"+*search+"%")
+		clauses = append(clauses, `g.name ILIKE $`+strconv.Itoa(len(args)))
+	}
+	if len(clauses) > 0 {
+		q += ` WHERE ` + strings.Join(clauses, " AND ")
+	}
+	q += ` ORDER BY g.name LIMIT $` + strconv.Itoa(len(args)+1) + ` OFFSET $` + strconv.Itoa(len(args)+2)
+	args = append(args, limit, offset)
+	rows, err := r.db.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -164,13 +174,22 @@ func (r *Repository) ListGroups(ctx context.Context, limit, offset int, includeA
 	return out, rows.Err()
 }
 
-func (r *Repository) CountGroups(ctx context.Context, includeArchived bool) (int64, error) {
+func (r *Repository) CountGroups(ctx context.Context, includeArchived bool, search *string) (int64, error) {
 	q := `SELECT count(*) FROM approver_groups`
+	clauses := []string{}
+	args := []any{}
 	if !includeArchived {
-		q += ` WHERE status = 'active'`
+		clauses = append(clauses, `status = 'active'`)
+	}
+	if search != nil {
+		args = append(args, "%"+*search+"%")
+		clauses = append(clauses, `name ILIKE $`+strconv.Itoa(len(args)))
+	}
+	if len(clauses) > 0 {
+		q += ` WHERE ` + strings.Join(clauses, " AND ")
 	}
 	var n int64
-	err := r.db.QueryRow(ctx, q).Scan(&n)
+	err := r.db.QueryRow(ctx, q, args...).Scan(&n)
 	return n, err
 }
 

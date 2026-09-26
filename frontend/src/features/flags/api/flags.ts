@@ -15,11 +15,16 @@ import type {
 
 export const FLAGS_PAGE_SIZE = 20;
 
+export interface FlagsListFilters {
+  limit: number;
+  offset: number;
+  q?: string;
+}
+
 export function flagsListQueryKey(
-  limit: number,
-  offset: number,
-): [string, { limit: number; offset: number }] {
-  return ['flags', { limit, offset }];
+  filters: FlagsListFilters,
+): [string, FlagsListFilters] {
+  return ['flags', filters];
 }
 
 export const FLAGS_LIST_KEY_PREFIX = 'flags';
@@ -75,11 +80,14 @@ async function requestJson(input: string, init: RequestInit): Promise<unknown> {
   return readPayload(response);
 }
 
-export async function listFlags(limit: number, offset: number): Promise<FlagListResponse> {
+export async function listFlags(filters: FlagsListFilters): Promise<FlagListResponse> {
   const params = new URLSearchParams({
-    limit: String(limit),
-    offset: String(offset),
+    limit: String(filters.limit),
+    offset: String(filters.offset),
   });
+  if (filters.q !== undefined && filters.q.length > 0) {
+    params.set('q', filters.q);
+  }
   const payload = await requestJson(`${PANEL_API_BASE_URL}/flags?${params.toString()}`, {
     headers: { ...authHeaders() },
   });

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/faraquic/lotty-ab-platform/pkg/targeting"
+	flagsdomain "github.com/faraquic/lotty-ab-platform/services/panel/domain/flags"
 	"github.com/faraquic/lotty-ab-platform/services/panel/domain/users"
 	"github.com/goccy/go-json"
 )
@@ -137,7 +139,7 @@ type VariantInput struct {
 	IsControl bool         `json:"is_control"`
 }
 
-func ValidateVariants(inputs []VariantInput, weightsTotal int) error {
+func ValidateVariants(inputs []VariantInput, weightsTotal int, flagType flagsdomain.TypeFlag) error {
 	if len(inputs) < 2 {
 		return fmt.Errorf("%w: at least 2 variants required", ErrInvalidVariants)
 	}
@@ -152,8 +154,8 @@ func ValidateVariants(inputs []VariantInput, weightsTotal int) error {
 			return fmt.Errorf("%w: duplicate variant name %q", ErrInvalidVariants, in.Name)
 		}
 		seen[in.Name] = struct{}{}
-		if len(in.Value) == 0 || !json.Valid(in.Value) {
-			return fmt.Errorf("%w: variant %q value must be valid JSON", ErrInvalidVariants, in.Name)
+		if !flagsdomain.ValueFlag(in.Value).Valid(flagType) {
+			return fmt.Errorf("%w: variant %q value must match flag type %q", ErrInvalidVariants, in.Name, flagType)
 		}
 		if in.WeightBP <= 0 {
 			return fmt.Errorf("%w: variant %q weight must be positive", ErrInvalidVariants, in.Name)
@@ -172,20 +174,42 @@ func ValidateVariants(inputs []VariantInput, weightsTotal int) error {
 	return nil
 }
 
+// Targeting is the canonical JSON AST of a targeting DSL expression persisted
+// in the database. Use ParseTargeting/FormatTargeting to convert to and from
+// the DSL string exchanged over the API.
 type Targeting []byte
 
 func (t Targeting) Valid() bool {
 	if len(t) == 0 {
 		return false
 	}
-	if !json.Valid(t) {
-		return false
+	return json.Valid(t)
+}
+
+// ParseTargeting converts a DSL string into canonical AST JSON. Blank input
+// returns nil.
+func ParseTargeting(dsl string) (*Targeting, error) {
+	canonical, err := targeting.CanonicalJSON([]byte(dsl))
+	if err != nil {
+		return nil, ErrInvalidTargeting
 	}
-	var m map[string]any
-	if err := json.Unmarshal(t, &m); err != nil {
-		return false
+	if canonical == nil {
+		return nil, nil
 	}
-	return true
+	t := Targeting(canonical)
+	return &t, nil
+}
+
+// FormatTargeting renders persisted AST JSON as a DSL string. Empty returns "".
+func FormatTargeting(t *Targeting) string {
+	if t == nil {
+		return ""
+	}
+	dsl, err := targeting.Format([]byte(*t))
+	if err != nil {
+		return ""
+	}
+	return dsl
 }
 
 func (t Targeting) MarshalJSON() ([]byte, error) {
@@ -259,6 +283,13 @@ type Variant struct {
 	Value     VariantValue
 	WeightBP  int
 	IsControl bool
+}
+
+// ListFilter narrows experiment listings by status, flag and name search.
+type ListFilter struct {
+	Status Status
+	FlagID *string
+	Search *string
 }
 
 type ExperimentDetail struct {

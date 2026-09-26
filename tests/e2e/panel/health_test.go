@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
@@ -33,15 +32,12 @@ func TestHealth_Liveness(t *testing.T) {
 	defer resp.Body.Close()
 
 	requireStatus(t, resp, http.StatusOK)
+	requireJSONContentType(t, resp)
 
-	ct := resp.Header.Get("Content-Type")
-	if !strings.HasPrefix(ct, "text/plain") {
-		t.Errorf("Content-Type: got %q, want text/plain", ct)
-	}
-
-	body, _ := io.ReadAll(resp.Body)
-	if string(body) != "OK" {
-		t.Fatalf("body: got %q, want %q", string(body), "OK")
+	var result healthReadyResponse
+	decodeJSON(resp, &result)
+	if result.Service != "labp-panel" {
+		t.Errorf("service: got %q, want %q", result.Service, "labp-panel")
 	}
 }
 
@@ -61,7 +57,7 @@ func TestHealth_LivenessNoAuthRequired(t *testing.T) {
 }
 
 func TestHealth_Readiness(t *testing.T) {
-	resp := doRequest(http.MethodGet, "/api/v1/panel/ready", "", nil)
+	resp := doRequest(http.MethodGet, "/api/v1/panel/health", "", nil)
 	defer resp.Body.Close()
 
 	requireStatus(t, resp, http.StatusOK)
@@ -114,7 +110,7 @@ func TestHealth_Readiness(t *testing.T) {
 }
 
 func TestHealth_ReadinessNoAuthRequired(t *testing.T) {
-	req, err := http.NewRequest(http.MethodGet, baseURL+"/api/v1/panel/ready", nil)
+	req, err := http.NewRequest(http.MethodGet, baseURL+"/api/v1/panel/health", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +125,7 @@ func TestHealth_ReadinessNoAuthRequired(t *testing.T) {
 }
 
 func TestHealth_ReadinessNoSecretsInResponse(t *testing.T) {
-	resp := doRequest(http.MethodGet, "/api/v1/panel/ready", "", nil)
+	resp := doRequest(http.MethodGet, "/api/v1/panel/health", "", nil)
 	defer resp.Body.Close()
 
 	requireNoSensitiveFields(t, resp,
@@ -194,7 +190,7 @@ func TestHealth_ReadinessS3Unavailable(t *testing.T) {
 	})
 	defer stopIsolatedPanel(t, proc)
 
-	url := fmt.Sprintf("http://localhost:%s/api/v1/panel/ready", port)
+	url := fmt.Sprintf("http://localhost:%s/api/v1/panel/health", port)
 	resp := waitForHealth(t, url, http.StatusOK)
 
 	var result healthReadyResponse

@@ -1,13 +1,13 @@
 import {
   AppShell,
   Burger,
-  Button,
   Container,
   Group,
   NavLink,
   Stack,
   Text,
   Title,
+  Tooltip,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconChartBar, IconFlag, IconFlask, IconHome, IconInbox, IconUsers } from '@tabler/icons-react';
@@ -16,12 +16,15 @@ import { Link, Outlet, useLocation } from 'react-router';
 import { LogoutButton } from '@/features/auth/LogoutButton';
 import { OverallStatusPill } from '@/features/status/components/OverallStatusPill';
 import { CurrentUserChip } from '@/features/users/components/CurrentUserChip';
+import { useMe } from '@/features/users/api/useUsers';
 import { SidebarFooter } from './SidebarFooter';
 
 export function AppLayout() {
   const { t } = useTranslation();
   const location = useLocation();
   const [navOpened, { toggle: toggleNav, close: closeNav }] = useDisclosure(false);
+  const meQuery = useMe();
+  const isAdmin = meQuery.data?.role === 'admin';
 
   return (
     <AppShell
@@ -48,16 +51,18 @@ export function AppLayout() {
             </Title>
           </Group>
           <Group gap="sm" wrap="nowrap">
-            <Button
-              className="status-nav-button"
-              variant="subtle"
-              size="sm"
-              leftSection={<OverallStatusPill />}
-              component={Link}
-              to="/status"
-            >
-              {t('status.openStatus')}
-            </Button>
+            <Tooltip label={t('status.title')}>
+              <Group
+                className="status-nav-button"
+                gap="xs"
+                wrap="nowrap"
+                px="xs"
+                py={4}
+                aria-label={t('status.title')}
+              >
+                <OverallStatusPill />
+              </Group>
+            </Tooltip>
             <CurrentUserChip />
             <LogoutButton />
           </Group>
@@ -79,16 +84,18 @@ export function AppLayout() {
             aria-label={t('layout.home')}
             className="app-nav-link"
           />
-          <NavLink
-            label={t('users.title')}
-            leftSection={<IconUsers size={16} />}
-            component={Link}
-            to="/users"
-            active={location.pathname === '/users' || location.pathname.startsWith('/users/')}
-            onClick={closeNav}
-            aria-label={t('users.title')}
-            className="app-nav-link"
-          />
+          {isAdmin ? (
+            <NavLink
+              label={t('users.title')}
+              leftSection={<IconUsers size={16} />}
+              component={Link}
+              to="/users"
+              active={location.pathname === '/users' || location.pathname.startsWith('/users/')}
+              onClick={closeNav}
+              aria-label={t('users.title')}
+              className="app-nav-link"
+            />
+          ) : null}
           <NavLink
             label={t('flags.title')}
             leftSection={<IconFlag size={16} />}

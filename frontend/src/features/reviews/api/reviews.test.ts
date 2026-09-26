@@ -117,13 +117,18 @@ afterEach(() => {
 
 describe('reviews api', () => {
   it('builds list and detail query keys', () => {
-    expect(reviewsListQueryKey(20, 0, null)).toEqual([
+    expect(reviewsListQueryKey({ limit: 20, offset: 0, status: null })).toEqual([
       'reviews',
       { limit: 20, offset: 0, status: null },
     ]);
-    expect(reviewsListQueryKey(20, 0, 'open')).not.toEqual(reviewsListQueryKey(20, 0, null));
+    expect(reviewsListQueryKey({ limit: 20, offset: 0, status: 'open' })).not.toEqual(
+      reviewsListQueryKey({ limit: 20, offset: 0, status: null }),
+    );
     expect(reviewDetailQueryKey('r-1')).toEqual(['reviews', 'r-1']);
-    expect(groupsListQueryKey(20, 0)).toEqual(['approver-groups', { limit: 20, offset: 0 }]);
+    expect(groupsListQueryKey({ limit: 20, offset: 0 })).toEqual([
+      'approver-groups',
+      { limit: 20, offset: 0 },
+    ]);
     expect(groupDetailQueryKey('g-1')).toEqual(['approver-groups', 'g-1']);
   });
 
@@ -246,7 +251,7 @@ describe('reviews api', () => {
       });
     });
 
-    const groups = await listApproverGroups(20, 0);
+    const groups = await listApproverGroups({ limit: 20, offset: 0 });
     expect(seenUrl).toContain('/approver-groups?');
     expect(groups.data).toHaveLength(1);
 

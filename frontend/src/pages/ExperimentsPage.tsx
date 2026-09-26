@@ -4,7 +4,6 @@ import {
   Container,
   Group,
   Pagination,
-  Select,
   Skeleton,
   Stack,
   Text,
@@ -26,7 +25,6 @@ import { FLAGS_PAGE_SIZE, useFlagsList } from '@/features/flags/api/useFlags';
 import { useMe } from '@/features/users/api/useUsers';
 import { lastPageIndex, offsetForPage, totalPages } from '@/shared/lib/pagination';
 import type { CreateExperimentRequest, ExperimentStatus } from '@/features/experiments/types';
-import { EXPERIMENT_STATUSES } from '@/features/experiments/types';
 
 const LIMIT = EXPERIMENTS_PAGE_SIZE;
 
@@ -35,6 +33,7 @@ export function ExperimentsPage() {
   const [page, setPage] = useState(0);
   const [status, setStatus] = useState<ExperimentStatus | null>(null);
   const [createOpened, setCreateOpened] = useState(false);
+  const [createKey, setCreateKey] = useState(0);
 
   const offset = offsetForPage(page, LIMIT);
   const list = useExperimentsList({ limit: LIMIT, offset, status });
@@ -51,7 +50,7 @@ export function ExperimentsPage() {
   const flagNames = useMemo(() => {
     const map = new Map<string, string>();
     for (const flag of flagsQuery.data?.data ?? []) {
-      map.set(flag.id, flag.key);
+      map.set(flag.id, flag.name);
     }
     return map;
   }, [flagsQuery.data]);
@@ -60,7 +59,9 @@ export function ExperimentsPage() {
     () =>
       (flagsQuery.data?.data ?? []).map((flag) => ({
         value: flag.id,
-        label: `${flag.key} — ${flag.name}`,
+        label: flag.name,
+        key: flag.key,
+        type: flag.type,
       })),
     [flagsQuery.data],
   );
@@ -89,6 +90,7 @@ export function ExperimentsPage() {
           color: 'green',
         });
         setCreateOpened(false);
+        setCreateKey((value) => value + 1);
         const currentTotal = list.data?.meta.total ?? 0;
         setPage(lastPageIndex(currentTotal + 1, LIMIT));
       },
@@ -101,6 +103,11 @@ export function ExperimentsPage() {
         });
       },
     });
+  };
+
+  const handleStatusFilter = (next: ExperimentStatus | null): void => {
+    setStatus(next);
+    setPage(0);
   };
 
   const isInitialLoading = list.isPending;
@@ -128,25 +135,6 @@ export function ExperimentsPage() {
               {t('experiments.readOnlyHint')}
             </Text>
           )}
-        </Group>
-
-        <Group gap="sm">
-          <Select
-            size="sm"
-            placeholder={t('experiments.statusFilter')}
-            clearable
-            value={status}
-            data={EXPERIMENT_STATUSES.map((value) => ({
-              value,
-              label: t(`experiments.statuses.${value}`),
-            }))}
-            onChange={(next) => {
-              setStatus((next ?? '') === '' ? null : (next as ExperimentStatus));
-              setPage(0);
-            }}
-            style={{ minWidth: 200 }}
-            aria-label={t('experiments.statusFilter')}
-          />
         </Group>
 
         {isInitialLoading ? (
@@ -190,23 +178,17 @@ export function ExperimentsPage() {
             <Text size="sm" c="dimmed">
               {t('experiments.noExperimentsHint')}
             </Text>
-            {canWrite ? (
-              <Button
-                size="sm"
-                leftSection={<IconPlus size={16} />}
-                onClick={() => {
-                  setCreateOpened(true);
-                }}
-              >
-                {t('experiments.createExperiment')}
-              </Button>
-            ) : null}
           </Stack>
         ) : null}
 
         {!isInitialLoading && !list.isError && experiments.length > 0 ? (
           <>
-            <ExperimentsTable experiments={experiments} flagNames={flagNames} />
+            <ExperimentsTable
+              experiments={experiments}
+              flagNames={flagNames}
+              status={status}
+              onStatusChange={handleStatusFilter}
+            />
             <Group justify="space-between" align="center">
               <Text size="xs" c="dimmed">
                 {t('experiments.paginationSummary', {
@@ -232,6 +214,7 @@ export function ExperimentsPage() {
       </Stack>
 
       <CreateExperimentModal
+        key={createKey}
         opened={createOpened}
         isPending={createMutation.isPending}
         flagOptions={flagOptions}

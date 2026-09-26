@@ -2,10 +2,11 @@ import { Button, Group, Modal, NumberInput, Stack, Textarea } from '@mantine/cor
 import { useForm } from '@mantine/form';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { FlagType } from '@/features/flags/types';
 import { VariantsEditor } from './VariantsEditor';
 import {
-  MAX_WEIGHTS_TOTAL,
-  normalizeWeightsTotal,
+  DEFAULT_WEIGHTS_TOTAL,
+  normalizePercentInput,
   parseTargetingInput,
   validateVariantDrafts,
 } from '../lib/transitions';
@@ -20,52 +21,65 @@ export interface VersionFormValues {
 interface CreateVersionModalProps {
   opened: boolean;
   isPending: boolean;
+  flagType: FlagType;
   currentWeightsTotal: number;
-  currentTargeting: Record<string, unknown> | null;
+  currentTargeting: string | null;
   onClose: () => void;
   onSubmit: (request: CreateExperimentVersionRequest) => void;
+}
+
+function initialDrafts(): VariantDraft[] {
+  return [
+    { name: '', valueRaw: '', weightRaw: '', isControl: true },
+    { name: '', valueRaw: '', weightRaw: '', isControl: false },
+  ];
+}
+
+function defaultWeightsRaw(bp: number): string {
+  return String(bp / 100);
 }
 
 export function CreateVersionModal({
   opened,
   isPending,
+  flagType,
   currentWeightsTotal,
   currentTargeting,
   onClose,
   onSubmit,
 }: CreateVersionModalProps) {
   const { t, i18n } = useTranslation();
-  const [drafts, setDrafts] = useState<VariantDraft[]>([
-    { name: '', valueRaw: '', weightRaw: '', isControl: true },
-    { name: '', valueRaw: '', weightRaw: '', isControl: false },
-  ]);
+  const [drafts, setDrafts] = useState<VariantDraft[]>(initialDrafts);
 
   const form = useForm<VersionFormValues>({
     initialValues: {
-      weightsTotalRaw: String(currentWeightsTotal),
-      targetingRaw: currentTargeting === null ? '' : JSON.stringify(currentTargeting, null, 2),
+      weightsTotalRaw: defaultWeightsRaw(currentWeightsTotal),
+      targetingRaw: currentTargeting ?? '',
     },
     validate: {
       weightsTotalRaw: (value) =>
-        normalizeWeightsTotal(value) === null ? i18n.t('experiments.weightsTotalInvalid') : null,
+        normalizePercentInput(value) === null ? i18n.t('experiments.weightsTotalInvalid') : null,
       targetingRaw: (value) =>
         parseTargetingInput(value).ok ? null : i18n.t('experiments.targetingInvalid'),
     },
   });
 
-  const weightsTotal = normalizeWeightsTotal(form.values.weightsTotalRaw) ?? currentWeightsTotal;
-  const validation = validateVariantDrafts(drafts, weightsTotal);
+  const weightsTotal = normalizePercentInput(form.values.weightsTotalRaw) ?? DEFAULT_WEIGHTS_TOTAL;
+  const validation = validateVariantDrafts(drafts, weightsTotal, flagType);
 
   const handleSubmit = (values: VersionFormValues): void => {
-    if (isPending || validation.variants === null) {
+    if (isPending) {
       return;
     }
-    const total = normalizeWeightsTotal(values.weightsTotalRaw);
+    const total = normalizePercentInput(values.weightsTotalRaw);
     if (total === null) {
       return;
     }
     const targetingParsed = parseTargetingInput(values.targetingRaw);
     if (!targetingParsed.ok) {
+      return;
+    }
+    if (validation.variants === null) {
       return;
     }
     onSubmit({
@@ -78,6 +92,8 @@ export function CreateVersionModal({
 
   const handleClose = (): void => {
     if (!isPending) {
+      form.reset();
+      setDrafts(initialDrafts());
       onClose();
     }
   };
@@ -89,8 +105,10 @@ export function CreateVersionModal({
           <NumberInput
             label={t('experiments.weightsTotal')}
             disabled={isPending}
-            min={1}
-            max={MAX_WEIGHTS_TOTAL}
+            min={0.01}
+            max={100}
+            decimalScale={2}
+            suffix="%"
             value={form.values.weightsTotalRaw === '' ? '' : Number(form.values.weightsTotalRaw)}
             onChange={(value) => {
               form.setFieldValue('weightsTotalRaw', typeof value === 'number' ? String(value) : '');
@@ -99,6 +117,7 @@ export function CreateVersionModal({
           />
           <Textarea
             label={t('experiments.targeting')}
+            placeholder={t('experiments.targetingPlaceholder')}
             description={t('experiments.targetingHint')}
             disabled={isPending}
             autosize
@@ -109,6 +128,7 @@ export function CreateVersionModal({
           <VariantsEditor
             drafts={drafts}
             weightsTotal={weightsTotal}
+            flagType={flagType}
             validationError={validation.error}
             weightsSum={validation.weightsSum}
             disabled={isPending}

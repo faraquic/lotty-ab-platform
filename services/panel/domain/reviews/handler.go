@@ -67,16 +67,13 @@ func (h *Handler) createGroup(c *gin.Context) {
 }
 
 func (h *Handler) listGroups(c *gin.Context) {
-	limit, err := strconv.Atoi(c.DefaultQuery("limit", "20"))
-	if err != nil || limit < 1 || limit > 100 {
-		limit = 20
+	var q api.ListQuery
+	if !api.BindListQuery(c, &q) {
+		return
 	}
-	offset, err := strconv.Atoi(c.DefaultQuery("offset", "0"))
-	if err != nil || offset < 0 {
-		offset = 0
-	}
+	q.Normalize()
 
-	resp, err := h.svc.ListGroups(c.Request.Context(), limit, offset, true)
+	resp, err := h.svc.ListGroups(c.Request.Context(), q.Limit, q.Offset, true, q.Search())
 	if err != nil {
 		h.respondError(c, err)
 		return
@@ -330,7 +327,8 @@ func (h *Handler) respondError(c *gin.Context, err error) {
 	case errors.Is(err, ErrForbidden):
 		logger.SetErrorType(c, logger.ErrorTypeAuthorizationDenied)
 		api.Error(w, http.StatusForbidden, api.Forbidden, err.Error())
-	case errors.Is(err, ErrInvalidThreshold), errors.Is(err, ErrInvalidComment), errors.Is(err, ErrInvalidDecision), errors.Is(err, ErrMemberNotFound):
+	case errors.Is(err, ErrInvalidThreshold), errors.Is(err, ErrInvalidComment), errors.Is(err, ErrInvalidDecision), errors.Is(err, ErrMemberNotFound),
+		errors.Is(err, ErrInvalidMemberRole), errors.Is(err, ErrInvalidExperimenter):
 		api.Error(w, http.StatusUnprocessableEntity, api.UnprocessableEntity, err.Error())
 	default:
 		logger.SetErrorType(c, logger.ErrorTypeInternalError)

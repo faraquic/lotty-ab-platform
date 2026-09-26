@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strconv"
 
 	"github.com/faraquic/lotty-ab-platform/pkg/api"
 	"github.com/faraquic/lotty-ab-platform/pkg/logger"
@@ -72,26 +71,36 @@ func (h *Handler) create(c *gin.Context) {
 	api.OK(c.Writer, resp)
 }
 
-func (h *Handler) list(c *gin.Context) {
-	limit, err := strconv.Atoi(c.DefaultQuery("limit", "20"))
-	if err != nil || limit < 1 || limit > 100 {
-		limit = 20
-	}
-	offset, err := strconv.Atoi(c.DefaultQuery("offset", "0"))
-	if err != nil || offset < 0 {
-		offset = 0
-	}
+type listQuery struct {
+	api.ListQuery
+	Status string `form:"status"`
+	FlagID string `form:"flag_id"`
+}
 
-	var status Status
-	if raw := c.Query("status"); raw != "" {
-		status = Status(raw)
-		if !status.Valid() {
+func (h *Handler) list(c *gin.Context) {
+	var q listQuery
+	if !api.BindListQuery(c, &q) {
+		return
+	}
+	q.Normalize()
+
+	filter := ListFilter{Search: q.Search()}
+	if q.Status != "" {
+		filter.Status = Status(q.Status)
+		if !filter.Status.Valid() {
 			api.Error(c.Writer, http.StatusBadRequest, api.BadRequest, "invalid status filter")
 			return
 		}
 	}
+	if q.FlagID != "" {
+		if _, err := uuid.Parse(q.FlagID); err != nil {
+			api.Error(c.Writer, http.StatusBadRequest, api.BadRequest, "invalid flag_id filter")
+			return
+		}
+		filter.FlagID = &q.FlagID
+	}
 
-	resp, err := h.svc.List(c.Request.Context(), limit, offset, status)
+	resp, err := h.svc.List(c.Request.Context(), q.Limit, q.Offset, filter)
 	if err != nil {
 		h.respondError(c, err)
 		return

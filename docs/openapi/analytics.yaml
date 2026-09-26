@@ -18,27 +18,15 @@ paths:
   /health:
     get:
       tags: [health]
-      summary: Liveness probe
+      summary: Aggregate health and readiness probe
+      description: >
+        Returns liveness and per-component readiness in a single payload. The
+        former /ready endpoint was removed in favor of this endpoint.
       operationId: health
       security: []
       responses:
         "200":
-          description: Service is alive
-          content:
-            text/plain:
-              schema:
-                type: string
-                example: OK
-
-  /ready:
-    get:
-      tags: [health]
-      summary: Readiness probe
-      operationId: ready
-      security: []
-      responses:
-        "200":
-          description: Service is ready
+          description: Service is alive and ready
           content:
             application/json:
               schema:

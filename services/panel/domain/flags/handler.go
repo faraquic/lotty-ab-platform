@@ -3,7 +3,6 @@ package flags
 import (
 	"errors"
 	"net/http"
-	"strconv"
 
 	"github.com/faraquic/lotty-ab-platform/pkg/api"
 	"github.com/faraquic/lotty-ab-platform/pkg/logger"
@@ -55,16 +54,13 @@ func (h *Handler) create(c *gin.Context) {
 }
 
 func (h *Handler) list(c *gin.Context) {
-	limit, err := strconv.Atoi(c.DefaultQuery("limit", "20"))
-	if err != nil || limit < 1 || limit > 100 {
-		limit = 20
+	var q api.ListQuery
+	if !api.BindListQuery(c, &q) {
+		return
 	}
-	offset, err := strconv.Atoi(c.DefaultQuery("offset", "0"))
-	if err != nil || offset < 0 {
-		offset = 0
-	}
+	q.Normalize()
 
-	resp, err := h.svc.List(c.Request.Context(), limit, offset)
+	resp, err := h.svc.List(c.Request.Context(), q.Limit, q.Offset, q.Search())
 	if err != nil {
 		h.respondError(c, err)
 		return

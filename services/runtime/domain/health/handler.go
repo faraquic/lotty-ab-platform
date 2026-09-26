@@ -2,7 +2,6 @@ package health
 
 import (
 	"context"
-	"net/http"
 	"time"
 
 	"github.com/faraquic/lotty-ab-platform/pkg/config"
@@ -27,14 +26,10 @@ func NewHandler(redis *rueidis.Client, snapshot *snapshot.Reader, environment st
 
 func (h *Handler) RegisterRoutes(r fiber.Router) {
 	r.Get("/health", h.health)
-	r.Get("/ready", h.ready)
 }
 
+// health reports the aggregate service status and component readiness.
 func (h *Handler) health(c fiber.Ctx) {
-	c.Status(http.StatusOK).SendString("OK")
-}
-
-func (h *Handler) ready(c fiber.Ctx) {
 	ctx, cancel := context.WithTimeout(c.RequestCtx(), 3*time.Second)
 	defer cancel()
 

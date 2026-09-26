@@ -16,6 +16,7 @@ import {
   updateExperiment,
 } from './experiments';
 import type { ExperimentsApiError, ExperimentStatus } from '../types';
+import type { ExperimentsListFilters } from './experiments';
 import type {
   CompleteExperimentRequest,
   CreateExperimentRequest,
@@ -34,16 +35,26 @@ export interface ExperimentsListParams {
   limit: number;
   offset: number;
   status: ExperimentStatus | null;
+  q?: string;
+  flagId?: string;
 }
 
 export function useExperimentsList(
   params: ExperimentsListParams,
 ): UseQueryResult<ExperimentListResponse, ExperimentsApiError> {
-  const { limit, offset, status } = params;
+  const { limit, offset, status, q, flagId } = params;
+  const filters: ExperimentsListFilters = {
+    limit,
+    offset,
+    status,
+    ...(q !== undefined ? { q } : {}),
+    ...(flagId !== undefined ? { flagId } : {}),
+  };
   return useQuery<ExperimentListResponse, ExperimentsApiError>({
-    queryKey: experimentsListQueryKey(limit, offset, status),
-    queryFn: () => listExperiments({ limit, offset, status }),
+    queryKey: experimentsListQueryKey(filters),
+    queryFn: () => listExperiments(filters),
     placeholderData: (previous) => previous,
+    refetchInterval: 15_000,
   });
 }
 
@@ -52,6 +63,7 @@ export function useExperiment(id: string | null): UseQueryResult<Experiment, Exp
     queryKey: id === null ? ['experiments', 'detail', 'none'] : experimentDetailQueryKey(id),
     queryFn: () => getExperiment(id ?? ''),
     enabled: id !== null,
+    refetchInterval: id === null ? false : 15_000,
   });
 }
 

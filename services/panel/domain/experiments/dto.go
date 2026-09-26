@@ -10,7 +10,7 @@ type CreateExperimentRequest struct {
 	Name         string         `json:"name" binding:"required,min=1,max=256"`
 	Description  string         `json:"description"`
 	WeightsTotal int            `json:"weights_total"`
-	Targeting    *Targeting     `json:"targeting"`
+	Targeting    *string        `json:"targeting"`
 	Variants     []VariantInput `json:"variants"`
 }
 
@@ -23,7 +23,7 @@ type UpdateDraftRequest struct {
 type CreateVersionRequest struct {
 	Version      int            `json:"version" binding:"required,min=1"`
 	WeightsTotal int            `json:"weights_total"`
-	Targeting    *Targeting     `json:"targeting"`
+	Targeting    *string        `json:"targeting"`
 	Variants     []VariantInput `json:"variants"`
 }
 
@@ -59,13 +59,13 @@ type VariantResponse struct {
 
 type VersionResponse struct {
 	api.ResourceResponse
-	ExperimentID     string     `json:"experiment_id"`
-	VersionNum       int        `json:"version_num"`
-	ReviewID         *string    `json:"review_id"`
-	WeightsTotal     int        `json:"weights_total"`
-	Targeting        *Targeting `json:"targeting"`
-	DistributionSalt string     `json:"distribution_salt"`
-	CreatedBy        string     `json:"created_by"`
+	ExperimentID     string  `json:"experiment_id"`
+	VersionNum       int     `json:"version_num"`
+	ReviewID         *string `json:"review_id"`
+	WeightsTotal     int     `json:"weights_total"`
+	Targeting        *string `json:"targeting"`
+	DistributionSalt string  `json:"distribution_salt"`
+	CreatedBy        string  `json:"created_by"`
 }
 
 type ExperimentResponse struct {
@@ -122,6 +122,10 @@ func ToResponse(d ExperimentDetail) ExperimentResponse {
 		UpdatedBy:          updatedBy,
 	}
 	if d.CurrentVersion != nil {
+		var targetingDSL *string
+		if dsl := FormatTargeting(d.CurrentVersion.Targeting); dsl != "" {
+			targetingDSL = &dsl
+		}
 		resp.CurrentVersion = &VersionResponse{
 			ResourceResponse: api.ResourceResponse{
 				ID:        d.CurrentVersion.ID,
@@ -132,7 +136,7 @@ func ToResponse(d ExperimentDetail) ExperimentResponse {
 			VersionNum:       d.CurrentVersion.VersionNum,
 			ReviewID:         d.CurrentVersion.ReviewID,
 			WeightsTotal:     d.CurrentVersion.WeightsTotal,
-			Targeting:        d.CurrentVersion.Targeting,
+			Targeting:        targetingDSL,
 			DistributionSalt: d.CurrentVersion.DistributionSalt,
 			CreatedBy:        d.CurrentVersion.CreatedBy,
 		}

@@ -1,5 +1,8 @@
 import type { TransitionAction } from '../api/useExperiments';
+import { parseDefaultValueInput } from '@/features/flags/lib/flagValue';
+import type { FlagType } from '@/features/flags/types';
 import type { Experiment, ExperimentStatus, ExperimentVariantInput } from '../types';
+import { isValidTargetingDsl } from './targeting';
 
 export const DEFAULT_WEIGHTS_TOTAL = 10000;
 export const MAX_WEIGHTS_TOTAL = 10000;
@@ -59,16 +62,19 @@ export function emptyVariantDraft(isControl: boolean): VariantDraft {
   return { name: '', valueRaw: '', weightRaw: '', isControl };
 }
 
-export function parseVariantValue(raw: string): { ok: true; value: unknown } | { ok: false } {
+export function parseVariantValue(
+  raw: string,
+  flagType: FlagType,
+): { ok: true; value: unknown } | { ok: false } {
   const trimmed = raw.trim();
   if (trimmed.length === 0) {
     return { ok: false };
   }
-  try {
-    return { ok: true, value: JSON.parse(trimmed) as unknown };
-  } catch {
+  const parsed = parseDefaultValueInput(flagType, flagType === 'string' ? raw : trimmed);
+  if (parsed === null) {
     return { ok: false };
   }
+  return { ok: true, value: parsed };
 }
 
 export interface VariantsValidation {
@@ -80,10 +86,11 @@ export interface VariantsValidation {
 export function validateVariantDrafts(
   drafts: VariantDraft[],
   weightsTotal: number,
+  flagType: FlagType,
 ): VariantsValidation {
   const weightsSum = drafts.reduce((sum, draft) => {
-    const weight = Number(draft.weightRaw);
-    return Number.isInteger(weight) && weight > 0 ? sum + weight : sum;
+    const bp = normalizePercentInput(draft.weightRaw);
+    return bp !== null && bp > 0 ? sum + bp : sum;
   }, 0);
   if (drafts.length < 2) {
     return { variants: null, weightsSum, error: 'count' };
@@ -100,12 +107,12 @@ export function validateVariantDrafts(
       return { variants: null, weightsSum, error: 'duplicate' };
     }
     seen.add(name);
-    const parsed = parseVariantValue(draft.valueRaw);
+    const parsed = parseVariantValue(draft.valueRaw, flagType);
     if (!parsed.ok) {
       return { variants: null, weightsSum, error: 'value' };
     }
-    const weight = Number(draft.weightRaw);
-    if (!Number.isInteger(weight) || weight <= 0) {
+    const weight = parsePercentToBp(draft.weightRaw);
+    if (weight === null) {
       return { variants: null, weightsSum, error: 'weight' };
     }
     if (draft.isControl) {
@@ -124,20 +131,12 @@ export function validateVariantDrafts(
 
 export function parseTargetingInput(
   raw: string,
-): { ok: true; targeting: Record<string, unknown> | null } | { ok: false } {
+): { ok: true; targeting: string | null } | { ok: false } {
   const trimmed = raw.trim();
   if (trimmed.length === 0) {
     return { ok: true, targeting: null };
   }
-  try {
-    const parsed: unknown = JSON.parse(trimmed);
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return { ok: false };
-    }
-    return { ok: true, targeting: parsed as Record<string, unknown> };
-  } catch {
-    return { ok: false };
-  }
+  return isValidTargetingDsl(trimmed) ? { ok: true, targeting: trimmed } : { ok: false };
 }
 
 export function normalizeWeightsTotal(raw: string): number | null {
@@ -150,6 +149,49 @@ export function normalizeWeightsTotal(raw: string): number | null {
     return null;
   }
   return value;
+}
+
+// Allocation is stored as basis points (1..10000) but exchanged with the UI as
+// percentages with two decimal places (0.01% .. 100.00%).
+
+export function bpToPercent(bp: number): number {
+  return bp / 100;
+}
+
+export function percentToBp(percent: number): number {
+  return Math.round(percent * 100);
+}
+
+export function formatPercent(bp: number): string {
+  return `${bpToPercent(bp).toFixed(2)}%`;
+}
+
+// normalizePercentInput converts a percent string into basis points. Blank
+// input falls back to the default total (100%).
+export function normalizePercentInput(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    return DEFAULT_WEIGHTS_TOTAL;
+  }
+  return parsePercentToBp(trimmed);
+}
+
+// parsePercentToBp converts a non-empty percent string into basis points,
+// returning null for invalid or out-of-range input.
+export function parsePercentToBp(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  const percent = Number(trimmed);
+  if (!Number.isFinite(percent)) {
+    return null;
+  }
+  const bp = percentToBp(percent);
+  if (bp < 1 || bp > MAX_WEIGHTS_TOTAL) {
+    return null;
+  }
+  return bp;
 }
 
 export function statusBadgeColor(status: ExperimentStatus): string {

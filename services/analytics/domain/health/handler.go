@@ -1,7 +1,6 @@
 package health
 
 import (
-	"net/http"
 	"time"
 
 	"github.com/faraquic/lotty-ab-platform/pkg/config"
@@ -21,14 +20,10 @@ func NewHandler(environment string, log *zap.Logger) *Handler {
 
 func (h *Handler) RegisterRoutes(r fiber.Router) {
 	r.Get("/health", h.health)
-	r.Get("/ready", h.ready)
 }
 
+// health reports the aggregate service status and component readiness.
 func (h *Handler) health(c fiber.Ctx) {
-	c.Status(http.StatusOK).SendString("OK")
-}
-
-func (h *Handler) ready(c fiber.Ctx) {
 	resp := dto.ReadyResponse{
 		Service:     config.ServiceName,
 		Version:     config.ServiceVersion,

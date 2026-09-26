@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  formatPercent,
   lifecycleActionsFor,
+  normalizePercentInput,
   normalizeWeightsTotal,
   parseTargetingInput,
   parseVariantValue,
@@ -53,10 +55,11 @@ describe('variant draft validation', () => {
   it('accepts two balanced variants with exactly one control', () => {
     const result = validateVariantDrafts(
       [
-        { name: 'control', valueRaw: 'false', weightRaw: '5000', isControl: true },
-        { name: 'treatment', valueRaw: 'true', weightRaw: '5000', isControl: false },
+        { name: 'control', valueRaw: 'false', weightRaw: '50', isControl: true },
+        { name: 'treatment', valueRaw: 'true', weightRaw: '50', isControl: false },
       ],
       10000,
+      'bool',
     );
 
     expect(result.error).toBeNull();
@@ -68,8 +71,9 @@ describe('variant draft validation', () => {
 
   it('rejects fewer than two variants', () => {
     const result = validateVariantDrafts(
-      [{ name: 'control', valueRaw: '1', weightRaw: '10000', isControl: true }],
+      [{ name: 'control', valueRaw: '1', weightRaw: '100', isControl: true }],
       10000,
+      'number',
     );
     expect(result.error).toBe('count');
   });
@@ -77,78 +81,111 @@ describe('variant draft validation', () => {
   it('rejects missing control, duplicate controls, and weight mismatches', () => {
     const noControl = validateVariantDrafts(
       [
-        { name: 'a', valueRaw: '1', weightRaw: '5000', isControl: false },
-        { name: 'b', valueRaw: '2', weightRaw: '5000', isControl: false },
+        { name: 'a', valueRaw: '1', weightRaw: '50', isControl: false },
+        { name: 'b', valueRaw: '2', weightRaw: '50', isControl: false },
       ],
       10000,
+      'number',
     );
     expect(noControl.error).toBe('control');
 
     const twoControls = validateVariantDrafts(
       [
-        { name: 'a', valueRaw: '1', weightRaw: '5000', isControl: true },
-        { name: 'b', valueRaw: '2', weightRaw: '5000', isControl: true },
+        { name: 'a', valueRaw: '1', weightRaw: '50', isControl: true },
+        { name: 'b', valueRaw: '2', weightRaw: '50', isControl: true },
       ],
       10000,
+      'number',
     );
     expect(twoControls.error).toBe('control');
 
     const badSum = validateVariantDrafts(
       [
-        { name: 'a', valueRaw: '1', weightRaw: '4000', isControl: true },
-        { name: 'b', valueRaw: '2', weightRaw: '5000', isControl: false },
+        { name: 'a', valueRaw: '1', weightRaw: '40', isControl: true },
+        { name: 'b', valueRaw: '2', weightRaw: '50', isControl: false },
       ],
       10000,
+      'number',
     );
     expect(badSum.error).toBe('sum');
   });
 
-  it('rejects duplicate names, invalid JSON values, and bad weights', () => {
+  it('rejects duplicate names, invalid values, and bad weights', () => {
     const duplicate = validateVariantDrafts(
       [
-        { name: 'a', valueRaw: '1', weightRaw: '5000', isControl: true },
-        { name: 'a', valueRaw: '2', weightRaw: '5000', isControl: false },
+        { name: 'a', valueRaw: '1', weightRaw: '50', isControl: true },
+        { name: 'a', valueRaw: '2', weightRaw: '50', isControl: false },
       ],
       10000,
+      'number',
     );
     expect(duplicate.error).toBe('duplicate');
 
     const badValue = validateVariantDrafts(
       [
-        { name: 'a', valueRaw: 'not json', weightRaw: '5000', isControl: true },
-        { name: 'b', valueRaw: '2', weightRaw: '5000', isControl: false },
+        { name: 'a', valueRaw: 'not a number', weightRaw: '50', isControl: true },
+        { name: 'b', valueRaw: '2', weightRaw: '50', isControl: false },
       ],
       10000,
+      'number',
     );
     expect(badValue.error).toBe('value');
 
     const badWeight = validateVariantDrafts(
       [
         { name: 'a', valueRaw: '1', weightRaw: '0', isControl: true },
-        { name: 'b', valueRaw: '2', weightRaw: '5000', isControl: false },
+        { name: 'b', valueRaw: '2', weightRaw: '50', isControl: false },
       ],
       10000,
+      'number',
     );
     expect(badWeight.error).toBe('weight');
+  });
+
+  it('rejects values that do not match the flag type', () => {
+    const result = validateVariantDrafts(
+      [
+        { name: 'control', valueRaw: '1', weightRaw: '50', isControl: true },
+        { name: 'treatment', valueRaw: 'yes', weightRaw: '50', isControl: false },
+      ],
+      10000,
+      'number',
+    );
+    expect(result.error).toBe('value');
   });
 });
 
 describe('variant value and targeting parsing', () => {
-  it('parses any valid JSON variant value', () => {
-    expect(parseVariantValue('false')).toEqual({ ok: true, value: false });
-    expect(parseVariantValue('{"plan":"pro"}')).toEqual({ ok: true, value: { plan: 'pro' } });
-    expect(parseVariantValue('  ')).toEqual({ ok: false });
-    expect(parseVariantValue('{broken')).toEqual({ ok: false });
+  it('parses variant values according to the flag type', () => {
+    expect(parseVariantValue('false', 'bool')).toEqual({ ok: true, value: false });
+    expect(parseVariantValue('42', 'number')).toEqual({ ok: true, value: 42 });
+    expect(parseVariantValue('pro', 'string')).toEqual({ ok: true, value: 'pro' });
+    expect(parseVariantValue('  ', 'string')).toEqual({ ok: false });
+    expect(parseVariantValue('not-a-number', 'number')).toEqual({ ok: false });
+    expect(parseVariantValue('maybe', 'bool')).toEqual({ ok: false });
   });
 
-  it('treats empty targeting as no targeting and rejects non-objects', () => {
+  it('treats empty targeting as no targeting and rejects invalid DSL', () => {
     expect(parseTargetingInput('')).toEqual({ ok: true, targeting: null });
-    expect(parseTargetingInput('{"country":"DE"}')).toEqual({
+    expect(parseTargetingInput('country == "DE"')).toEqual({
       ok: true,
-      targeting: { country: 'DE' },
+      targeting: 'country == "DE"',
     });
-    expect(parseTargetingInput('[1,2]')).toEqual({ ok: false });
-    expect(parseTargetingInput('{broken')).toEqual({ ok: false });
+    expect(parseTargetingInput('country ~ "DE"')).toEqual({ ok: false });
+    expect(parseTargetingInput('country ==')).toEqual({ ok: false });
+  });
+
+  it('normalizes percent allocation to basis points', () => {
+    expect(normalizePercentInput('')).toBe(10000);
+    expect(normalizePercentInput('50')).toBe(5000);
+    expect(normalizePercentInput('0')).toBeNull();
+    expect(normalizePercentInput('100.01')).toBeNull();
+    expect(normalizePercentInput('nope')).toBeNull();
+  });
+
+  it('formats basis points as percentages with two decimals', () => {
+    expect(formatPercent(5000)).toBe('50.00%');
+    expect(formatPercent(3333)).toBe('33.33%');
   });
 
   it('normalizes weights total with the backend default', () => {

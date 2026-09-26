@@ -69,17 +69,10 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
 }
 
-async function fetchHealthStatus(baseUrl: string): Promise<number> {
-  const response = await fetch(`${baseUrl}/health`, {
-    signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-  });
-  return response.status;
-}
-
-async function fetchReady(
+async function fetchHealth(
   baseUrl: string,
 ): Promise<{ status: number; ready: ReadyPayload | null }> {
-  const response = await fetch(`${baseUrl}/ready`, {
+  const response = await fetch(`${baseUrl}/health`, {
     signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
   });
   let payload: unknown = null;
@@ -101,27 +94,9 @@ export async function probeService(baseUrl: string, service: ServiceName): Promi
   });
 
   let healthStatus: number;
-  try {
-    healthStatus = await fetchHealthStatus(baseUrl);
-  } catch (error) {
-    return finish({
-      status: 'down',
-      ready: null,
-      failure: { reason: isAbortError(error) ? 'timeout' : 'network', httpStatus: null },
-    });
-  }
-  if (healthStatus < 200 || healthStatus >= 300) {
-    return finish({
-      status: 'down',
-      ready: null,
-      failure: { reason: 'http', httpStatus: healthStatus },
-    });
-  }
-
-  let readyStatus: number;
   let ready: ReadyPayload | null;
   try {
-    ({ status: readyStatus, ready } = await fetchReady(baseUrl));
+    ({ status: healthStatus, ready } = await fetchHealth(baseUrl));
   } catch (error) {
     return finish({
       status: 'down',
@@ -130,16 +105,17 @@ export async function probeService(baseUrl: string, service: ServiceName): Promi
     });
   }
 
-  const readyOk = readyStatus >= 200 && readyStatus < 300;
+  const healthOk = healthStatus >= 200 && healthStatus < 300;
   if (ready === null) {
     return finish({
       status: 'down',
       ready: null,
-      failure: readyOk
+      failure: healthOk
         ? { reason: 'invalid', httpStatus: null }
-        : { reason: 'http', httpStatus: readyStatus },
+        : { reason: 'http', httpStatus: healthStatus },
     });
   }
+
   const input: ServiceProbeInput = { healthOk: true, ready };
   return finish({
     status: aggregateServiceStatus(input),

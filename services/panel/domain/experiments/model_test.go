@@ -3,6 +3,7 @@ package experiments
 import (
 	"testing"
 
+	flagsdomain "github.com/faraquic/lotty-ab-platform/services/panel/domain/flags"
 	"github.com/goccy/go-json"
 )
 
@@ -55,7 +56,7 @@ func TestValidateVariants(t *testing.T) {
 		{Name: "control", Value: val(`"a"`), WeightBP: 5000, IsControl: true},
 		{Name: "treatment", Value: val(`"b"`), WeightBP: 5000},
 	}
-	if err := ValidateVariants(valid, 10000); err != nil {
+	if err := ValidateVariants(valid, 10000, flagsdomain.TypeFlagString); err != nil {
 		t.Errorf("valid variants rejected: %v", err)
 	}
 
@@ -85,42 +86,69 @@ func TestValidateVariants(t *testing.T) {
 		},
 	}
 	for name, inputs := range cases {
-		if err := ValidateVariants(inputs, 10000); err == nil {
+		if err := ValidateVariants(inputs, 10000, flagsdomain.TypeFlagString); err == nil {
 			t.Errorf("%s: expected error, got nil", name)
 		}
 	}
 }
 
-func TestTargetingValid(t *testing.T) {
-	var nilT *Targeting
-	if nilT != nil {
-		t.Fatal("unreachable")
-	}
-
-	raw := Targeting(`{"country": "DE"}`)
-	if !raw.Valid() {
-		t.Error("object targeting should be valid")
-	}
-
-	for _, bad := range []string{"", "not-json", `[1,2]`, `"str"`} {
-		if (Targeting(bad)).Valid() {
-			t.Errorf("%q: expected invalid", bad)
+func TestValidateVariantsFlagType(t *testing.T) {
+	val := func(s string) VariantValue {
+		var v VariantValue
+		if err := json.Unmarshal([]byte(s), &v); err != nil {
+			t.Fatalf("bad fixture: %v", err)
 		}
+		return v
+	}
+
+	stringVariants := []VariantInput{
+		{Name: "control", Value: val(`123`), WeightBP: 5000, IsControl: true},
+		{Name: "treatment", Value: val(`"b"`), WeightBP: 5000},
+	}
+	if err := ValidateVariants(stringVariants, 10000, flagsdomain.TypeFlagString); err == nil {
+		t.Error("number value should be rejected for string flag")
+	}
+
+	boolVariants := []VariantInput{
+		{Name: "control", Value: val(`false`), WeightBP: 5000, IsControl: true},
+		{Name: "treatment", Value: val(`true`), WeightBP: 5000},
+	}
+	if err := ValidateVariants(boolVariants, 10000, flagsdomain.TypeFlagBool); err != nil {
+		t.Errorf("bool values should be accepted for bool flag: %v", err)
 	}
 }
 
-func TestNormalizeTargeting(t *testing.T) {
-	if normalizeTargeting(nil) != nil {
-		t.Error("nil should stay nil")
+func TestParseTargeting(t *testing.T) {
+	if tgt, err := ParseTargeting(""); err != nil || tgt != nil {
+		t.Errorf("empty targeting should return nil: %v %v", tgt, err)
 	}
-	for _, empty := range []string{"", "  ", "null", "{}", "  {}  "} {
-		raw := Targeting(empty)
-		if got := normalizeTargeting(&raw); got != nil {
-			t.Errorf("%q: expected nil, got %q", empty, string(*got))
-		}
+	if tgt, err := ParseTargeting("   "); err != nil || tgt != nil {
+		t.Errorf("blank targeting should return nil: %v %v", tgt, err)
 	}
-	raw := Targeting(`{"country": "DE"}`)
-	if got := normalizeTargeting(&raw); got == nil || string(*got) != `{"country": "DE"}` {
-		t.Errorf("non-empty object should pass through: %v", got)
+	tgt, err := ParseTargeting(`country == "DE" AND NOT (plan IN ["free"])`)
+	if err != nil {
+		t.Fatalf("valid DSL rejected: %v", err)
+	}
+	if tgt == nil || !tgt.Valid() {
+		t.Fatalf("expected valid canonical targeting, got %v", tgt)
+	}
+	if _, err := ParseTargeting(`country = "DE"`); err != nil {
+		t.Errorf("single '=' should be accepted as '==': %v", err)
+	}
+	if _, err := ParseTargeting(`country ~`); err == nil {
+		t.Error("invalid DSL should be rejected")
+	}
+}
+
+func TestFormatTargeting(t *testing.T) {
+	tgt, err := ParseTargeting(`country == "DE"`)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if got := FormatTargeting(tgt); got != `country == "DE"` {
+		t.Errorf("unexpected formatted DSL: %q", got)
+	}
+	if got := FormatTargeting(nil); got != "" {
+		t.Errorf("nil targeting should format to empty, got %q", got)
 	}
 }

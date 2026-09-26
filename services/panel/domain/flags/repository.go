@@ -3,6 +3,7 @@ package flags
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -209,8 +210,10 @@ WHERE
 	return fwo, nil
 }
 
-func (r *Repository) List(ctx context.Context, limit, offset int) ([]Flag, error) {
-	const q = `
+// List returns flags matching the optional case-insensitive search over key
+// and name.
+func (r *Repository) List(ctx context.Context, limit, offset int, search *string) ([]Flag, error) {
+	q := `
 SELECT
     f.id,
     f.key,
@@ -226,12 +229,16 @@ SELECT
 FROM
     flags f
 WHERE
-    f.deleted_at IS NULL
-ORDER BY
-    f.id
-LIMIT $1 OFFSET $2`
+    f.deleted_at IS NULL`
+	args := []any{}
+	if search != nil {
+		args = append(args, "%"+*search+"%")
+		q += ` AND (f.key ILIKE $` + strconv.Itoa(len(args)) + ` OR f.name ILIKE $` + strconv.Itoa(len(args)) + `)`
+	}
+	q += ` ORDER BY f.id LIMIT $` + strconv.Itoa(len(args)+1) + ` OFFSET $` + strconv.Itoa(len(args)+2)
+	args = append(args, limit, offset)
 
-	rows, err := r.db.Query(ctx, q, limit, offset)
+	rows, err := r.db.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -317,16 +324,21 @@ WHERE
 	return nil
 }
 
-func (r *Repository) Count(ctx context.Context) (int64, error) {
-	const q = `
+func (r *Repository) Count(ctx context.Context, search *string) (int64, error) {
+	q := `
 SELECT
     count(*)
 FROM
     flags
 WHERE
     deleted_at IS NULL`
+	args := []any{}
+	if search != nil {
+		args = append(args, "%"+*search+"%")
+		q += ` AND (key ILIKE $` + strconv.Itoa(len(args)) + ` OR name ILIKE $` + strconv.Itoa(len(args)) + `)`
+	}
 
 	var n int64
-	err := r.db.QueryRow(ctx, q).Scan(&n)
+	err := r.db.QueryRow(ctx, q, args...).Scan(&n)
 	return n, err
 }

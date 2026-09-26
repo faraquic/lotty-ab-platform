@@ -197,15 +197,6 @@ export function MetricsPage() {
             <Text size="sm" c="dimmed">
               {t('metrics.noMetricsHint')}
             </Text>
-            <Button
-              size="sm"
-              leftSection={<IconPlus size={16} />}
-              onClick={() => {
-                setCreateOpened(true);
-              }}
-            >
-              {t('metrics.createMetric')}
-            </Button>
           </Stack>
         ) : null}
 

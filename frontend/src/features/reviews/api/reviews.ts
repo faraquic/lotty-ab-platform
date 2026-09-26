@@ -29,19 +29,28 @@ import type {
 export const REVIEWS_PAGE_SIZE = 20;
 export const GROUPS_PAGE_SIZE = 20;
 
+export interface ReviewsListFilters {
+  limit: number;
+  offset: number;
+  status: ReviewStatus | null;
+}
+
 export function reviewsListQueryKey(
-  limit: number,
-  offset: number,
-  status: ReviewStatus | null,
-): [string, { limit: number; offset: number; status: string | null }] {
-  return ['reviews', { limit, offset, status }];
+  filters: ReviewsListFilters,
+): [string, ReviewsListFilters] {
+  return ['reviews', filters];
+}
+
+export interface GroupsListFilters {
+  limit: number;
+  offset: number;
+  q?: string;
 }
 
 export function groupsListQueryKey(
-  limit: number,
-  offset: number,
-): [string, { limit: number; offset: number }] {
-  return ['approver-groups', { limit, offset }];
+  filters: GroupsListFilters,
+): [string, GroupsListFilters] {
+  return ['approver-groups', filters];
 }
 
 export const REVIEWS_LIST_KEY_PREFIX = 'reviews';
@@ -102,13 +111,9 @@ async function requestJson(input: string, init: RequestInit): Promise<unknown> {
   return readPayload(response);
 }
 
-export interface ListReviewsParams {
-  limit: number;
-  offset: number;
-  status: ReviewStatus | null;
-}
+export type ListReviewsParams = ReviewsListFilters;
 
-export async function listReviews(params: ListReviewsParams): Promise<ReviewListResponse> {
+export async function listReviews(params: ReviewsListFilters): Promise<ReviewListResponse> {
   const query = new URLSearchParams({
     limit: String(params.limit),
     offset: String(params.offset),
@@ -214,10 +219,15 @@ export async function deleteReviewComment(commentId: string): Promise<undefined>
 }
 
 export async function listApproverGroups(
-  limit: number,
-  offset: number,
+  filters: GroupsListFilters,
 ): Promise<ApproverGroupListResponse> {
-  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  const params = new URLSearchParams({
+    limit: String(filters.limit),
+    offset: String(filters.offset),
+  });
+  if (filters.q !== undefined && filters.q.length > 0) {
+    params.set('q', filters.q);
+  }
   const payload = await requestJson(
     `${PANEL_API_BASE_URL}/approver-groups?${params.toString()}`,
     { headers: { ...authHeaders() } },

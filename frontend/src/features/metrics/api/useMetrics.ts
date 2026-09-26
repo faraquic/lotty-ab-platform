@@ -34,6 +34,7 @@ export function useMetricsList(
     queryKey: metricsListQueryKey(limit, offset, archived),
     queryFn: () => listMetrics({ limit, offset, archived }),
     placeholderData: (previous) => previous,
+    refetchInterval: 60_000,
   });
 }
 

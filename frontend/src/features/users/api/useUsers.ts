@@ -15,11 +15,13 @@ import {
   usersListQueryKey,
 } from './users';
 import type { UsersApiError } from '../types';
+import type { UsersListFilters } from './users';
 import type {
   CreateUserRequest,
   UpdateUserRequest,
   User,
   UserListResponse,
+  UserRole,
 } from '../types';
 
 export { USERS_PAGE_SIZE };
@@ -27,17 +29,26 @@ export { USERS_PAGE_SIZE };
 export interface UsersListParams {
   limit: number;
   offset: number;
+  q?: string;
+  role?: UserRole;
 }
 
 export function useUsersList(
   params: UsersListParams,
   enabled = true,
 ): UseQueryResult<UserListResponse, UsersApiError> {
-  const { limit, offset } = params;
+  const { limit, offset, q, role } = params;
+  const filters: UsersListFilters = {
+    limit,
+    offset,
+    ...(q !== undefined ? { q } : {}),
+    ...(role !== undefined ? { role } : {}),
+  };
   return useQuery<UserListResponse, UsersApiError>({
-    queryKey: usersListQueryKey(limit, offset),
-    queryFn: () => listUsers(limit, offset),
+    queryKey: usersListQueryKey(filters),
+    queryFn: () => listUsers(filters),
     placeholderData: (previous) => previous,
+    refetchInterval: 60_000,
     enabled,
   });
 }

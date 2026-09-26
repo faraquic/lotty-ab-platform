@@ -97,12 +97,12 @@ afterEach(() => {
 
 describe('experiments api', () => {
   it('includes pagination and status filter in list query keys', () => {
-    expect(experimentsListQueryKey(20, 0, null)).toEqual([
+    expect(experimentsListQueryKey({ limit: 20, offset: 0, status: null })).toEqual([
       'experiments',
       { limit: 20, offset: 0, status: null },
     ]);
-    expect(experimentsListQueryKey(20, 0, 'running')).not.toEqual(
-      experimentsListQueryKey(20, 0, null),
+    expect(experimentsListQueryKey({ limit: 20, offset: 0, status: 'running' })).not.toEqual(
+      experimentsListQueryKey({ limit: 20, offset: 0, status: null }),
     );
     expect(experimentDetailQueryKey('id-1')).toEqual(['experiments', 'id-1']);
   });

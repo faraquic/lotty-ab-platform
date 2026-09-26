@@ -2,13 +2,13 @@ import { Button, Group, Modal, NumberInput, Select, Stack, Textarea, TextInput }
 import { useForm } from '@mantine/form';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { FlagType } from '@/features/flags/types';
 import { VariantsEditor } from './VariantsEditor';
 import {
   DEFAULT_WEIGHTS_TOTAL,
   MAX_DESCRIPTION_LENGTH,
   MAX_NAME_LENGTH,
-  MAX_WEIGHTS_TOTAL,
-  normalizeWeightsTotal,
+  normalizePercentInput,
   parseTargetingInput,
   validateVariantDrafts,
 } from '../lib/transitions';
@@ -23,10 +23,17 @@ export interface CreateExperimentFormValues {
   targetingRaw: string;
 }
 
+export interface FlagOption {
+  value: string;
+  label: string;
+  key: string;
+  type: FlagType;
+}
+
 interface CreateExperimentModalProps {
   opened: boolean;
   isPending: boolean;
-  flagOptions: { value: string; label: string }[];
+  flagOptions: FlagOption[];
   flagsLoading: boolean;
   onClose: () => void;
   onSubmit: (request: CreateExperimentRequest) => void;
@@ -64,7 +71,7 @@ export function CreateExperimentModal({
       flag_id: '',
       name: '',
       description: '',
-      weightsTotalRaw: String(DEFAULT_WEIGHTS_TOTAL),
+      weightsTotalRaw: String(DEFAULT_WEIGHTS_TOTAL / 100),
       targetingRaw: '',
     },
     validate: {
@@ -83,21 +90,22 @@ export function CreateExperimentModal({
           ? i18n.t('experiments.descriptionMaxLength', { count: MAX_DESCRIPTION_LENGTH })
           : null,
       weightsTotalRaw: (value) =>
-        normalizeWeightsTotal(value) === null ? i18n.t('experiments.weightsTotalInvalid') : null,
+        normalizePercentInput(value) === null ? i18n.t('experiments.weightsTotalInvalid') : null,
       targetingRaw: (value) =>
         parseTargetingInput(value).ok ? null : i18n.t('experiments.targetingInvalid'),
     },
   });
 
-  const weightsTotal = normalizeWeightsTotal(form.values.weightsTotalRaw) ?? DEFAULT_WEIGHTS_TOTAL;
+  const weightsTotal = normalizePercentInput(form.values.weightsTotalRaw) ?? DEFAULT_WEIGHTS_TOTAL;
+  const selectedFlagType = flagOptions.find((option) => option.value === form.values.flag_id)?.type ?? 'string';
   const touched = draftsTouched(drafts);
-  const validation = validateVariantDrafts(drafts, weightsTotal);
+  const validation = validateVariantDrafts(drafts, weightsTotal, selectedFlagType);
 
   const handleSubmit = (values: CreateExperimentFormValues): void => {
     if (isPending) {
       return;
     }
-    const total = normalizeWeightsTotal(values.weightsTotalRaw);
+    const total = normalizePercentInput(values.weightsTotalRaw);
     if (total === null) {
       return;
     }
@@ -136,8 +144,29 @@ export function CreateExperimentModal({
             placeholder={t('experiments.flagPlaceholder')}
             withAsterisk
             disabled={isPending || flagsLoading}
-            data={flagOptions}
+            data={flagOptions.map(({ value, label }) => ({ value, label }))}
             searchable
+            filter={({ options, search }) => {
+              const needle = search.trim().toLowerCase();
+              if (needle.length === 0) {
+                return options;
+              }
+              return options.filter((option) => {
+                if (!('value' in option)) {
+                  return false;
+                }
+                const source = flagOptions.find(
+                  (flagOption) => flagOption.value === option.value,
+                );
+                if (source === undefined) {
+                  return false;
+                }
+                return (
+                  source.label.toLowerCase().includes(needle) ||
+                  source.key.toLowerCase().includes(needle)
+                );
+              });
+            }}
             {...form.getInputProps('flag_id')}
           />
           <TextInput
@@ -157,10 +186,12 @@ export function CreateExperimentModal({
           />
           <NumberInput
             label={t('experiments.weightsTotal')}
-            description={t('experiments.weightsTotalHint', { max: MAX_WEIGHTS_TOTAL })}
+            description={t('experiments.weightsTotalHint')}
             disabled={isPending}
-            min={1}
-            max={MAX_WEIGHTS_TOTAL}
+            min={0.01}
+            max={100}
+            decimalScale={2}
+            suffix="%"
             value={form.values.weightsTotalRaw === '' ? '' : Number(form.values.weightsTotalRaw)}
             onChange={(value) => {
               form.setFieldValue('weightsTotalRaw', typeof value === 'number' ? String(value) : '');
@@ -180,6 +211,7 @@ export function CreateExperimentModal({
           <VariantsEditor
             drafts={drafts}
             weightsTotal={weightsTotal}
+            flagType={selectedFlagType}
             validationError={touched ? validation.error : null}
             weightsSum={validation.weightsSum}
             disabled={isPending}

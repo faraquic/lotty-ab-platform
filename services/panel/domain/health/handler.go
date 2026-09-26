@@ -29,16 +29,14 @@ func NewHandler(pool *pgxpool.Pool, redis *rueidis.Client, s3 *s3.Client, snapsh
 	return &Handler{pool, redis, s3, snapshotReader, environment, log}
 }
 
+// RegisterRoutes exposes a single aggregate health endpoint. The former
+// /ready endpoint was removed; /health now returns the full component report.
 func (h *Handler) RegisterRoutes(g *gin.RouterGroup) {
 	g.GET("/health", h.health)
-	g.GET("/ready", h.ready)
 }
 
+// health reports the aggregate service status and component readiness.
 func (h *Handler) health(c *gin.Context) {
-	c.String(http.StatusOK, "OK")
-}
-
-func (h *Handler) ready(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
 	defer cancel()
 

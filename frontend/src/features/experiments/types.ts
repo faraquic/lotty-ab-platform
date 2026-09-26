@@ -28,14 +28,14 @@ export function isCompletionDecision(value: unknown): value is CompletionDecisio
   );
 }
 
-export type Targeting = Record<string, unknown>;
+export type Targeting = string;
 
 export function parseTargeting(value: unknown): Targeting | null {
   if (value === null || value === undefined) {
     return null;
   }
-  if (typeof value === 'object' && !Array.isArray(value)) {
-    return value as Targeting;
+  if (typeof value === 'string') {
+    return value.length > 0 ? value : null;
   }
   return null;
 }

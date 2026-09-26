@@ -5,7 +5,6 @@ import {
   Container,
   Group,
   Pagination,
-  Select,
   Skeleton,
   Stack,
   Tabs,
@@ -22,20 +21,14 @@ import { ExperimenterGroupForm } from '@/features/reviews/components/Experimente
 import { GroupDetailsModal } from '@/features/reviews/components/GroupDetailsModal';
 import { GroupFormModal } from '@/features/reviews/components/GroupFormModal';
 import { GroupsTable } from '@/features/reviews/components/GroupsTable';
-import { ReviewDetailsModal } from '@/features/reviews/components/ReviewDetailsModal';
-import type { ActFormValues } from '@/features/reviews/components/ReviewDetailsModal';
 import { ReviewsTable } from '@/features/reviews/components/ReviewsTable';
 import {
   GROUPS_PAGE_SIZE,
   REVIEWS_PAGE_SIZE,
-  useActOnReview,
   useAddGroupMember,
-  useAddReviewComment,
   useApproverGroupsList,
   useCreateApproverGroup,
-  useDeleteReviewComment,
   useRemoveGroupMember,
-  useResolveReviewComment,
   useReviewsList,
   useSetExperimenterGroup,
   useUpdateApproverGroup,
@@ -46,11 +39,9 @@ import { lastPageIndex, offsetForPage, totalPages } from '@/shared/lib/paginatio
 import type {
   ApproverGroup,
   CreateApproverGroupRequest,
-  Review,
   ReviewStatus,
   UpdateApproverGroupRequest,
 } from '@/features/reviews/types';
-import { REVIEW_STATUSES } from '@/features/reviews/types';
 
 const LIMIT = REVIEWS_PAGE_SIZE;
 const GROUP_LIMIT = GROUPS_PAGE_SIZE;
@@ -60,16 +51,14 @@ export function ReviewsPage() {
   const [tab, setTab] = useState('queue');
   const [page, setPage] = useState(0);
   const [status, setStatus] = useState<ReviewStatus | null>(null);
-  const [selectedReview, setSelectedReview] = useState<Review | null>(null);
   const [groupPage, setGroupPage] = useState(0);
   const [groupFormOpened, setGroupFormOpened] = useState(false);
+  const [groupFormKey, setGroupFormKey] = useState(0);
   const [editingGroup, setEditingGroup] = useState<ApproverGroup | null>(null);
   const [selectedGroup, setSelectedGroup] = useState<ApproverGroup | null>(null);
 
   const meQuery = useMe();
   const isAdmin = meQuery.data?.role === 'admin';
-  const currentUserId = meQuery.data?.id ?? null;
-  const currentUserRole = meQuery.data?.role ?? null;
 
   const offset = offsetForPage(page, LIMIT);
   const list = useReviewsList({ limit: LIMIT, offset, status });
@@ -92,21 +81,26 @@ export function ReviewsPage() {
   const groups = groupsQuery.data?.data ?? [];
   const groupPages = totalPages(groupMeta?.total ?? 0, GROUP_LIMIT);
 
-  const usersQuery = useUsersList({ limit: 100, offset: 0 }, isAdmin);
+  const approversQuery = useUsersList({ limit: 100, offset: 0, role: 'approver' }, isAdmin);
+  const experimentersQuery = useUsersList(
+    { limit: 100, offset: 0, role: 'experimenter' },
+    isAdmin,
+  );
   const userOptions = useMemo(
     () =>
-      (usersQuery.data?.data ?? []).map((user) => ({
+      (approversQuery.data?.data ?? []).map((user) => ({
         value: user.id,
-        label: `${user.full_name} — ${user.email}`,
+        label: user.full_name,
       })),
-    [usersQuery.data],
+    [approversQuery.data],
   );
   const experimenterOptions = useMemo(
     () =>
-      (usersQuery.data?.data ?? [])
-        .filter((user) => user.role === 'experimenter')
-        .map((user) => ({ value: user.id, label: `${user.full_name} — ${user.email}` })),
-    [usersQuery.data],
+      (experimentersQuery.data?.data ?? []).map((user) => ({
+        value: user.id,
+        label: user.full_name,
+      })),
+    [experimentersQuery.data],
   );
   const groupOptions = useMemo(
     () => groups.map((group) => ({ value: group.id, label: group.name })),
@@ -125,18 +119,11 @@ export function ReviewsPage() {
     }
   }, [meta, page]);
 
-  const actMutation = useActOnReview();
-  const addCommentMutation = useAddReviewComment();
-  const resolveMutation = useResolveReviewComment();
-  const deleteCommentMutation = useDeleteReviewComment();
   const createGroupMutation = useCreateApproverGroup();
   const updateGroupMutation = useUpdateApproverGroup();
   const addMemberMutation = useAddGroupMember();
   const removeMemberMutation = useRemoveGroupMember();
   const assignMutation = useSetExperimenterGroup();
-
-  const commentPending =
-    addCommentMutation.isPending || resolveMutation.isPending || deleteCommentMutation.isPending;
 
   const notifyOk = (id: string, message: string): void => {
     notifications.show({ id, title: t('reviews.successTitle'), message, color: 'green' });
@@ -154,75 +141,9 @@ export function ReviewsPage() {
     });
   };
 
-  const handleAct = (review: Review, values: ActFormValues, version: number): void => {
-    if (values.decision === '') {
-      return;
-    }
-    const comment = values.comment.trim();
-    actMutation.mutate(
-      {
-        id: review.id,
-        request: {
-          decision: values.decision,
-          version,
-          ...(comment.length > 0 ? { comment } : {}),
-        },
-      },
-      {
-        onSuccess: (next) => {
-          notifyOk('reviews-act', t('reviews.decisionRecorded'));
-          setSelectedReview(next);
-        },
-        onError: (error) => {
-          notifyError('reviews-act-error', error);
-        },
-      },
-    );
-  };
-
-  const handleAddComment = (review: Review, body: string, parentId?: string): void => {
-    addCommentMutation.mutate(
-      { id: review.id, request: { body, ...(parentId ? { parent_id: parentId } : {}) } },
-      {
-        onSuccess: () => {
-          notifyOk('reviews-comment', t('reviews.commentAdded'));
-        },
-        onError: (error) => {
-          notifyError('reviews-comment-error', error);
-        },
-      },
-    );
-  };
-
-  const handleResolve = (review: Review, commentId: string, resolved: boolean): void => {
-    resolveMutation.mutate(
-      { reviewId: review.id, commentId, request: { resolved } },
-      {
-        onSuccess: () => {
-          notifyOk(
-            'reviews-resolve',
-            t(resolved ? 'reviews.threadResolved' : 'reviews.threadReopened'),
-          );
-        },
-        onError: (error) => {
-          notifyError('reviews-resolve-error', error);
-        },
-      },
-    );
-  };
-
-  const handleDeleteComment = (review: Review, commentId: string): void => {
-    deleteCommentMutation.mutate(
-      { reviewId: review.id, commentId },
-      {
-        onSuccess: () => {
-          notifyOk('reviews-comment-deleted', t('reviews.commentDeleted'));
-        },
-        onError: (error) => {
-          notifyError('reviews-comment-delete-error', error);
-        },
-      },
-    );
+  const handleStatusFilter = (next: ReviewStatus | null): void => {
+    setStatus(next);
+    setPage(0);
   };
 
   const handleCreateGroup = (request: CreateApproverGroupRequest): void => {
@@ -230,6 +151,7 @@ export function ReviewsPage() {
       onSuccess: () => {
         notifyOk('reviews-group-created', t('reviews.groupCreated'));
         setGroupFormOpened(false);
+        setGroupFormKey((value) => value + 1);
       },
       onError: (error) => {
         notifyError('reviews-group-create-error', error);
@@ -337,23 +259,6 @@ export function ReviewsPage() {
 
           <Tabs.Panel value="queue" pt="md">
             <Stack gap="md">
-              <Select
-                size="sm"
-                placeholder={t('reviews.statusFilter')}
-                clearable
-                value={status}
-                data={REVIEW_STATUSES.map((value) => ({
-                  value,
-                  label: t(`reviews.statuses.${value}`),
-                }))}
-                onChange={(next) => {
-                  setStatus((next ?? '') === '' ? null : (next as ReviewStatus));
-                  setPage(0);
-                }}
-                style={{ minWidth: 200, maxWidth: 280 }}
-                aria-label={t('reviews.statusFilter')}
-              />
-
               {isInitialLoading ? (
                 <Stack gap="xs" aria-label={t('reviews.title')}>
                   <Skeleton height={38} radius="sm" />
@@ -402,7 +307,8 @@ export function ReviewsPage() {
                   <ReviewsTable
                     reviews={reviews}
                     experimentNames={experimentNames}
-                    onView={setSelectedReview}
+                    status={status}
+                    onStatusChange={handleStatusFilter}
                   />
                   <Group justify="space-between" align="center">
                     <Text size="xs" c="dimmed">
@@ -497,6 +403,10 @@ export function ReviewsPage() {
                     <GroupsTable
                       groups={groups}
                       onView={setSelectedGroup}
+                      onEdit={(group) => {
+                        setEditingGroup(group);
+                        setGroupFormOpened(true);
+                      }}
                       onRemoveMember={handleRemoveMember}
                       isMutating={groupPending}
                     />
@@ -527,7 +437,7 @@ export function ReviewsPage() {
                   <ExperimenterGroupForm
                     experimenterOptions={experimenterOptions}
                     groupOptions={groupOptions}
-                    selectorsLoading={usersQuery.isPending}
+                    selectorsLoading={experimentersQuery.isPending}
                     isPending={assignMutation.isPending}
                     onAssign={handleAssign}
                   />
@@ -538,21 +448,8 @@ export function ReviewsPage() {
         </Tabs>
       </Stack>
 
-      <ReviewDetailsModal
-        review={selectedReview}
-        currentUserId={currentUserId}
-        currentUserRole={currentUserRole}
-        isActPending={actMutation.isPending}
-        isCommentPending={commentPending}
-        onClose={() => {
-          setSelectedReview(null);
-        }}
-        onAct={handleAct}
-        onAddComment={handleAddComment}
-        onResolve={handleResolve}
-        onDeleteComment={handleDeleteComment}
-      />
       <GroupFormModal
+        key={groupFormKey}
         group={editingGroup}
         opened={groupFormOpened}
         isPending={createGroupMutation.isPending || updateGroupMutation.isPending}
@@ -567,13 +464,9 @@ export function ReviewsPage() {
         group={selectedGroup}
         isPending={groupPending}
         userOptions={userOptions}
-        usersLoading={usersQuery.isPending}
+        usersLoading={approversQuery.isPending}
         onClose={() => {
           setSelectedGroup(null);
-        }}
-        onEdit={(group) => {
-          setEditingGroup(group);
-          setGroupFormOpened(true);
         }}
         onAddMember={handleAddMember}
         onRemoveMember={handleRemoveMember}

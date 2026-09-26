@@ -79,8 +79,13 @@ afterEach(() => {
 
 describe('flags api', () => {
   it('includes pagination state in list query keys', () => {
-    expect(flagsListQueryKey(20, 0)).toEqual(['flags', { limit: 20, offset: 0 }]);
-    expect(flagsListQueryKey(20, 40)).not.toEqual(flagsListQueryKey(20, 0));
+    expect(flagsListQueryKey({ limit: 20, offset: 0 })).toEqual([
+      'flags',
+      { limit: 20, offset: 0 },
+    ]);
+    expect(flagsListQueryKey({ limit: 20, offset: 40 })).not.toEqual(
+      flagsListQueryKey({ limit: 20, offset: 0 }),
+    );
     expect(flagDetailQueryKey('id-1')).toEqual(['flags', 'id-1']);
   });
 
@@ -95,7 +100,7 @@ describe('flags api', () => {
       return jsonResponse(200, listBody());
     });
 
-    const result = await listFlags(20, 0);
+    const result = await listFlags({ limit: 20, offset: 0 });
 
     expect(seenUrl).toContain('/flags?');
     expect(seenUrl).toContain('limit=20');
@@ -251,7 +256,7 @@ describe('flags api', () => {
     setAuthSession('token', '2026-09-18T00:00:00.000Z');
     stubFetch(() => Promise.reject(new TypeError('Failed to fetch')));
 
-    const error = await listFlags(20, 0).then(
+    const error = await listFlags({ limit: 20, offset: 0 }).then(
       () => null,
       (e: unknown) => e,
     );
@@ -260,7 +265,7 @@ describe('flags api', () => {
   });
 
   it('requires an auth token for requests', async () => {
-    const error = await listFlags(20, 0).then(
+    const error = await listFlags({ limit: 20, offset: 0 }).then(
       () => null,
       (e: unknown) => e,
     );

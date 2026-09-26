@@ -65,27 +65,15 @@ paths:
   /health:
     get:
       tags: [health]
-      summary: Liveness probe
+      summary: Aggregate health and readiness probe
+      description: >
+        Returns liveness and per-component readiness in a single payload. The
+        former /ready endpoint was removed in favor of this endpoint.
       operationId: health
       security: []
       responses:
         "200":
-          description: Service is alive
-          content:
-            text/plain:
-              schema:
-                type: string
-                example: OK
-
-  /ready:
-    get:
-      tags: [health]
-      summary: Readiness probe
-      operationId: ready
-      security: []
-      responses:
-        "200":
-          description: Service is ready to serve traffic
+          description: Service is alive and ready to serve traffic
           content:
             application/json:
               schema:
@@ -190,6 +178,17 @@ paths:
             type: integer
             minimum: 0
             default: 0
+        - name: q
+          in: query
+          description: Case-insensitive search over full name or email
+          schema:
+            type: string
+            maxLength: 128
+        - name: role
+          in: query
+          description: Filter by role
+          schema:
+            $ref: "#/components/schemas/UserRole"
       responses:
         "200":
           description: List of users
@@ -367,6 +366,12 @@ paths:
             type: integer
             minimum: 0
             default: 0
+        - name: q
+          in: query
+          description: Case-insensitive search over key or name
+          schema:
+            type: string
+            maxLength: 128
       responses:
         "200":
           description: List of flags
@@ -629,6 +634,18 @@ paths:
           in: query
           schema:
             $ref: "#/components/schemas/ExperimentStatus"
+        - name: q
+          in: query
+          description: Case-insensitive search over experiment name
+          schema:
+            type: string
+            maxLength: 128
+        - name: flag_id
+          in: query
+          description: Filter by flag ID
+          schema:
+            type: string
+            format: uuid
       responses:
         "200":
           description: List of experiments
@@ -1181,6 +1198,12 @@ paths:
             type: integer
             minimum: 0
             default: 0
+        - name: q
+          in: query
+          description: Case-insensitive search over group name
+          schema:
+            type: string
+            maxLength: 128
       responses:
         "200":
           description: List of groups
@@ -2278,7 +2301,9 @@ components:
           minLength: 1
           maxLength: 128
         value:
-          description: Variant value as JSON (must match the flag type on rollout)
+          description: >
+            Variant value; must match the parent flag type (string, number or
+            bool). Validated when the variant is written, not only on rollout.
         weight_bp:
           type: integer
           minimum: 1
@@ -2315,8 +2340,9 @@ components:
         weights_total:
           type: integer
         targeting:
-          type: object
+          type: string
           nullable: true
+          description: Targeting DSL expression, or null when every subject matches
         distribution_salt:
           type: string
         created_by:
@@ -2429,8 +2455,12 @@ components:
           maximum: 10000
           default: 10000
         targeting:
-          type: object
-          description: Targeting expression as a JSON object (full DSL lands in a later milestone)
+          type: string
+          nullable: true
+          description: >
+            Targeting DSL expression, e.g. `country == "DE" AND plan IN ["pro"]`.
+            Empty/null means every subject matches. Operators: ==, !=, >, >=, <,
+            <=, IN, NOT IN combined with AND, OR, NOT and parentheses.
         variants:
           type: array
           items:
@@ -2466,7 +2496,9 @@ components:
           maximum: 10000
           default: 10000
         targeting:
-          type: object
+          type: string
+          nullable: true
+          description: Targeting DSL expression (see CreateExperimentRequest)
         variants:
           type: array
           items:

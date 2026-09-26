@@ -3,7 +3,6 @@ package users
 import (
 	"errors"
 	"net/http"
-	"strconv"
 
 	"github.com/faraquic/lotty-ab-platform/pkg/api"
 	"github.com/faraquic/lotty-ab-platform/pkg/logger"
@@ -64,17 +63,29 @@ func (h *Handler) create(c *gin.Context) {
 	api.OK(c.Writer, resp)
 }
 
+type listQuery struct {
+	api.ListQuery
+	Role string `form:"role"`
+}
+
 func (h *Handler) list(c *gin.Context) {
-	limit, err := strconv.Atoi(c.DefaultQuery("limit", "20"))
-	if err != nil || limit < 1 || limit > 100 {
-		limit = 20
+	var q listQuery
+	if !api.BindListQuery(c, &q) {
+		return
 	}
-	offset, err := strconv.Atoi(c.DefaultQuery("offset", "0"))
-	if err != nil || offset < 0 {
-		offset = 0
+	q.Normalize()
+
+	filter := ListFilter{Search: q.Search()}
+	if q.Role != "" {
+		role := Role(q.Role)
+		if !role.Valid() {
+			api.Error(c.Writer, http.StatusBadRequest, api.BadRequest, "invalid role filter")
+			return
+		}
+		filter.Role = &role
 	}
 
-	resp, err := h.svc.List(c.Request.Context(), limit, offset)
+	resp, err := h.svc.List(c.Request.Context(), q.Limit, q.Offset, filter)
 	if err != nil {
 		h.respondError(c, err)
 		return

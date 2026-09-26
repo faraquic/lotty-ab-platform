@@ -10,7 +10,6 @@ interface GroupDetailsModalProps {
   userOptions: { value: string; label: string }[];
   usersLoading: boolean;
   onClose: () => void;
-  onEdit: (group: ApproverGroup) => void;
   onAddMember: (group: ApproverGroup, userId: string) => void;
   onRemoveMember: (group: ApproverGroup, userId: string) => void;
 }
@@ -21,7 +20,6 @@ export function GroupDetailsModal({
   userOptions,
   usersLoading,
   onClose,
-  onEdit,
   onAddMember,
   onRemoveMember,
 }: GroupDetailsModalProps) {
@@ -34,21 +32,10 @@ export function GroupDetailsModal({
       onClose={onClose}
       title={group === null ? '' : t('reviews.groupDetailsNamed', { name: group.name })}
       centered
+      key={group?.id ?? 'none'}
     >
       {group === null ? null : (
         <Stack gap="md">
-          <Group justify="flex-end">
-            <Button
-              size="xs"
-              variant="default"
-              disabled={isPending}
-              onClick={() => {
-                onEdit(group);
-              }}
-            >
-              {t('reviews.edit')}
-            </Button>
-          </Group>
           <Group gap="xl">
             <Text size="xs" c="dimmed">
               {t('reviews.minApprovalsValue', { count: group.min_approvals })}
@@ -76,7 +63,7 @@ export function GroupDetailsModal({
                       {member.full_name}
                     </Badge>
                     <Text size="xs" c="dimmed">
-                      {member.email} · {member.role}
+                      {member.role}
                     </Text>
                   </Group>
                   <Tooltip label={t('reviews.removeMemberNamed', { name: member.full_name })}>

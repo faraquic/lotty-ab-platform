@@ -7,18 +7,14 @@ import { FlagsPage } from '@/pages/FlagsPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { MetricsPage } from '@/pages/MetricsPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
+import { ReviewDetailsPage } from '@/pages/ReviewDetailsPage';
 import { ReviewsPage } from '@/pages/ReviewsPage';
-import { StatusPage } from '@/pages/StatusPage';
 import { UsersPage } from '@/pages/UsersPage';
 
 export const router = createBrowserRouter([
   {
     path: '/login',
     element: <LoginPage />,
-  },
-  {
-    path: '/status',
-    element: <StatusPage />,
   },
   {
     path: '/',
@@ -51,6 +47,10 @@ export const router = createBrowserRouter([
       {
         path: 'reviews',
         element: <ReviewsPage />,
+      },
+      {
+        path: 'reviews/:id',
+        element: <ReviewDetailsPage />,
       },
       {
         path: 'metrics',

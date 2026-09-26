@@ -47,13 +47,8 @@ afterEach(() => {
 });
 
 describe('probeService', () => {
-  it('returns healthy with latency when both probes succeed', async () => {
-    stubFetch((url) => {
-      if (url.endsWith('/health')) {
-        return { ok: true, status: 200, json: () => Promise.resolve(null) };
-      }
-      return jsonResponse(200, readyBody());
-    });
+  it('returns healthy with latency when health succeeds', async () => {
+    stubFetch(() => jsonResponse(200, readyBody()));
 
     const probe = await probeService('http://x', 'panel');
     expect(probe.status).toBe('healthy');
@@ -62,7 +57,19 @@ describe('probeService', () => {
     expect(typeof probe.latencyMs).toBe('number');
   });
 
-  it('returns down on health network error', async () => {
+  it('requests the health endpoint only', async () => {
+    const seen: string[] = [];
+    stubFetch((url) => {
+      seen.push(url);
+      return jsonResponse(200, readyBody());
+    });
+
+    await probeService('http://x', 'panel');
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.endsWith('/health')).toBe(true);
+  });
+
+  it('returns down on network error', async () => {
     stubFetch(() => Promise.reject(new TypeError('Failed to fetch')));
 
     const probe = await probeService('http://x', 'panel');
@@ -71,7 +78,7 @@ describe('probeService', () => {
     expect(probe.ready).toBeNull();
   });
 
-  it('returns down on health timeout', async () => {
+  it('returns down on timeout', async () => {
     stubFetch((_url, init) => hanging(init));
 
     const probe = await probeService('http://x', 'panel');
@@ -79,7 +86,7 @@ describe('probeService', () => {
     expect(probe.failure?.reason).toBe('timeout');
   }, 10_000);
 
-  it('returns down with http status on health 500', async () => {
+  it('returns down with http status on 500', async () => {
     stubFetch(() => ({ ok: false, status: 500, json: () => Promise.resolve(null) }));
 
     const probe = await probeService('http://x', 'panel');
@@ -87,48 +94,27 @@ describe('probeService', () => {
     expect(probe.failure).toEqual({ reason: 'http', httpStatus: 500 });
   });
 
-  it('returns down on ready timeout', async () => {
-    stubFetch((url, init) => {
-      if (url.endsWith('/health')) {
-        return { ok: true, status: 200, json: () => Promise.resolve(null) };
-      }
-      return hanging(init);
-    });
-
-    const probe = await probeService('http://x', 'runtime');
-    expect(probe.status).toBe('down');
-    expect(probe.failure?.reason).toBe('timeout');
-  }, 10_000);
-
-  it('returns down on ready invalid JSON', async () => {
-    stubFetch((url) => {
-      if (url.endsWith('/health')) {
-        return { ok: true, status: 200, json: () => Promise.resolve(null) };
-      }
-      return {
-        ok: true,
-        status: 200,
-        json: () => Promise.reject(new SyntaxError('Unexpected token')),
-      };
-    });
+  it('returns down on invalid JSON', async () => {
+    stubFetch(() => ({
+      ok: true,
+      status: 200,
+      json: () => Promise.reject(new SyntaxError('Unexpected token')),
+    }));
 
     const probe = await probeService('http://x', 'analytics');
     expect(probe.status).toBe('down');
     expect(probe.failure?.reason).toBe('invalid');
   });
 
-  it('uses valid ready body on 503 to mark required failure as down', async () => {
-    stubFetch((url) => {
-      if (url.endsWith('/health')) {
-        return { ok: true, status: 200, json: () => Promise.resolve(null) };
-      }
-      return jsonResponse(
+  it('marks required failure as down on 503', async () => {
+    stubFetch(() =>
+      jsonResponse(
         503,
         readyBody({
           database: { status: 'unavailable', criticality: 'required', message: 'database unavailable' },
         }),
-      );
-    });
+      ),
+    );
 
     const probe = await probeService('http://x', 'panel');
     expect(probe.status).toBe('down');
@@ -136,17 +122,14 @@ describe('probeService', () => {
   });
 
   it('marks optional-only failure as degraded even on 200', async () => {
-    stubFetch((url) => {
-      if (url.endsWith('/health')) {
-        return { ok: true, status: 200, json: () => Promise.resolve(null) };
-      }
-      return jsonResponse(
+    stubFetch(() =>
+      jsonResponse(
         200,
         readyBody({
           storage: { status: 'unavailable', criticality: 'optional', message: 'storage unavailable' },
         }),
-      );
-    });
+      ),
+    );
 
     const probe = await probeService('http://x', 'panel');
     expect(probe.status).toBe('degraded');

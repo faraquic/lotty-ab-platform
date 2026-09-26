@@ -1,11 +1,13 @@
-import { ActionIcon, Button, Group, NumberInput, Stack, Switch, Text, TextInput } from '@mantine/core';
+import { ActionIcon, Button, Group, NumberInput, Select, Stack, Switch, Text, TextInput } from '@mantine/core';
 import { IconPlus, IconTrash } from '@tabler/icons-react';
 import { useTranslation } from 'react-i18next';
-import type { VariantDraft, VariantsValidation } from '../lib/transitions';
+import type { FlagType } from '@/features/flags/types';
+import { formatPercent, type VariantDraft, type VariantsValidation } from '../lib/transitions';
 
 interface VariantsEditorProps {
   drafts: VariantDraft[];
   weightsTotal: number;
+  flagType: FlagType;
   validationError: VariantsValidation['error'];
   weightsSum: number;
   disabled: boolean;
@@ -15,6 +17,7 @@ interface VariantsEditorProps {
 export function VariantsEditor({
   drafts,
   weightsTotal,
+  flagType,
   validationError,
   weightsSum,
   disabled,
@@ -49,27 +52,53 @@ export function VariantsEditor({
             style={{ flex: '1 1 0' }}
             aria-label={t('experiments.variantName')}
           />
-          <TextInput
-            label={index === 0 ? t('experiments.variantValue') : undefined}
-            placeholder={t('experiments.variantValuePlaceholder')}
-            disabled={disabled}
-            value={draft.valueRaw}
-            onChange={(event) => {
-              setDraft(index, { valueRaw: event.currentTarget.value });
-            }}
-            style={{ flex: '1 1 0' }}
-            aria-label={t('experiments.variantValue')}
-          />
+          {flagType === 'bool' ? (
+            <Select
+              label={index === 0 ? t('experiments.variantValue') : undefined}
+              placeholder={t('flags.defaultBoolPlaceholder')}
+              disabled={disabled}
+              data={[
+                { value: 'true', label: 'true' },
+                { value: 'false', label: 'false' },
+              ]}
+              value={draft.valueRaw === '' ? null : draft.valueRaw}
+              onChange={(next) => {
+                setDraft(index, { valueRaw: next ?? '' });
+              }}
+              style={{ flex: '1 1 0' }}
+              aria-label={t('experiments.variantValue')}
+            />
+          ) : (
+            <TextInput
+              label={index === 0 ? t('experiments.variantValue') : undefined}
+              placeholder={
+                flagType === 'number'
+                  ? t('flags.defaultNumberPlaceholder')
+                  : t('experiments.variantValuePlaceholder')
+              }
+              inputMode={flagType === 'number' ? 'decimal' : undefined}
+              disabled={disabled}
+              value={draft.valueRaw}
+              onChange={(event) => {
+                setDraft(index, { valueRaw: event.currentTarget.value });
+              }}
+              style={{ flex: '1 1 0' }}
+              aria-label={t('experiments.variantValue')}
+            />
+          )}
           <NumberInput
             label={index === 0 ? t('experiments.variantWeight') : undefined}
-            placeholder="5000"
+            placeholder="50"
             disabled={disabled}
             value={draft.weightRaw === '' ? '' : Number(draft.weightRaw)}
             onChange={(value) => {
               setDraft(index, { weightRaw: typeof value === 'number' ? String(value) : '' });
             }}
-            min={1}
-            style={{ flex: '0 0 110px' }}
+            min={0.01}
+            max={100}
+            decimalScale={2}
+            suffix="%"
+            style={{ flex: '0 0 120px' }}
             aria-label={t('experiments.variantWeight')}
           />
           <Switch
@@ -96,7 +125,10 @@ export function VariantsEditor({
       ))}
       <Group justify="space-between" align="center">
         <Text size="xs" c={weightsSum === weightsTotal ? 'dimmed' : 'orange'}>
-          {t('experiments.weightsSum', { sum: weightsSum, total: weightsTotal })}
+          {t('experiments.weightsSum', {
+            sum: formatPercent(weightsSum),
+            total: formatPercent(weightsTotal),
+          })}
         </Text>
         <Button
           size="xs"

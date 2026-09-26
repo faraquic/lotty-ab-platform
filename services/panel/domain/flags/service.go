@@ -18,10 +18,10 @@ var (
 type FlagRepo interface {
 	Create(ctx context.Context, f Flag) (string, error)
 	GetByID(ctx context.Context, id string) (FlagWithCreatorAndUpdater, error)
-	List(ctx context.Context, limit, offset int) ([]Flag, error)
+	List(ctx context.Context, limit, offset int, search *string) ([]Flag, error)
 	Update(ctx context.Context, id string, key, name string, defaultValue ValueFlag, description string, updatedBy string) (FlagWithCreatorAndUpdater, error)
 	Delete(ctx context.Context, id string) error
-	Count(ctx context.Context) (int64, error)
+	Count(ctx context.Context, search *string) (int64, error)
 }
 
 type Service struct {
@@ -86,7 +86,7 @@ func (s *Service) GetByID(ctx context.Context, id string) (FlagResponse, error) 
 	return ToResponse(fwo), nil
 }
 
-func (s *Service) List(ctx context.Context, limit, offset int) (PaginatedFlagResponse, error) {
+func (s *Service) List(ctx context.Context, limit, offset int, search *string) (PaginatedFlagResponse, error) {
 	if limit < 1 || limit > 100 {
 		limit = 20
 	}
@@ -94,12 +94,12 @@ func (s *Service) List(ctx context.Context, limit, offset int) (PaginatedFlagRes
 		offset = 0
 	}
 
-	total, err := s.repo.Count(ctx)
+	total, err := s.repo.Count(ctx, search)
 	if err != nil {
 		return PaginatedFlagResponse{}, err
 	}
 
-	flagsList, err := s.repo.List(ctx, limit, offset)
+	flagsList, err := s.repo.List(ctx, limit, offset, search)
 	if err != nil {
 		return PaginatedFlagResponse{}, err
 	}

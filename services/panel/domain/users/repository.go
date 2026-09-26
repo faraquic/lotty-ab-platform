@@ -3,12 +3,19 @@ package users
 import (
 	"context"
 	"errors"
+	"strconv"
 
 	"github.com/faraquic/lotty-ab-platform/pkg/database"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// ListFilter narrows user listings by role and/or free-text search.
+type ListFilter struct {
+	Role   *Role
+	Search *string
+}
 
 var (
 	ErrNotFound = errors.New("user not found")
@@ -78,8 +85,10 @@ WHERE
 	return u, nil
 }
 
-func (r *Repository) List(ctx context.Context, limit, offset int) ([]User, error) {
-	const q = `
+// List returns users matching the optional filters. The search term matches
+// full_name or email (case-insensitive); role filters exactly.
+func (r *Repository) List(ctx context.Context, limit, offset int, filter ListFilter) ([]User, error) {
+	q := `
 SELECT
     id,
     full_name,
@@ -93,12 +102,20 @@ SELECT
 FROM
     users
 WHERE
-    deleted_at IS NULL
-ORDER BY
-    id
-LIMIT $1 OFFSET $2`
+    deleted_at IS NULL`
+	args := []any{}
+	if filter.Role != nil {
+		args = append(args, string(*filter.Role))
+		q += ` AND role = $` + strconv.Itoa(len(args))
+	}
+	if filter.Search != nil {
+		args = append(args, "%"+*filter.Search+"%")
+		q += ` AND (full_name ILIKE $` + strconv.Itoa(len(args)) + ` OR email ILIKE $` + strconv.Itoa(len(args)) + `)`
+	}
+	q += ` ORDER BY id LIMIT $` + strconv.Itoa(len(args)+1) + ` OFFSET $` + strconv.Itoa(len(args)+2)
+	args = append(args, limit, offset)
 
-	rows, err := r.db.Query(ctx, q, limit, offset)
+	rows, err := r.db.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -195,17 +212,26 @@ WHERE
 	return nil
 }
 
-func (r *Repository) Count(ctx context.Context) (int64, error) {
-	const q = `
+func (r *Repository) Count(ctx context.Context, filter ListFilter) (int64, error) {
+	q := `
 SELECT
   count(*)
 FROM
   users
 WHERE
   deleted_at IS NULL`
+	args := []any{}
+	if filter.Role != nil {
+		args = append(args, string(*filter.Role))
+		q += ` AND role = $` + strconv.Itoa(len(args))
+	}
+	if filter.Search != nil {
+		args = append(args, "%"+*filter.Search+"%")
+		q += ` AND (full_name ILIKE $` + strconv.Itoa(len(args)) + ` OR email ILIKE $` + strconv.Itoa(len(args)) + `)`
+	}
 
 	var n int64
-	err := r.db.QueryRow(ctx, q).Scan(&n)
+	err := r.db.QueryRow(ctx, q, args...).Scan(&n)
 
 	return n, err
 }

@@ -639,13 +639,10 @@ WHERE
 	return n, err
 }
 
-func (r *Repository) List(ctx context.Context, limit, offset int, status Status) ([]Experiment, error) {
+func (r *Repository) List(ctx context.Context, limit, offset int, filter ListFilter) ([]Experiment, error) {
 	q := `SELECT ` + experimentColumns + ` FROM experiments e`
-	var args []any
-	if status != "" {
-		q += ` WHERE e.status = $1`
-		args = append(args, string(status))
-	}
+	where, args := experimentWhere(filter)
+	q += where
 	q += ` ORDER BY e.created_at DESC LIMIT $` + strconv.Itoa(len(args)+1) + ` OFFSET $` + strconv.Itoa(len(args)+2)
 	args = append(args, limit, offset)
 
@@ -666,14 +663,32 @@ func (r *Repository) List(ctx context.Context, limit, offset int, status Status)
 	return out, rows.Err()
 }
 
-func (r *Repository) Count(ctx context.Context, status Status) (int64, error) {
-	q := `SELECT count(*) FROM experiments`
-	var args []any
-	if status != "" {
-		q += ` WHERE status = $1`
-		args = append(args, string(status))
-	}
+func (r *Repository) Count(ctx context.Context, filter ListFilter) (int64, error) {
+	q := `SELECT count(*) FROM experiments e`
+	where, args := experimentWhere(filter)
+	q += where
 	var n int64
 	err := r.db.QueryRow(ctx, q, args...).Scan(&n)
 	return n, err
+}
+
+func experimentWhere(filter ListFilter) (string, []any) {
+	clauses := make([]string, 0, 3)
+	args := []any{}
+	if filter.Status != "" {
+		args = append(args, string(filter.Status))
+		clauses = append(clauses, `e.status = $`+strconv.Itoa(len(args)))
+	}
+	if filter.FlagID != nil {
+		args = append(args, *filter.FlagID)
+		clauses = append(clauses, `e.flag_id = $`+strconv.Itoa(len(args)))
+	}
+	if filter.Search != nil {
+		args = append(args, "%"+*filter.Search+"%")
+		clauses = append(clauses, `e.name ILIKE $`+strconv.Itoa(len(args)))
+	}
+	if len(clauses) == 0 {
+		return "", args
+	}
+	return " WHERE " + strings.Join(clauses, " AND "), args
 }

@@ -1,16 +1,24 @@
-import { ActionIcon, Badge, Table, Text, Tooltip } from '@mantine/core';
-import { IconEye } from '@tabler/icons-react';
+import { ActionIcon, Badge, Group, Menu, Table, Text, Tooltip } from '@mantine/core';
+import { IconEye, IconFilter, IconFilterFilled } from '@tabler/icons-react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
+import { EXPERIMENT_STATUSES } from '../types';
 import { statusBadgeColor } from '../lib/transitions';
-import type { Experiment } from '../types';
+import type { Experiment, ExperimentStatus } from '../types';
 
 interface ExperimentsTableProps {
   experiments: Experiment[];
   flagNames: Map<string, string>;
+  status: ExperimentStatus | null;
+  onStatusChange: (status: ExperimentStatus | null) => void;
 }
 
-export function ExperimentsTable({ experiments, flagNames }: ExperimentsTableProps) {
+export function ExperimentsTable({
+  experiments,
+  flagNames,
+  status,
+  onStatusChange,
+}: ExperimentsTableProps) {
   const { t } = useTranslation();
 
   return (
@@ -18,9 +26,45 @@ export function ExperimentsTable({ experiments, flagNames }: ExperimentsTablePro
       <Table.Thead>
         <Table.Tr>
           <Table.Th>{t('experiments.name')}</Table.Th>
-          <Table.Th>{t('experiments.status')}</Table.Th>
+          <Table.Th>
+            <Group gap={4} wrap="nowrap">
+              {t('experiments.status')}
+              <Menu shadow="md" width={200} position="bottom-start">
+                <Menu.Target>
+                  <Tooltip label={t('experiments.statusFilter')}>
+                    <ActionIcon
+                      variant="subtle"
+                      size="sm"
+                      color={status === null ? undefined : 'cyan'}
+                      aria-label={t('experiments.statusFilter')}
+                    >
+                      {status === null ? <IconFilter size={14} /> : <IconFilterFilled size={14} />}
+                    </ActionIcon>
+                  </Tooltip>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  <Menu.Item
+                    onClick={() => {
+                      onStatusChange(null);
+                    }}
+                  >
+                    {t('experiments.statusFilterAll')}
+                  </Menu.Item>
+                  {EXPERIMENT_STATUSES.map((value) => (
+                    <Menu.Item
+                      key={value}
+                      onClick={() => {
+                        onStatusChange(value);
+                      }}
+                    >
+                      {t(`experiments.statuses.${value}`)}
+                    </Menu.Item>
+                  ))}
+                </Menu.Dropdown>
+              </Menu>
+            </Group>
+          </Table.Th>
           <Table.Th>{t('experiments.flag')}</Table.Th>
-          <Table.Th>{t('experiments.version')}</Table.Th>
           <Table.Th>{t('experiments.variants')}</Table.Th>
           <Table.Th>{t('experiments.actions')}</Table.Th>
         </Table.Tr>
@@ -42,9 +86,6 @@ export function ExperimentsTable({ experiments, flagNames }: ExperimentsTablePro
               <Text size="sm" c="dimmed">
                 {flagNames.get(experiment.flag_id) ?? experiment.flag_id}
               </Text>
-            </Table.Td>
-            <Table.Td>
-              <Text size="sm">v{experiment.current_version?.version_num ?? '—'}</Text>
             </Table.Td>
             <Table.Td>
               <Text size="sm">{experiment.variants.length}</Text>

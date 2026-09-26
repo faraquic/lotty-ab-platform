@@ -109,14 +109,14 @@ func driveExperimentToRunning(t *testing.T, flagID, name string) map[string]any 
 	return driveExperimentToRunningWith(t, flagID, name, nil)
 }
 
-func driveExperimentToRunningWith(t *testing.T, flagID, name string, targeting map[string]any) map[string]any {
+func driveExperimentToRunningWith(t *testing.T, flagID, name string, targeting *string) map[string]any {
 	t.Helper()
 	payload := map[string]any{
 		"flag_id": flagID,
 		"name":    fmt.Sprintf("%s-%s", name, runID),
 	}
 	if targeting != nil {
-		payload["targeting"] = targeting
+		payload["targeting"] = *targeting
 	}
 	data := panelAction(t, http.MethodPost, "/api/v1/panel/experiments", adminToken, payload)
 	id := data["id"].(string)
@@ -237,7 +237,8 @@ func TestDecidePauseReturnsDefault(t *testing.T) {
 func TestDecideEmptyTargetingMatches(t *testing.T) {
 	flagKey := "rt-empty-tg-" + runID
 	flagID := createFlag(t, "rt-empty-tg", "string", "off")
-	driveExperimentToRunningWith(t, flagID, "Empty Targeting", map[string]any{})
+	empty := ""
+	driveExperimentToRunningWith(t, flagID, "Empty Targeting", &empty)
 
 	result := waitForDecide(t, "rt-user-5", flagKey, "experiment")
 	if result.Data.Flags[flagKey].VariantID == "" {

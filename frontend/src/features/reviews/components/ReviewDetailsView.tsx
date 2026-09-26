@@ -1,15 +1,4 @@
-import {
-  ActionIcon,
-  Badge,
-  Button,
-  Group,
-  Modal,
-  Select,
-  Stack,
-  Text,
-  Textarea,
-  Tooltip,
-} from '@mantine/core';
+import { ActionIcon, Badge, Button, Group, Select, Stack, Text, Textarea, Tooltip } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { modals } from '@mantine/modals';
 import { IconCheck, IconTrash } from '@tabler/icons-react';
@@ -57,8 +46,7 @@ function CommentNode({
   const [replyBody, setReplyBody] = useState('');
 
   const manageable = canManageComment(comment.author_id, currentUserId, currentUserRole);
-  const resolvable =
-    manageable || currentUserRole === 'approver' || currentUserRole === 'admin';
+  const resolvable = manageable || currentUserRole === 'approver' || currentUserRole === 'admin';
 
   const submitReply = (): void => {
     if (replyBody.trim().length === 0 || isPending) {
@@ -182,13 +170,12 @@ function CommentNode({
   );
 }
 
-interface ReviewDetailsModalProps {
-  review: Review | null;
+export interface ReviewDetailsViewProps {
+  review: Review;
   currentUserId: string | null;
   currentUserRole: string | null;
   isActPending: boolean;
   isCommentPending: boolean;
-  onClose: () => void;
   onAct: (review: Review, values: ActFormValues, version: number) => void;
   onAddComment: (review: Review, body: string, parentId?: string) => void;
   onResolve: (review: Review, commentId: string, resolved: boolean) => void;
@@ -197,21 +184,20 @@ interface ReviewDetailsModalProps {
 
 const MAX_COMMENT_LENGTH = 4096;
 
-export function ReviewDetailsModal({
+export function ReviewDetailsView({
   review,
   currentUserId,
   currentUserRole,
   isActPending,
   isCommentPending,
-  onClose,
   onAct,
   onAddComment,
   onResolve,
   onDeleteComment,
-}: ReviewDetailsModalProps) {
+}: ReviewDetailsViewProps) {
   const { t, i18n } = useTranslation();
   const [commentBody, setCommentBody] = useState('');
-  const experimentQuery = useExperiment(review?.experiment_id ?? null);
+  const experimentQuery = useExperiment(review.experiment_id);
 
   const actForm = useForm<ActFormValues>({
     initialValues: { decision: '', comment: '' },
@@ -223,14 +209,6 @@ export function ReviewDetailsModal({
           : null,
     },
   });
-
-  const handleClose = (): void => {
-    if (!isActPending && !isCommentPending) {
-      actForm.reset();
-      setCommentBody('');
-      onClose();
-    }
-  };
 
   const confirmDelete = (target: Review, commentId: string): void => {
     modals.openConfirmModal({
@@ -246,178 +224,168 @@ export function ReviewDetailsModal({
   };
 
   return (
-    <Modal
-      opened={review !== null}
-      onClose={handleClose}
-      title={t('reviews.reviewDetails')}
-      centered
-      size="lg"
-    >
-      {review === null ? null : (
-        <Stack gap="md">
-          <Group gap="xs">
-            <Text size="xs" c="dimmed">
-              {t('reviews.fieldExperiment', { id: review.experiment_id })}
-            </Text>
-            <Text size="xs" c="dimmed">
-              {t('reviews.fieldVersionNum', { num: review.version_num })}
-            </Text>
-          </Group>
+    <Stack gap="md">
+      <Group gap="xs">
+        <Text size="xs" c="dimmed">
+          {t('reviews.fieldExperiment', { id: review.experiment_id })}
+        </Text>
+        <Text size="xs" c="dimmed">
+          {t('reviews.fieldVersionNum', { num: review.version_num })}
+        </Text>
+      </Group>
 
-          <Stack gap="xs">
-            <Text size="sm" fw={600}>
-              {t('reviews.approvalsTitle', { count: review.approvals.length })}
-            </Text>
-            {review.approvals.length === 0 ? (
-              <Text size="sm" c="dimmed">
-                {t('reviews.noApprovals')}
-              </Text>
-            ) : (
-              review.approvals.map((approval) => (
-                <Group key={approval.id} gap="xs" justify="space-between">
-                  <Group gap="xs">
-                    <Badge
-                      size="sm"
-                      color={approvalDecisionBadgeColor(approval.decision)}
-                      variant="light"
-                    >
-                      {t(`reviews.decisions.${approval.decision}`)}
-                    </Badge>
-                    {approval.comment ? (
-                      <Text size="sm" c="dimmed">
-                        {approval.comment}
-                      </Text>
-                    ) : null}
-                  </Group>
-                  <Text size="xs" c="dimmed">
-                    {formatReviewDateTime(approval.created_at, i18n.language)}
-                  </Text>
-                </Group>
-              ))
-            )}
-          </Stack>
-
-          {review.status === 'open' ? (
-            <form
-              onSubmit={actForm.onSubmit((values) => {
-                const version = experimentQuery.data?.version;
-                if (values.decision !== '' && version !== undefined && !isActPending) {
-                  onAct(review, values, version);
-                  actForm.reset();
-                }
-              })}
-              noValidate
-            >
-              <Stack gap="sm">
-                <Text size="sm" fw={600}>
-                  {t('reviews.actTitle')}
-                </Text>
-                <Select
-                  label={t('reviews.decision')}
-                  placeholder={t('reviews.decisionPlaceholder')}
-                  withAsterisk
-                  disabled={isActPending}
-                  data={APPROVAL_DECISIONS.map((decision) => ({
-                    value: decision,
-                    label: t(`reviews.decisions.${decision}`),
-                  }))}
-                  {...actForm.getInputProps('decision')}
-                  onChange={(next) => {
-                    actForm.setFieldValue('decision', (next ?? '') as ApprovalDecision | '');
-                  }}
-                />
-                <Textarea
-                  label={t('reviews.actComment')}
-                  placeholder={t('reviews.actCommentPlaceholder')}
-                  disabled={isActPending}
-                  autosize
-                  minRows={2}
-                  {...actForm.getInputProps('comment')}
-                />
-                {experimentQuery.isPending ? (
-                  <Text size="xs" c="dimmed">
-                    {t('reviews.loadingExperimentVersion')}
+      <Stack gap="xs">
+        <Text size="sm" fw={600}>
+          {t('reviews.approvalsTitle', { count: review.approvals.length })}
+        </Text>
+        {review.approvals.length === 0 ? (
+          <Text size="sm" c="dimmed">
+            {t('reviews.noApprovals')}
+          </Text>
+        ) : (
+          review.approvals.map((approval) => (
+            <Group key={approval.id} gap="xs" justify="space-between">
+              <Group gap="xs">
+                <Badge
+                  size="sm"
+                  color={approvalDecisionBadgeColor(approval.decision)}
+                  variant="light"
+                >
+                  {t(`reviews.decisions.${approval.decision}`)}
+                </Badge>
+                {approval.comment ? (
+                  <Text size="sm" c="dimmed">
+                    {approval.comment}
                   </Text>
                 ) : null}
-                <Group justify="flex-end">
-                  <Button
-                    type="submit"
-                    size="xs"
-                    loading={isActPending}
-                    disabled={isActPending || !actForm.isValid() || experimentQuery.data === undefined}
-                  >
-                    {t('reviews.submitDecision')}
-                  </Button>
-                </Group>
-              </Stack>
-            </form>
-          ) : (
-            <Text size="sm" c="dimmed">
-              {t('reviews.reviewClosedHint')}
-            </Text>
-          )}
+              </Group>
+              <Text size="xs" c="dimmed">
+                {formatReviewDateTime(approval.created_at, i18n.language)}
+              </Text>
+            </Group>
+          ))
+        )}
+      </Stack>
 
+      {review.status === 'open' ? (
+        <form
+          onSubmit={actForm.onSubmit((values) => {
+            const version = experimentQuery.data?.version;
+            if (values.decision !== '' && version !== undefined && !isActPending) {
+              onAct(review, values, version);
+              actForm.reset();
+            }
+          })}
+          noValidate
+        >
           <Stack gap="sm">
             <Text size="sm" fw={600}>
-              {t('reviews.commentsTitle')}
+              {t('reviews.actTitle')}
             </Text>
-            {review.comments.length === 0 ? (
-              <Text size="sm" c="dimmed">
-                {t('reviews.noComments')}
-              </Text>
-            ) : (
-              review.comments.map((comment) => (
-                <CommentNode
-                  key={comment.id}
-                  reviewId={review.id}
-                  comment={comment}
-                  depth={0}
-                  currentUserId={currentUserId}
-                  currentUserRole={currentUserRole}
-                  isPending={isCommentPending}
-                  onReply={(parentId, body) => {
-                    onAddComment(review, body, parentId);
-                  }}
-                  onResolve={(commentId, resolved) => {
-                    onResolve(review, commentId, resolved);
-                  }}
-                  onDelete={(commentId) => {
-                    confirmDelete(review, commentId);
-                  }}
-                />
-              ))
-            )}
+            <Select
+              label={t('reviews.decision')}
+              placeholder={t('reviews.decisionPlaceholder')}
+              withAsterisk
+              disabled={isActPending}
+              data={APPROVAL_DECISIONS.map((decision) => ({
+                value: decision,
+                label: t(`reviews.decisions.${decision}`),
+              }))}
+              {...actForm.getInputProps('decision')}
+              onChange={(next) => {
+                actForm.setFieldValue('decision', (next ?? '') as ApprovalDecision | '');
+              }}
+            />
             <Textarea
-              placeholder={t('reviews.commentPlaceholder')}
+              label={t('reviews.actComment')}
+              placeholder={t('reviews.actCommentPlaceholder')}
+              disabled={isActPending}
               autosize
               minRows={2}
-              disabled={isCommentPending}
-              value={commentBody}
-              onChange={(event) => {
-                setCommentBody(event.currentTarget.value);
-              }}
-              aria-label={t('reviews.commentPlaceholder')}
+              {...actForm.getInputProps('comment')}
             />
+            {experimentQuery.isPending ? (
+              <Text size="xs" c="dimmed">
+                {t('reviews.loadingExperimentVersion')}
+              </Text>
+            ) : null}
             <Group justify="flex-end">
               <Button
+                type="submit"
                 size="xs"
-                loading={isCommentPending}
-                disabled={
-                  isCommentPending ||
-                  commentBody.trim().length === 0 ||
-                  commentBody.length > MAX_COMMENT_LENGTH
-                }
-                onClick={() => {
-                  onAddComment(review, commentBody.trim());
-                  setCommentBody('');
-                }}
+                loading={isActPending}
+                disabled={isActPending || !actForm.isValid() || experimentQuery.data === undefined}
               >
-                {t('reviews.addComment')}
+                {t('reviews.submitDecision')}
               </Button>
             </Group>
           </Stack>
-        </Stack>
+        </form>
+      ) : (
+        <Text size="sm" c="dimmed">
+          {t('reviews.reviewClosedHint')}
+        </Text>
       )}
-    </Modal>
+
+      <Stack gap="sm">
+        <Text size="sm" fw={600}>
+          {t('reviews.commentsTitle')}
+        </Text>
+        {review.comments.length === 0 ? (
+          <Text size="sm" c="dimmed">
+            {t('reviews.noComments')}
+          </Text>
+        ) : (
+          review.comments.map((comment) => (
+            <CommentNode
+              key={comment.id}
+              reviewId={review.id}
+              comment={comment}
+              depth={0}
+              currentUserId={currentUserId}
+              currentUserRole={currentUserRole}
+              isPending={isCommentPending}
+              onReply={(parentId, body) => {
+                onAddComment(review, body, parentId);
+              }}
+              onResolve={(commentId, resolved) => {
+                onResolve(review, commentId, resolved);
+              }}
+              onDelete={(commentId) => {
+                confirmDelete(review, commentId);
+              }}
+            />
+          ))
+        )}
+        <Textarea
+          placeholder={t('reviews.commentPlaceholder')}
+          autosize
+          minRows={2}
+          disabled={isCommentPending}
+          value={commentBody}
+          onChange={(event) => {
+            setCommentBody(event.currentTarget.value);
+          }}
+          aria-label={t('reviews.commentPlaceholder')}
+        />
+        <Group justify="flex-end">
+          <Button
+            size="xs"
+            loading={isCommentPending}
+            disabled={
+              isCommentPending ||
+              commentBody.trim().length === 0 ||
+              commentBody.length > MAX_COMMENT_LENGTH
+            }
+            onClick={() => {
+              onAddComment(review, commentBody.trim());
+              setCommentBody('');
+            }}
+          >
+            {t('reviews.addComment')}
+          </Button>
+        </Group>
+      </Stack>
+    </Stack>
   );
 }

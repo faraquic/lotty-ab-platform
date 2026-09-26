@@ -11,12 +11,20 @@ import type {
   UpdateUserRequest,
   User,
   UserListResponse,
+  UserRole,
 } from '../types';
 
 export const USERS_PAGE_SIZE = 20;
 
-export function usersListQueryKey(limit: number, offset: number): [string, { limit: number; offset: number }] {
-  return ['users', { limit, offset }];
+export interface UsersListFilters {
+  limit: number;
+  offset: number;
+  q?: string;
+  role?: UserRole;
+}
+
+export function usersListQueryKey(filters: UsersListFilters): [string, UsersListFilters] {
+  return ['users', filters];
 }
 
 export const USERS_LIST_KEY_PREFIX = 'users';
@@ -74,11 +82,17 @@ async function requestJson(input: string, init: RequestInit): Promise<unknown> {
   return readPayload(response);
 }
 
-export async function listUsers(limit: number, offset: number): Promise<UserListResponse> {
+export async function listUsers(filters: UsersListFilters): Promise<UserListResponse> {
   const params = new URLSearchParams({
-    limit: String(limit),
-    offset: String(offset),
+    limit: String(filters.limit),
+    offset: String(filters.offset),
   });
+  if (filters.q !== undefined && filters.q.length > 0) {
+    params.set('q', filters.q);
+  }
+  if (filters.role !== undefined) {
+    params.set('role', filters.role);
+  }
   const payload = await requestJson(`${PANEL_API_BASE_URL}/users?${params.toString()}`, {
     headers: { ...authHeaders() },
   });

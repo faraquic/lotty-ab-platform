@@ -1,16 +1,17 @@
 import { ActionIcon, Badge, Group, Table, Text, Tooltip } from '@mantine/core';
-import { IconEye, IconUserMinus } from '@tabler/icons-react';
+import { IconEye, IconPencil, IconUserMinus } from '@tabler/icons-react';
 import { useTranslation } from 'react-i18next';
 import type { ApproverGroup } from '../types';
 
 interface GroupsTableProps {
   groups: ApproverGroup[];
   onView: (group: ApproverGroup) => void;
+  onEdit: (group: ApproverGroup) => void;
   onRemoveMember: (group: ApproverGroup, userId: string) => void;
   isMutating: boolean;
 }
 
-export function GroupsTable({ groups, onView, onRemoveMember, isMutating }: GroupsTableProps) {
+export function GroupsTable({ groups, onView, onEdit, onRemoveMember, isMutating }: GroupsTableProps) {
   const { t } = useTranslation();
 
   return (
@@ -81,17 +82,31 @@ export function GroupsTable({ groups, onView, onRemoveMember, isMutating }: Grou
               </Group>
             </Table.Td>
             <Table.Td>
-              <Tooltip label={t('reviews.viewGroup')}>
-                <ActionIcon
-                  variant="subtle"
-                  onClick={() => {
-                    onView(group);
-                  }}
-                  aria-label={t('reviews.viewGroupNamed', { name: group.name })}
-                >
-                  <IconEye size={16} />
-                </ActionIcon>
-              </Tooltip>
+              <Group gap={4}>
+                <Tooltip label={t('reviews.viewGroup')}>
+                  <ActionIcon
+                    variant="subtle"
+                    onClick={() => {
+                      onView(group);
+                    }}
+                    aria-label={t('reviews.viewGroupNamed', { name: group.name })}
+                  >
+                    <IconEye size={16} />
+                  </ActionIcon>
+                </Tooltip>
+                <Tooltip label={t('reviews.editGroupNamed', { name: group.name })}>
+                  <ActionIcon
+                    variant="subtle"
+                    disabled={isMutating}
+                    onClick={() => {
+                      onEdit(group);
+                    }}
+                    aria-label={t('reviews.editGroupNamed', { name: group.name })}
+                  >
+                    <IconPencil size={16} />
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
             </Table.Td>
           </Table.Tr>
         ))}

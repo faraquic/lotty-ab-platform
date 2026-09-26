@@ -41,6 +41,8 @@ Verify that the host can reach the application gateway:
 ```bash
 curl --fail http://127.0.0.1:8080/health
 curl --fail http://127.0.0.1:8080/api/v1/panel/health
+curl --fail http://127.0.0.1:8080/api/v1/runtime/health
+curl --fail http://127.0.0.1:8080/api/v1/analytics/health
 ```
 
 Keep server-specific credentials out of workflow logs and do not store private SSH keys in the repository. The committed dev file currently contains development-only placeholder credentials; replace them with deployment secrets before exposing the server.

@@ -23,7 +23,8 @@ import {
   setExperimenterGroup,
   updateApproverGroup,
 } from './reviews';
-import type { ReviewsApiError, ReviewStatus } from '../types';
+import type { ReviewsApiError } from '../types';
+import type { GroupsListFilters, ReviewsListFilters } from './reviews';
 import type {
   ActOnReviewRequest,
   AddGroupMemberRequest,
@@ -41,20 +42,16 @@ import type {
 
 export { REVIEWS_PAGE_SIZE, GROUPS_PAGE_SIZE };
 
-export interface ReviewsListParams {
-  limit: number;
-  offset: number;
-  status: ReviewStatus | null;
-}
+export type ReviewsListParams = ReviewsListFilters;
 
 export function useReviewsList(
   params: ReviewsListParams,
 ): UseQueryResult<ReviewListResponse, ReviewsApiError> {
-  const { limit, offset, status } = params;
   return useQuery<ReviewListResponse, ReviewsApiError>({
-    queryKey: reviewsListQueryKey(limit, offset, status),
-    queryFn: () => listReviews({ limit, offset, status }),
+    queryKey: reviewsListQueryKey(params),
+    queryFn: () => listReviews(params),
     placeholderData: (previous) => previous,
+    refetchInterval: 15_000,
   });
 }
 
@@ -63,6 +60,7 @@ export function useReview(id: string | null): UseQueryResult<Review, ReviewsApiE
     queryKey: id === null ? ['reviews', 'detail', 'none'] : reviewDetailQueryKey(id),
     queryFn: () => getReview(id ?? ''),
     enabled: id !== null,
+    refetchInterval: id === null ? false : 15_000,
   });
 }
 
@@ -143,19 +141,16 @@ export function useDeleteReviewComment(): UseMutationResult<
   });
 }
 
-export interface GroupsListParams {
-  limit: number;
-  offset: number;
-}
+export type GroupsListParams = GroupsListFilters;
 
 export function useApproverGroupsList(
   params: GroupsListParams,
 ): UseQueryResult<ApproverGroupListResponse, ReviewsApiError> {
-  const { limit, offset } = params;
   return useQuery<ApproverGroupListResponse, ReviewsApiError>({
-    queryKey: groupsListQueryKey(limit, offset),
-    queryFn: () => listApproverGroups(limit, offset),
+    queryKey: groupsListQueryKey(params),
+    queryFn: () => listApproverGroups(params),
     placeholderData: (previous) => previous,
+    refetchInterval: 15_000,
   });
 }
 
@@ -166,6 +161,7 @@ export function useApproverGroup(
     queryKey: id === null ? ['approver-groups', 'detail', 'none'] : groupDetailQueryKey(id),
     queryFn: () => getApproverGroup(id ?? ''),
     enabled: id !== null,
+    refetchInterval: id === null ? false : 15_000,
   });
 }
 

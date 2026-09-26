@@ -1,7 +1,6 @@
 package experiments
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -28,8 +27,8 @@ type ExperimentRepo interface {
 	UpdateDraft(ctx context.Context, id, name, description string, expectedVersion int, callerID string) (Experiment, error)
 	Complete(ctx context.Context, id string, from Status, expectedVersion int, callerID string, decision CompletionDecision, reason string) (Experiment, error)
 	CountActiveByFlag(ctx context.Context, flagID, excludeID string) (int64, error)
-	List(ctx context.Context, limit, offset int, status Status) ([]Experiment, error)
-	Count(ctx context.Context, status Status) (int64, error)
+	List(ctx context.Context, limit, offset int, filter ListFilter) ([]Experiment, error)
+	Count(ctx context.Context, filter ListFilter) (int64, error)
 }
 
 type UserProvider interface {
@@ -38,6 +37,7 @@ type UserProvider interface {
 
 type FlagsService interface {
 	Update(ctx context.Context, callerID, id string, req flagsdomain.UpdateFlagRequest) (flagsdomain.FlagResponse, error)
+	GetByID(ctx context.Context, id string) (flagsdomain.FlagResponse, error)
 }
 
 type ReviewService interface {
@@ -72,25 +72,15 @@ func resolveWeightsTotal(wt int) (int, error) {
 	return wt, nil
 }
 
-func checkTargeting(t *Targeting) error {
-	if t == nil {
-		return nil
+func resolveTargeting(dsl *string) (*Targeting, error) {
+	if dsl == nil {
+		return nil, nil
 	}
-	if !t.Valid() {
-		return ErrInvalidTargeting
+	targeting, err := ParseTargeting(*dsl)
+	if err != nil {
+		return nil, err
 	}
-	return nil
-}
-
-func normalizeTargeting(t *Targeting) *Targeting {
-	if t == nil {
-		return nil
-	}
-	trimmed := bytes.TrimSpace([]byte(*t))
-	if len(trimmed) == 0 || string(trimmed) == "null" || string(trimmed) == "{}" {
-		return nil
-	}
-	return t
+	return targeting, nil
 }
 
 func (s *Service) isAdmin(ctx context.Context, callerID string) (bool, error) {
@@ -116,11 +106,16 @@ func (s *Service) Create(ctx context.Context, callerID string, req CreateExperim
 	if err != nil {
 		return ExperimentResponse{}, err
 	}
-	if err := checkTargeting(req.Targeting); err != nil {
+	targeting, err := resolveTargeting(req.Targeting)
+	if err != nil {
 		return ExperimentResponse{}, err
 	}
+	flag, err := s.flags.GetByID(ctx, req.FlagID)
+	if err != nil {
+		return ExperimentResponse{}, ErrFlagNotFound
+	}
 	if len(req.Variants) > 0 {
-		if err := ValidateVariants(req.Variants, weights); err != nil {
+		if err := ValidateVariants(req.Variants, weights, flag.Type); err != nil {
 			return ExperimentResponse{}, err
 		}
 	}
@@ -142,7 +137,7 @@ func (s *Service) Create(ctx context.Context, callerID string, req CreateExperim
 		OwnerID:     callerID,
 		CreatedBy:   callerID,
 		UpdatedBy:   callerID,
-	}, weights, normalizeTargeting(req.Targeting), salt)
+	}, weights, targeting, salt)
 	if err != nil {
 		return ExperimentResponse{}, err
 	}
@@ -174,23 +169,23 @@ func (s *Service) GetByID(ctx context.Context, id string) (ExperimentResponse, e
 	return s.getDetail(ctx, id)
 }
 
-func (s *Service) List(ctx context.Context, limit, offset int, status Status) (PaginatedExperimentResponse, error) {
+func (s *Service) List(ctx context.Context, limit, offset int, filter ListFilter) (PaginatedExperimentResponse, error) {
 	if limit < 1 || limit > 100 {
 		limit = 20
 	}
 	if offset < 0 {
 		offset = 0
 	}
-	if status != "" && !status.Valid() {
+	if filter.Status != "" && !filter.Status.Valid() {
 		return PaginatedExperimentResponse{}, ErrInvalidTransition
 	}
 
-	total, err := s.repo.Count(ctx, status)
+	total, err := s.repo.Count(ctx, filter)
 	if err != nil {
 		return PaginatedExperimentResponse{}, err
 	}
 
-	list, err := s.repo.List(ctx, limit, offset, status)
+	list, err := s.repo.List(ctx, limit, offset, filter)
 	if err != nil {
 		return PaginatedExperimentResponse{}, err
 	}
@@ -258,11 +253,16 @@ func (s *Service) CreateVersion(ctx context.Context, callerID, id string, req Cr
 	if err != nil {
 		return ExperimentResponse{}, err
 	}
-	if err := checkTargeting(req.Targeting); err != nil {
+	targeting, err := resolveTargeting(req.Targeting)
+	if err != nil {
 		return ExperimentResponse{}, err
 	}
+	flag, err := s.flags.GetByID(ctx, state.FlagID)
+	if err != nil {
+		return ExperimentResponse{}, ErrFlagNotFound
+	}
 	if len(req.Variants) > 0 {
-		if err := ValidateVariants(req.Variants, weights); err != nil {
+		if err := ValidateVariants(req.Variants, weights, flag.Type); err != nil {
 			return ExperimentResponse{}, err
 		}
 	}
@@ -277,7 +277,7 @@ func (s *Service) CreateVersion(ctx context.Context, callerID, id string, req Cr
 	}
 
 	resetToDraft := state.Status == StatusApproved || state.Status == StatusRejected
-	versionID, versionNum, err := s.repo.CreateVersion(ctx, id, weights, normalizeTargeting(req.Targeting), salt, callerID, resetToDraft)
+	versionID, versionNum, err := s.repo.CreateVersion(ctx, id, weights, targeting, salt, callerID, resetToDraft)
 	if err != nil {
 		return ExperimentResponse{}, err
 	}
@@ -329,7 +329,11 @@ func (s *Service) SetVariants(ctx context.Context, callerID, id string, req SetV
 	if err != nil {
 		return ExperimentResponse{}, err
 	}
-	if err := ValidateVariants(req.Variants, ver.WeightsTotal); err != nil {
+	flag, err := s.flags.GetByID(ctx, state.FlagID)
+	if err != nil {
+		return ExperimentResponse{}, ErrFlagNotFound
+	}
+	if err := ValidateVariants(req.Variants, ver.WeightsTotal, flag.Type); err != nil {
 		return ExperimentResponse{}, err
 	}
 
@@ -441,11 +445,15 @@ func (s *Service) checkReady(ctx context.Context, state Experiment) error {
 	if err != nil {
 		return err
 	}
+	flag, err := s.flags.GetByID(ctx, state.FlagID)
+	if err != nil {
+		return ErrFlagNotFound
+	}
 	inputs := make([]VariantInput, 0, len(variants))
 	for _, v := range variants {
 		inputs = append(inputs, VariantInput{Name: v.Name, Value: v.Value, WeightBP: v.WeightBP, IsControl: v.IsControl})
 	}
-	if err := ValidateVariants(inputs, ver.WeightsTotal); err != nil {
+	if err := ValidateVariants(inputs, ver.WeightsTotal, flag.Type); err != nil {
 		return ErrVersionNotReady
 	}
 	return nil

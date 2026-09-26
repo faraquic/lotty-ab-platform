@@ -7,11 +7,13 @@ import {
   Skeleton,
   Stack,
   Text,
+  TextInput,
   Title,
 } from '@mantine/core';
+import { useDebouncedValue } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
-import { IconAlertCircle, IconPlus, IconRefresh } from '@tabler/icons-react';
+import { IconAlertCircle, IconPlus, IconRefresh, IconSearch } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CreateFlagModal } from '@/features/flags/components/CreateFlagModal';
@@ -36,9 +38,15 @@ export function FlagsPage() {
   const [page, setPage] = useState(0);
   const [createOpened, setCreateOpened] = useState(false);
   const [selectedFlag, setSelectedFlag] = useState<Flag | null>(null);
+  const [search, setSearch] = useState('');
+  const [debouncedSearch] = useDebouncedValue(search, 300);
 
   const offset = offsetForPage(page, LIMIT);
-  const list = useFlagsList({ limit: LIMIT, offset });
+  const list = useFlagsList({
+    limit: LIMIT,
+    offset,
+    ...(debouncedSearch.trim().length > 0 ? { q: debouncedSearch.trim() } : {}),
+  });
   const meQuery = useMe();
 
   const canWrite = meQuery.data?.role === 'admin';
@@ -183,6 +191,18 @@ export function FlagsPage() {
           )}
         </Group>
 
+        <TextInput
+          size="sm"
+          placeholder={t('flags.searchPlaceholder')}
+          leftSection={<IconSearch size={16} />}
+          value={search}
+          onChange={(event) => {
+            setSearch(event.currentTarget.value);
+            setPage(0);
+          }}
+          aria-label={t('flags.searchPlaceholder')}
+        />
+
         {isInitialLoading ? (
           <Stack gap="xs" aria-label={t('flags.title')}>
             <Skeleton height={38} radius="sm" />
@@ -224,17 +244,6 @@ export function FlagsPage() {
             <Text size="sm" c="dimmed">
               {t('flags.noFlagsHint')}
             </Text>
-            {canWrite ? (
-              <Button
-                size="sm"
-                leftSection={<IconPlus size={16} />}
-                onClick={() => {
-                  setCreateOpened(true);
-                }}
-              >
-                {t('flags.createFlag')}
-              </Button>
-            ) : null}
           </Stack>
         ) : null}
 
@@ -272,6 +281,7 @@ export function FlagsPage() {
       </Stack>
 
       <CreateFlagModal
+        key={createOpened ? 'opened' : 'closed'}
         opened={createOpened}
         isPending={createMutation.isPending}
         onClose={() => {

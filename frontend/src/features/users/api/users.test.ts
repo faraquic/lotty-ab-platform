@@ -62,8 +62,13 @@ afterEach(() => {
 
 describe('users api', () => {
   it('includes pagination state in list query keys', () => {
-    expect(usersListQueryKey(20, 0)).toEqual(['users', { limit: 20, offset: 0 }]);
-    expect(usersListQueryKey(20, 40)).not.toEqual(usersListQueryKey(20, 0));
+    expect(usersListQueryKey({ limit: 20, offset: 0 })).toEqual([
+      'users',
+      { limit: 20, offset: 0 },
+    ]);
+    expect(usersListQueryKey({ limit: 20, offset: 40 })).not.toEqual(
+      usersListQueryKey({ limit: 20, offset: 0 }),
+    );
     expect(userDetailQueryKey('id-1')).toEqual(['users', 'id-1']);
   });
 
@@ -78,7 +83,7 @@ describe('users api', () => {
       return jsonResponse(200, listBody());
     });
 
-    const result = await listUsers(20, 40);
+    const result = await listUsers({ limit: 20, offset: 40 });
 
     expect(seenUrl).toContain('/users?');
     expect(seenUrl).toContain('limit=20');
@@ -254,7 +259,7 @@ describe('users api', () => {
     setAuthSession('token', '2026-09-18T00:00:00.000Z');
     stubFetch(() => Promise.reject(new TypeError('Failed to fetch')));
 
-    const error = await listUsers(20, 0).then(
+    const error = await listUsers({ limit: 20, offset: 0 }).then(
       () => null,
       (e: unknown) => e,
     );
@@ -263,7 +268,7 @@ describe('users api', () => {
   });
 
   it('requires an auth token for requests', async () => {
-    const error = await listUsers(20, 0).then(
+    const error = await listUsers({ limit: 20, offset: 0 }).then(
       () => null,
       (e: unknown) => e,
     );

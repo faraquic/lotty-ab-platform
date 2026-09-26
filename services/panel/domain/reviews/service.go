@@ -61,7 +61,7 @@ func (s *Service) GetGroup(ctx context.Context, id string, includeArchived bool)
 	return ToGroupResponse(g), nil
 }
 
-func (s *Service) ListGroups(ctx context.Context, limit, offset int, includeArchived bool) (PaginatedGroupResponse, error) {
+func (s *Service) ListGroups(ctx context.Context, limit, offset int, includeArchived bool, search *string) (PaginatedGroupResponse, error) {
 	if limit < 1 || limit > 100 {
 		limit = 20
 	}
@@ -69,12 +69,12 @@ func (s *Service) ListGroups(ctx context.Context, limit, offset int, includeArch
 		offset = 0
 	}
 
-	total, err := s.repo.CountGroups(ctx, includeArchived)
+	total, err := s.repo.CountGroups(ctx, includeArchived, search)
 	if err != nil {
 		return PaginatedGroupResponse{}, err
 	}
 
-	list, err := s.repo.ListGroups(ctx, limit, offset, includeArchived)
+	list, err := s.repo.ListGroups(ctx, limit, offset, includeArchived, search)
 	if err != nil {
 		return PaginatedGroupResponse{}, err
 	}
@@ -122,8 +122,12 @@ func (s *Service) AddMember(ctx context.Context, groupID, userID string) (GroupR
 	if _, err := s.repo.GetGroup(ctx, groupID, true); err != nil {
 		return GroupResponse{}, err
 	}
-	if _, err := s.users.GetByID(ctx, userID); err != nil {
+	member, err := s.users.GetByID(ctx, userID)
+	if err != nil {
 		return GroupResponse{}, ErrUserNotFound
+	}
+	if member.Role != users.RoleApprover {
+		return GroupResponse{}, ErrInvalidMemberRole
 	}
 	if err := s.repo.AddMember(ctx, groupID, userID); err != nil {
 		return GroupResponse{}, err
@@ -139,8 +143,12 @@ func (s *Service) RemoveMember(ctx context.Context, groupID, userID string) (Gro
 }
 
 func (s *Service) SetExperimenterGroup(ctx context.Context, experimenterID string, req SetExperimenterGroupRequest) error {
-	if _, err := s.users.GetByID(ctx, experimenterID); err != nil {
+	experimenter, err := s.users.GetByID(ctx, experimenterID)
+	if err != nil {
 		return ErrUserNotFound
+	}
+	if experimenter.Role != users.RoleExperimenter {
+		return ErrInvalidExperimenter
 	}
 	if req.GroupID == nil {
 		return s.repo.UnsetExperimenterGroup(ctx, experimenterID)

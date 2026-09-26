@@ -4,6 +4,7 @@ import {
   Button,
   Card,
   Container,
+  Grid,
   Group,
   Skeleton,
   Stack,
@@ -47,12 +48,16 @@ import {
   validateVariantDrafts,
 } from '@/features/experiments/lib/transitions';
 import type { VariantDraft } from '@/features/experiments/lib/transitions';
+import { useFlag } from '@/features/flags/api/useFlags';
+import { formatDefaultValue } from '@/features/flags/lib/flagValue';
+import type { FlagDefaultValue, FlagType } from '@/features/flags/types';
 import { useMe } from '@/features/users/api/useUsers';
 import type {
   CompleteExperimentRequest,
   CreateExperimentVersionRequest,
   Experiment,
 } from '@/features/experiments/types';
+import { bpToPercent } from '@/features/experiments/lib/transitions';
 
 function variantDraftsFromExperiment(experiment: Experiment): VariantDraft[] {
   if (experiment.variants.length === 0) {
@@ -63,8 +68,8 @@ function variantDraftsFromExperiment(experiment: Experiment): VariantDraft[] {
   }
   return experiment.variants.map((variant) => ({
     name: variant.name,
-    valueRaw: JSON.stringify(variant.value),
-    weightRaw: String(variant.weight_bp),
+    valueRaw: formatDefaultValue(variant.value as FlagDefaultValue),
+    weightRaw: String(bpToPercent(variant.weight_bp)),
     isControl: variant.is_control,
   }));
 }
@@ -99,7 +104,7 @@ function OverviewEditor({
   });
 
   return (
-    <form onSubmit={form.onSubmit(onSave)} noValidate>
+    <form id="experiment-overview-form" onSubmit={form.onSubmit(onSave)} noValidate>
       <Stack gap="sm">
         <TextInput label={t('experiments.name')} disabled={isPending} {...form.getInputProps('name')} />
         <Textarea
@@ -110,11 +115,6 @@ function OverviewEditor({
           minRows={2}
           {...form.getInputProps('description')}
         />
-        <Group justify="flex-end">
-          <Button type="submit" size="xs" loading={isPending} disabled={isPending}>
-            {t('experiments.save')}
-          </Button>
-        </Group>
       </Stack>
     </form>
   );
@@ -128,6 +128,9 @@ export function ExperimentDetailsPage() {
   const query = useExperiment(experimentId);
   const meQuery = useMe();
   const experiment = query.data ?? null;
+  const flagQuery = useFlag(experiment?.flag_id ?? null);
+  const flagType: FlagType = flagQuery.data?.type ?? 'string';
+  const flagLabel = flagQuery.data?.name ?? experiment?.flag_id ?? '';
 
   const [versionOpened, setVersionOpened] = useState(false);
   const [completeOpened, setCompleteOpened] = useState(false);
@@ -225,7 +228,7 @@ export function ExperimentDetailsPage() {
     setDraftState({ forId: experiment.id, drafts: next });
   };
   const weightsTotal = experiment.current_version?.weights_total ?? 10000;
-  const variantsValidation = validateVariantDrafts(drafts, weightsTotal);
+  const variantsValidation = validateVariantDrafts(drafts, weightsTotal, flagType);
 
   const handleSaveOverview = (values: { name: string; description: string }): void => {
     const request: { version: number; name?: string; description?: string } = {
@@ -369,7 +372,9 @@ export function ExperimentDetailsPage() {
 
   const variantOptions = experiment.variants.map((variant) => ({
     value: variant.id,
-    label: `${variant.name}${variant.is_control ? ` (${t('experiments.control')})` : ''}`,
+    label: `${variant.name} — ${formatDefaultValue(variant.value as FlagDefaultValue)}${
+      variant.is_control ? ` (${t('experiments.control')})` : ''
+    }`,
   }));
 
   return (
@@ -402,81 +407,89 @@ export function ExperimentDetailsPage() {
           </Alert>
         ) : null}
 
-        <Card withBorder padding="md" radius="sm">
-          <Stack gap="sm">
-            <Text size="sm" fw={600}>
-              {t('experiments.overview')}
-            </Text>
-            {isDraft && canMutate ? (
-              <OverviewEditor
-                key={`${experiment.id}:${String(experiment.version)}`}
-                experiment={experiment}
-                isPending={isPending}
-                onSave={handleSaveOverview}
-              />
-            ) : (
-              <Text size="sm" c="dimmed">
-                {experiment.description ?? t('experiments.noDescription')}
-              </Text>
-            )}
-            <Group gap="xl">
-              <Text size="xs" c="dimmed">
-                {t('experiments.fieldVersion', { version: experiment.version })}
-              </Text>
-              <Text size="xs" c="dimmed">
-                {t('experiments.fieldOwner', { owner: experiment.owner_id })}
-              </Text>
-              <Text size="xs" c="dimmed">
-                {t('experiments.fieldFlag', { flag: experiment.flag_id })}
-              </Text>
-            </Group>
-            {experiment.completion_decision !== null ? (
-              <Text size="sm">
-                {t('experiments.completionInfo', {
-                  decision: t(`experiments.decisions.${experiment.completion_decision}`),
-                  reason: experiment.completion_reason ?? '',
-                })}
-              </Text>
-            ) : null}
-            <Text size="xs" c="dimmed">
-              {t('experiments.metaLine', {
-                created: formatExperimentDateTime(experiment.created_at, i18n.language),
-                updated: formatExperimentDateTime(experiment.updated_at, i18n.language),
-              })}
-            </Text>
-            {!canMutate && canWrite ? (
-              <Text size="xs" c="dimmed">
-                {t('experiments.ownerOnlyHint')}
-              </Text>
-            ) : null}
-            {!canWrite ? (
-              <Text size="xs" c="dimmed">
-                {t('experiments.readOnlyHint')}
-              </Text>
-            ) : null}
-          </Stack>
-        </Card>
-
-        <Card withBorder padding="md" radius="sm">
-          <Stack gap="sm">
-            <Text size="sm" fw={600}>
-              {t('experiments.lifecycle')}
-            </Text>
-            <TransitionBar
-              experiment={experiment}
-              canWrite={canMutate}
-              isAdmin={role === 'admin'}
-              isPending={isPending}
-              onTransition={handleTransition}
-              onComplete={() => {
-                setCompleteOpened(true);
-              }}
-              onRollout={() => {
-                setRolloutOpened(true);
-              }}
-            />
-          </Stack>
-        </Card>
+        <Grid gutter="md">
+          <Grid.Col span={{ base: 12, md: 8 }}>
+            <Stack gap="md">
+              <Card withBorder padding="md" radius="sm">
+                <Stack gap="sm">
+                  <Text size="sm" fw={600}>
+                    {t('experiments.overview')}
+                  </Text>
+                  {isDraft && canMutate ? (
+                    <OverviewEditor
+                      key={`${experiment.id}:${String(experiment.version)}`}
+                      experiment={experiment}
+                      isPending={isPending}
+                      onSave={handleSaveOverview}
+                    />
+                  ) : (
+                    <Text size="sm" c="dimmed">
+                      {experiment.description ?? t('experiments.noDescription')}
+                    </Text>
+                  )}
+                  <Group gap="xl">
+                    <Text size="xs" c="dimmed">
+                      {t('experiments.fieldVersion', { version: experiment.version })}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      {t('experiments.fieldOwner', { owner: experiment.owner_id })}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      {t('experiments.fieldFlag', { flag: flagLabel })}
+                    </Text>
+                  </Group>
+                  {experiment.completion_decision !== null ? (
+                    <Text size="sm">
+                      {t('experiments.completionInfo', {
+                        decision: t(`experiments.decisions.${experiment.completion_decision}`),
+                        reason: experiment.completion_reason ?? '',
+                      })}
+                    </Text>
+                  ) : null}
+                  <Text size="xs" c="dimmed">
+                    {t('experiments.metaLine', {
+                      created: formatExperimentDateTime(experiment.created_at, i18n.language),
+                      updated: formatExperimentDateTime(experiment.updated_at, i18n.language),
+                    })}
+                  </Text>
+                  {!canMutate && canWrite ? (
+                    <Text size="xs" c="dimmed">
+                      {t('experiments.ownerOnlyHint')}
+                    </Text>
+                  ) : null}
+                  {!canWrite ? (
+                    <Text size="xs" c="dimmed">
+                      {t('experiments.readOnlyHint')}
+                    </Text>
+                  ) : null}
+                </Stack>
+              </Card>
+            </Stack>
+          </Grid.Col>
+          <Grid.Col span={{ base: 12, md: 4 }}>
+            <Card withBorder padding="md" radius="sm">
+              <Stack gap="sm">
+                <Text size="sm" fw={600}>
+                  {t('experiments.actionsTitle')}
+                </Text>
+                <TransitionBar
+                  experiment={experiment}
+                  canWrite={canMutate}
+                  canSave={isDraft && canMutate}
+                  isAdmin={role === 'admin'}
+                  isPending={isPending}
+                  onTransition={handleTransition}
+                  onComplete={() => {
+                    setCompleteOpened(true);
+                  }}
+                  onRollout={() => {
+                    setRolloutOpened(true);
+                  }}
+                />
+              </Stack>
+            </Card>
+          </Grid.Col>
+        </Grid>
 
         <Card withBorder padding="md" radius="sm">
           <Stack gap="sm">
@@ -504,7 +517,7 @@ export function ExperimentDetailsPage() {
                 <Group gap="xl">
                   <Text size="xs" c="dimmed">
                     {t('experiments.fieldWeightsTotal', {
-                      total: experiment.current_version.weights_total,
+                      total: `${bpToPercent(experiment.current_version.weights_total).toFixed(2)}%`,
                     })}
                   </Text>
                   <Text size="xs" c="dimmed">
@@ -518,7 +531,7 @@ export function ExperimentDetailsPage() {
                     targeting:
                       experiment.current_version.targeting === null
                         ? t('experiments.noTargeting')
-                        : JSON.stringify(experiment.current_version.targeting),
+                        : experiment.current_version.targeting,
                   })}
                 </Text>
                 {experiment.current_version.review_id !== null ? (
@@ -572,11 +585,11 @@ export function ExperimentDetailsPage() {
                       </Table.Td>
                       <Table.Td>
                         <Text size="sm" ff="monospace">
-                          {JSON.stringify(variant.value)}
+                          {formatDefaultValue(variant.value as FlagDefaultValue)}
                         </Text>
                       </Table.Td>
                       <Table.Td>
-                        <Text size="sm">{variant.weight_bp}</Text>
+                        <Text size="sm">{bpToPercent(variant.weight_bp).toFixed(2)}%</Text>
                       </Table.Td>
                       <Table.Td>
                         {variant.is_control ? (
@@ -602,6 +615,7 @@ export function ExperimentDetailsPage() {
               <VariantsEditor
                 drafts={drafts}
                 weightsTotal={weightsTotal}
+                flagType={flagType}
                 validationError={variantsValidation.error}
                 weightsSum={variantsValidation.weightsSum}
                 disabled={isPending}
@@ -615,6 +629,7 @@ export function ExperimentDetailsPage() {
       <CreateVersionModal
         opened={versionOpened}
         isPending={versionMutation.isPending}
+        flagType={flagType}
         currentWeightsTotal={weightsTotal}
         currentTargeting={experiment.current_version?.targeting ?? null}
         onClose={() => {
