@@ -102,3 +102,13 @@ type FlagWithCreatorAndUpdater struct {
 	CreatedBy *users.User
 	UpdatedBy *users.User
 }
+
+// ListFilter narrows flag listings by type, creator, free-text search, and
+// controls sort order.
+type ListFilter struct {
+	Type      *TypeFlag
+	CreatedBy *string
+	Search    *string
+	Sort      string
+	Order     string
+}

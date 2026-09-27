@@ -10,12 +10,12 @@
 
 ## Log Level Policy
 
-| Level | When to use |
-|-------|-------------|
+| Level | When to use                                                                                                                                                                                                    |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | DEBUG | Diagnostic events: token parsed, session validated, DB query completed, config validated, cache hit/miss, state transitions, internal decisions. Must contain info not available from the HTTP completion log. |
-| INFO | Important normal events: service startup, dependency connected, bootstrap admin created, HTTP request completed (2xx/3xx), domain lifecycle events (user/flag/metric created/deleted), session revoked. |
-| WARN | Degraded but recoverable: Redis/S3 unavailable, session check failed, auth rejected (401/403), old avatar deletion failed, insecure JWT secret, CORS wildcard. |
-| ERROR | Failed operations requiring investigation: Postgres unavailable, unexpected internal failure, panic recovery, migration failure, bootstrap admin creation failed, server listen/shutdown failed. |
+| INFO  | Important normal events: service startup, dependency connected, bootstrap admin created, HTTP request completed (2xx/3xx), domain lifecycle events (user/flag/metric created/deleted), session revoked.        |
+| WARN  | Degraded but recoverable: Redis/S3 unavailable, session check failed, auth rejected (401/403), old avatar deletion failed, insecure JWT secret, CORS wildcard.                                                 |
+| ERROR | Failed operations requiring investigation: Postgres unavailable, unexpected internal failure, panic recovery, migration failure, bootstrap admin creation failed, server listen/shutdown failed.               |
 
 ## HTTP Request Logging
 
@@ -56,18 +56,19 @@ WARN http request completed
 
 ### Level Assignment
 
-| HTTP Status | Level |
-|---|---|
-| 2xx | INFO |
-| 3xx | INFO |
-| 401, 403 | WARN |
-| Other 4xx | INFO |
-| 5xx | ERROR |
+| HTTP Status    | Level |
+| -------------- | ----- |
+| 2xx            | INFO  |
+| 3xx            | INFO  |
+| 401, 403       | WARN  |
+| Other 4xx      | INFO  |
+| 5xx            | ERROR |
 | Panic recovery | ERROR |
 
 ### Removed: `request received` log
 
 The old `DEBUG request received` log was removed because:
+
 - It duplicated almost all fields from the completion record.
 - It provided no diagnostic information beyond "a request started."
 - It increased log volume without operational value.
@@ -76,96 +77,96 @@ The old `DEBUG request received` log was removed because:
 
 ### Common Fields
 
-| Field | Type | Description |
-|---|---|---|
-| `request_id` | string | UUIDv7 correlation ID for the request |
-| `user_id` | int64 | Authenticated user ID (after auth succeeds) |
-| `actor_id` | int64 | User performing a state-changing operation |
-| `error.type` | string | Error classification (see below) |
-| `duration_ms` | float64 | Operation duration in milliseconds |
+| Field         | Type    | Description                                 |
+| ------------- | ------- | ------------------------------------------- |
+| `request_id`  | string  | UUIDv7 correlation ID for the request       |
+| `user_id`     | int64   | Authenticated user ID (after auth succeeds) |
+| `actor_id`    | int64   | User performing a state-changing operation  |
+| `error.type`  | string  | Error classification (see below)            |
+| `duration_ms` | float64 | Operation duration in milliseconds          |
 
 ### HTTP Fields
 
-| Field | Type |
-|---|---|
-| `http.request.method` | string |
-| `http.route` | string |
-| `http.response.status_code` | int |
-| `http.response.body.size` | int |
-| `client.address` | string |
-| `url.path` | string |
+| Field                       | Type   |
+| --------------------------- | ------ |
+| `http.request.method`       | string |
+| `http.route`                | string |
+| `http.response.status_code` | int    |
+| `http.response.body.size`   | int    |
+| `client.address`            | string |
+| `url.path`                  | string |
 
 ### Database Fields
 
-| Field | Type |
-|---|---|
-| `db.system` | string |
-| `db.name` | string |
-| `db.operation` | string |
-| `db.table` | string |
-| `db.rows_affected` | int64 |
+| Field              | Type   |
+| ------------------ | ------ |
+| `db.system`        | string |
+| `db.name`          | string |
+| `db.operation`     | string |
+| `db.table`         | string |
+| `db.rows_affected` | int64  |
 
 ### Cache (Redis) Fields
 
-| Field | Type |
-|---|---|
-| `cache.system` | string |
-| `cache.operation` | string |
-| `cache.hit` | bool |
+| Field                 | Type   |
+| --------------------- | ------ |
+| `cache.system`        | string |
+| `cache.operation`     | string |
+| `cache.hit`           | bool   |
 | `cache.key_namespace` | string |
 
 ### Storage (S3) Fields
 
-| Field | Type |
-|---|---|
-| `storage.system` | string |
-| `storage.operation` | string |
-| `storage.region` | string |
+| Field                   | Type   |
+| ----------------------- | ------ |
+| `storage.system`        | string |
+| `storage.operation`     | string |
+| `storage.region`        | string |
 | `storage.object_prefix` | string |
 
 ### Pagination Fields
 
-| Field | Type |
-|---|---|
-| `pagination.limit` | int |
-| `pagination.offset` | int |
-| `result.count` | int |
-| `result.total` | int64 |
-| `result.has_next` | bool |
+| Field               | Type  |
+| ------------------- | ----- |
+| `pagination.limit`  | int   |
+| `pagination.offset` | int   |
+| `result.count`      | int   |
+| `result.total`      | int64 |
+| `result.has_next`   | bool  |
 
 ### Domain Event Fields
 
-| Field | Type |
-|---|---|
-| `user.role` | string |
-| `user.old_role` | string |
-| `user.new_role` | string |
-| `flag.key` | string |
-| `flag.type` | string |
-| `metric.key` | string |
-| `metric.type` | string |
+| Field                 | Type   |
+| --------------------- | ------ |
+| `user.role`           | string |
+| `user.old_role`       | string |
+| `user.new_role`       | string |
+| `flag.key`            | string |
+| `flag.type`           | string |
+| `metric.key`          | string |
+| `metric.type`         | string |
 | `auth.failure_reason` | string |
-| `auth.token_source` | string |
-| `auth.session_count` | int |
-| `auth.session_state` | string |
+| `auth.token_source`   | string |
+| `auth.session_count`  | int    |
+| `auth.session_state`  | string |
 
 ## Error Classification
 
-| error.type | Description |
-|---|---|
-| `validation_error` | Request body or query parameter validation failed |
-| `authentication_failed` | Invalid credentials, expired/revoked token |
-| `authorization_denied` | Authenticated but insufficient permissions |
-| `not_found` | Resource does not exist |
-| `conflict` | Duplicate key/name violation |
-| `database_unavailable` | PostgreSQL connection failed |
-| `database_query_failed` | SQL query execution failed |
-| `redis_unavailable` | Redis connection failed |
-| `redis_session_missing` | Session not found in Redis |
-| `storage_unavailable` | S3 connection or operation failed |
-| `storage_operation_failed` | S3 put/delete failed |
-| `internal_error` | Unexpected internal failure |
-| `panic` | Runtime panic recovered |
+| error.type                 | Description                                       |
+| -------------------------- | ------------------------------------------------- |
+| `validation_error`         | Request body or query parameter validation failed |
+| `authentication_failed`    | Invalid credentials, expired/revoked token        |
+| `authorization_denied`     | Authenticated but insufficient permissions        |
+| `not_found`                | Resource does not exist                           |
+| `conflict`                 | Duplicate key/name violation                      |
+| `database_unavailable`     | PostgreSQL connection failed                      |
+| `database_query_failed`    | SQL query execution failed                        |
+| `redis_unavailable`        | Redis connection failed                           |
+| `redis_session_missing`    | Session not found in Redis                        |
+| `storage_unavailable`      | S3 connection or operation failed                 |
+| `storage_operation_failed` | S3 put/delete failed                              |
+| `internal_error`           | Unexpected internal failure                       |
+| `panic`                    | Runtime panic recovered                           |
 
 ## Sensitive Data — Never Log
 
@@ -194,39 +195,46 @@ Request IDs flow through the system via:
 2. `middleware.LoggerGin` / `middleware.LoggerFiber` — includes `request_id` in the HTTP completion log.
 3. `middleware.CallerIDGin(c)` / `middleware.CallerIDFiber(c)` — extracts `user_id` from context for handler logic.
 
+Panel mutation requests may include `X-Trace-ID`; it is stored with audit records. The header is optional and values longer than 256 characters are ignored.
+
 Domain handlers use `h.log.Error(...)` with explicit `zap.String("request_id", ...)` when they need request-correlated error logs. The HTTP completion log (middleware.LoggerGin/LoggerFiber) always includes the request ID.
 
 ## Log Configuration
 
-| Environment | Format | Default Level | Output |
-|---|---|---|---|
-| `local` | Human-readable colorized console | DEBUG | stdout |
-| `dev` | Structured JSON | DEBUG | stdout |
-| `prod` | Structured JSON | INFO | stdout |
+| Environment | Format                           | Default Level | Output |
+| ----------- | -------------------------------- | ------------- | ------ |
+| `local`     | Human-readable colorized console | DEBUG         | stdout |
+| `dev`       | Structured JSON                  | DEBUG         | stdout |
+| `prod`      | Structured JSON                  | INFO          | stdout |
 
 Configuration is driven by the `environment` and `log_level` fields in config. `log_level` overrides the environment default when set.
 
 ## Domain Event Logging
 
 ### Auth
+
 - INFO: login successful (user_id only, no email/token), session revoked
 - DEBUG: token generated, session stored/checked with cache hit/miss
 - WARN: invalid credentials, session check failed, session store failed, revoked token used, role denied, authentication failed
 
 ### Users
+
 - INFO: user created, user deleted, role changed, bootstrap admin created
 - WARN: old avatar deletion failed, session revocation failed
 - DEBUG: avatar uploaded/deleted
 
 ### Flags
+
 - INFO: flag created, flag deleted
 - DEBUG: flag updated
 
 ### Metrics
+
 - INFO: metric created
 - DEBUG: metric updated
 
 ### Health
+
 - WARN: readiness probe: database/cache/storage unavailable (with status and message)
 - ERROR: health check: database ping failed
 

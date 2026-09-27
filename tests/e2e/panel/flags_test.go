@@ -450,6 +450,19 @@ func TestDeleteFlag(t *testing.T) {
 	requireErrorResponse(t, getResp, http.StatusNotFound, "NOT_FOUND")
 }
 
+func TestDeleteFlag_WithActiveExperiment(t *testing.T) {
+	flagID, _ := createFlag(t, "active-experiment-flag", "string", "control", "Active Experiment Flag")
+	driveToRunning(t, adminToken, flagID, "Active Experiment")
+
+	resp := doRequest(http.MethodDelete, fmt.Sprintf("/api/v1/panel/flags/%s", flagID), adminToken, nil)
+	defer resp.Body.Close()
+	requireErrorResponse(t, resp, http.StatusConflict, "CONFLICT")
+
+	getResp := doRequest(http.MethodGet, fmt.Sprintf("/api/v1/panel/flags/%s", flagID), adminToken, nil)
+	defer getResp.Body.Close()
+	requireStatus(t, getResp, http.StatusOK)
+}
+
 func TestDeleteFlag_Nonexistent(t *testing.T) {
 	resp := doRequest(http.MethodDelete, "/api/v1/panel/flags/0198f4c0-dead-7000-8000-000000000001", adminToken, nil)
 	defer resp.Body.Close()

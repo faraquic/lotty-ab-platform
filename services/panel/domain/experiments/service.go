@@ -24,8 +24,9 @@ type ExperimentRepo interface {
 	SetVariants(ctx context.Context, experimentID, versionID string, inputs []VariantInput, expectedVersion int, callerID string) error
 	ListVariants(ctx context.Context, versionID string) ([]Variant, error)
 	Transition(ctx context.Context, id string, from, to Status, expectedVersion int, callerID string, guardrailPaused *bool) (Experiment, error)
+	RollbackToControl(ctx context.Context, id string, expectedVersion int, callerID string) error
 	UpdateDraft(ctx context.Context, id, name, description string, expectedVersion int, callerID string) (Experiment, error)
-	Complete(ctx context.Context, id string, from Status, expectedVersion int, callerID string, decision CompletionDecision, reason string) (Experiment, error)
+	Complete(ctx context.Context, id string, from Status, expectedVersion int, callerID string, decision CompletionDecision, reason string, winnerVariantID *string) (Experiment, error)
 	CountActiveByFlag(ctx context.Context, flagID, excludeID string) (int64, error)
 	List(ctx context.Context, limit, offset int, filter ListFilter) ([]Experiment, error)
 	Count(ctx context.Context, filter ListFilter) (int64, error)
@@ -148,7 +149,8 @@ func (s *Service) Create(ctx context.Context, callerID string, req CreateExperim
 		}
 	}
 
-	s.log.Info("experiment created",
+	s.log.Info(
+		"experiment created",
 		zap.String(logger.FieldExperimentID, expID),
 		zap.String(logger.FieldExperimentName, req.Name),
 		zap.String(logger.FieldActorID, callerID),
@@ -294,7 +296,8 @@ func (s *Service) CreateVersion(ctx context.Context, callerID, id string, req Cr
 		}
 	}
 
-	s.log.Info("experiment version created",
+	s.log.Info(
+		"experiment version created",
 		zap.String(logger.FieldExperimentID, id),
 		zap.Int(logger.FieldExperimentVersion, versionNum),
 		zap.String(logger.FieldActorID, callerID),
@@ -400,7 +403,8 @@ func (s *Service) transition(ctx context.Context, callerID, id string, to Status
 		return ExperimentResponse{}, err
 	}
 
-	s.log.Info("experiment transition",
+	s.log.Info(
+		"experiment transition",
 		zap.String(logger.FieldExperimentID, id),
 		zap.String(logger.FieldExperimentStatus, string(to)),
 		zap.String(logger.FieldActorID, callerID),
@@ -471,7 +475,8 @@ func (s *Service) ApplyReviewOutcome(ctx context.Context, callerID, experimentID
 		return ExperimentResponse{}, err
 	}
 
-	s.log.Info("experiment review outcome",
+	s.log.Info(
+		"experiment review outcome",
 		zap.String(logger.FieldExperimentID, experimentID),
 		zap.String(logger.FieldExperimentStatus, string(to)),
 		zap.String(logger.FieldActorID, callerID),
@@ -532,7 +537,19 @@ func (s *Service) InternalPause(ctx context.Context, callerID, id string, versio
 }
 
 func (s *Service) InternalRollback(ctx context.Context, callerID, id string, version int) (ExperimentResponse, error) {
-	return s.guardrailTransition(ctx, callerID, id, version)
+	if err := s.repo.RollbackToControl(ctx, id, version, callerID); err != nil {
+		return ExperimentResponse{}, err
+	}
+
+	s.log.Info(
+		"experiment guardrail rollback",
+		zap.String(logger.FieldExperimentID, id),
+		zap.String(logger.FieldActorID, callerID),
+	)
+
+	s.notifyRefresh()
+
+	return s.getDetail(ctx, id)
 }
 
 func (s *Service) guardrailTransition(ctx context.Context, callerID, id string, version int) (ExperimentResponse, error) {
@@ -548,7 +565,8 @@ func (s *Service) guardrailTransition(ctx context.Context, callerID, id string, 
 		return ExperimentResponse{}, err
 	}
 
-	s.log.Info("experiment guardrail pause",
+	s.log.Info(
+		"experiment guardrail pause",
 		zap.String(logger.FieldExperimentID, id),
 		zap.String(logger.FieldActorID, callerID),
 	)
@@ -558,7 +576,7 @@ func (s *Service) guardrailTransition(ctx context.Context, callerID, id string, 
 	return s.getDetail(ctx, id)
 }
 
-func (s *Service) Complete(ctx context.Context, callerID, id string, req CompleteRequest) (ExperimentResponse, error) {
+func (s *Service) Complete(ctx context.Context, callerID, id string, req CompleteRequest, winnerVariantID *string) (ExperimentResponse, error) {
 	admin, err := s.isAdmin(ctx, callerID)
 	if err != nil {
 		return ExperimentResponse{}, err
@@ -579,18 +597,16 @@ func (s *Service) Complete(ctx context.Context, callerID, id string, req Complet
 	if strings.TrimSpace(req.Reason) == "" {
 		return ExperimentResponse{}, ErrReasonRequired
 	}
-
-	if req.Decision == DecisionRolloutWinner {
-		if err := s.rolloutWinner(ctx, callerID, state, req.WinnerVariantID); err != nil {
-			return ExperimentResponse{}, err
-		}
+	if req.Decision == DecisionRolloutWinner && (winnerVariantID == nil || *winnerVariantID == "") {
+		return ExperimentResponse{}, ErrWinnerRequired
 	}
 
-	if _, err := s.repo.Complete(ctx, id, state.Status, req.Version, callerID, req.Decision, strings.TrimSpace(req.Reason)); err != nil {
+	if _, err := s.repo.Complete(ctx, id, state.Status, req.Version, callerID, req.Decision, strings.TrimSpace(req.Reason), winnerVariantID); err != nil {
 		return ExperimentResponse{}, err
 	}
 
-	s.log.Info("experiment completed",
+	s.log.Info(
+		"experiment completed",
 		zap.String(logger.FieldExperimentID, id),
 		zap.String(logger.FieldExperimentStatus, string(req.Decision)),
 		zap.String(logger.FieldActorID, callerID),
@@ -603,38 +619,8 @@ func (s *Service) Complete(ctx context.Context, callerID, id string, req Complet
 
 func (s *Service) Rollout(ctx context.Context, callerID, id string, req RolloutRequest) (ExperimentResponse, error) {
 	return s.Complete(ctx, callerID, id, CompleteRequest{
-		Version:         req.Version,
-		Decision:        DecisionRolloutWinner,
-		Reason:          req.Reason,
-		WinnerVariantID: req.WinnerVariantID,
-	})
-}
-
-func (s *Service) rolloutWinner(ctx context.Context, callerID string, state Experiment, winnerVariantID *string) error {
-	if winnerVariantID == nil || *winnerVariantID == "" {
-		return ErrWinnerRequired
-	}
-	ver, err := s.currentVersion(ctx, state)
-	if err != nil {
-		return err
-	}
-	variants, err := s.repo.ListVariants(ctx, ver.ID)
-	if err != nil {
-		return err
-	}
-	var winner *Variant
-	for i := range variants {
-		if variants[i].ID == *winnerVariantID {
-			winner = &variants[i]
-			break
-		}
-	}
-	if winner == nil {
-		return ErrWinnerRequired
-	}
-
-	_, err = s.flags.Update(ctx, callerID, state.FlagID, flagsdomain.UpdateFlagRequest{
-		DefaultValue: flagsdomain.ValueFlag(winner.Value),
-	})
-	return err
+		Version:  req.Version,
+		Decision: DecisionRolloutWinner,
+		Reason:   req.Reason,
+	}, req.WinnerVariantID)
 }

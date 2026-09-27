@@ -37,7 +37,7 @@ func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisCli
 
 	snapWriter := snapshot.NewWriter(redisClient, log)
 	snapReader := snapshot.NewReader(redisClient, log)
-	healthdomain.NewHandler(pool, redisClient, s3Client, snapReader, cfg.Environment, log).RegisterRoutes(apiV1)
+	healthdomain.NewHandler().RegisterRoutes(apiV1)
 
 	tokenizer := libauth.NewJWTManager(cfg.Auth.JWT.SecretKey, cfg.Auth.JWT.TTL)
 	authRepo := authdomain.NewRepository(pool)
@@ -108,6 +108,7 @@ func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisCli
 	}
 
 	anyAuthGroup := apiV1.Group("", authMW.Handler(nil))
+	authHandler.RegisterLogoutRoute(anyAuthGroup)
 	usersHandler.RegisterMeRoute(anyAuthGroup)
 
 	adminGroup := apiV1.Group("", authMW.Handler([]usersdomain.Role{usersdomain.RoleAdmin}))
@@ -219,7 +220,7 @@ func newSnapshotSource(flags *flagsdomain.Repository, exps *experimentsdomain.Re
 }
 
 func (s snapshotSource) ListFlags(ctx context.Context) ([]snapshot.FlagInput, error) {
-	flags, err := s.flags.List(ctx, 10000, 0, nil)
+	flags, err := s.flags.List(ctx, -1, 0, flagsdomain.ListFilter{})
 	if err != nil {
 		return nil, err
 	}
@@ -272,7 +273,8 @@ func bootstrapSnapshotRefresh(log *zap.Logger, refresher panelsnapshot.Refresher
 	defer cancel()
 
 	if err := refresher.RefreshSync(ctx); err != nil {
-		log.Warn("snapshot bootstrap refresh failed; will retry on first mutation",
+		log.Warn(
+			"snapshot bootstrap refresh failed; will retry on first mutation",
 			zap.Error(err),
 		)
 		return

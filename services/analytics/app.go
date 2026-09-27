@@ -16,7 +16,7 @@ func NewApp(fiberConfig *fiber.Config, log *zap.Logger, cfg *config.Config) *fib
 
 	apiV1 := app.Group("/api/v1/analytics")
 
-	healthdomain.NewHandler(cfg.Environment, log).RegisterRoutes(apiV1)
+	healthdomain.NewHandler().RegisterRoutes(apiV1)
 
 	return app
 }

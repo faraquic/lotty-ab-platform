@@ -1,4 +1,8 @@
 CONTAINER_ENGINE ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
+CONFIG_FILE ?= ./config.example.json
+CONFIG_NAME ?= config.local.json
+APP_ENVIRONMENT ?= local
+LOG_DIR ?= logs
 
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null)
 GIT_TAG    := $(shell git describe --tags --abbrev=0 2>/dev/null)
@@ -15,10 +19,6 @@ LDFLAGS := -X github.com/faraquic/lotty-ab-platform/pkg/config.ServiceVersion=$(
 PANEL_BIN     ?= bin/panel
 RUNTIME_BIN   ?= bin/runtime
 ANALYTICS_BIN ?= bin/analytics
-FRONTEND_DIR  ?= frontend
-FRONTEND_PORT ?= 5173
-FRONTEND_PID  ?= /tmp/labp-frontend.pid
-
 PANEL_PORT     ?= 8081
 RUNTIME_PORT   ?= 8082
 ANALYTICS_PORT ?= 8083
@@ -49,6 +49,13 @@ PIDS_LIMIT   ?= 128
 
 MIGRATIONS_DIR ?= migrations
 POSTGRES_DSN   ?= postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
+REDIS_ADDRESS  ?= localhost:$(REDIS_PORT)
+S3_ENDPOINT    ?= http://localhost:$(S3_PORT)
+JWT_SECRET_KEY ?= change-me-local-only
+BOOTSTRAP_PASSWORD_HASH ?=
+PANEL_HTTP_ADDRESS     ?= 0.0.0.0:$(PANEL_PORT)
+RUNTIME_HTTP_ADDRESS   ?= 0.0.0.0:$(RUNTIME_PORT)
+ANALYTICS_HTTP_ADDRESS ?= 0.0.0.0:$(ANALYTICS_PORT)
 
 # podman needs :Z on volumes when SELinux is enforcing; docker ignores it
 ifeq ($(shell basename $(CONTAINER_ENGINE)),podman)
@@ -64,12 +71,13 @@ help:
 	@echo "Usage: make <target>"
 	@echo ""
 	@echo "Development (local binaries):"
+	@echo "  copy config.example.json to config.local.json and provide its ENV values"
 	@echo "  dev-up          start infra containers (PostgreSQL + Redis + S3)"
 	@echo "  dev-down        stop infra containers"
 	@echo "  dev-clean       stop infra and remove volumes"
 	@echo "  dev-status      check which infra containers are running"
 	@echo ""
-	@echo "  run-local       build + restart Go services and frontend"
+		@echo "  run-local       build + restart Go services"
 	@echo "  stop-local      stop all service binaries"
 	@echo "  restart-local   stop + run-local"
 	@echo "  logs-local      tail panel + runtime + analytics stdout"
@@ -77,16 +85,14 @@ help:
 	@echo "  run-panel       build + run only panel"
 	@echo "  run-runtime     build + run only runtime"
 	@echo "  run-analytics   build + run only analytics"
-	@echo "  run-frontend    run Vite development server"
 	@echo ""
 	@echo "Build:"
-	@echo "  build           compile panel    -> $(PANEL_BIN)"
+	@echo "  build-panel     compile panel    -> $(PANEL_BIN)"
 	@echo "  build-runtime   compile runtime  -> $(RUNTIME_BIN)"
 	@echo "  build-analytics compile analytics -> $(ANALYTICS_BIN)"
-	@echo "  build-frontend  compile frontend production bundle"
 	@echo "  build-all       compile all services"
 	@echo "  vet             go vet ./..."
-	@echo "  check           build + vet + gofmt + frontend checks"
+		@echo "  check           build + vet + gofmt"
 	@echo ""
 	@echo "Docker Compose (full stack):"
 	@echo "  up              build + start all services in docker compose"
@@ -136,25 +142,25 @@ dev-status:
 # ─── Local development (fast restart) ────────────────────────────────────────
 
 .PHONY: run-local
-run-local: build-panel build-runtime build-analytics _ensure-infra
+run-local: check-local-config build-panel build-runtime build-analytics _ensure-infra
+run-local: export CONFIG_NAME APP_ENVIRONMENT LOG_LEVEL JWT_SECRET_KEY BOOTSTRAP_PASSWORD_HASH POSTGRES_DSN REDIS_ADDRESS S3_BUCKET S3_REGION S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY
+	@mkdir -p "$(LOG_DIR)"
 	@echo "Stopping old services..."
 	@-pkill -f 'bin/panel' 2>/dev/null; sleep 0.2
 	@-pkill -f 'bin/runtime' 2>/dev/null; sleep 0.2
 	@-pkill -f 'bin/analytics' 2>/dev/null; sleep 0.2
-	@$(MAKE) _start-frontend
 	@echo "Starting panel  on :$(PANEL_PORT)..."
-	@./$(PANEL_BIN) &
+	@./$(PANEL_BIN) >"$(LOG_DIR)/panel.log" 2>&1 &
 	@echo "Starting runtime on :$(RUNTIME_PORT)..."
-	@./$(RUNTIME_BIN) &
+	@./$(RUNTIME_BIN) >"$(LOG_DIR)/runtime.log" 2>&1 &
 	@echo "Starting analytics on :$(ANALYTICS_PORT)..."
-	@./$(ANALYTICS_BIN) &
+	@./$(ANALYTICS_BIN) >"$(LOG_DIR)/analytics.log" 2>&1 &
 	@sleep 1
 	@echo ""
 	@echo "All services running. Endpoints:"
 	@echo "  panel     http://localhost:$(PANEL_PORT)/api/v1/panel/"
 	@echo "  runtime   http://localhost:$(RUNTIME_PORT)/api/v1/runtime/"
 	@echo "  analytics http://localhost:$(ANALYTICS_PORT)/api/v1/analytics/"
-	@echo "  frontend  http://localhost:$(FRONTEND_PORT)"
 	@echo ""
 	@echo "  make stop-local    stop all"
 	@echo "  make logs-local    tail logs"
@@ -164,7 +170,6 @@ stop-local:
 	@-pkill -f 'bin/panel' 2>/dev/null || true
 	@-pkill -f 'bin/runtime' 2>/dev/null || true
 	@-pkill -f 'bin/analytics' 2>/dev/null || true
-	@$(MAKE) _stop-frontend
 	@echo "All services stopped."
 
 .PHONY: restart-local
@@ -172,41 +177,35 @@ restart-local: stop-local run-local
 
 .PHONY: logs-local
 logs-local:
-	@echo "Tailing service logs (Ctrl+C to stop)..."
-	@tail -F /dev/null 2>/dev/null || true
-	@echo "Note: services log to stderr. Run them in separate terminals for best output."
+	@tail -F "$(LOG_DIR)/panel.log" "$(LOG_DIR)/runtime.log" "$(LOG_DIR)/analytics.log"
+
+.PHONY: check-local-config
+check-local-config:
+	@if [ ! -f "$(CONFIG_NAME)" ]; then \
+		echo "Config not found: $(CONFIG_NAME). Copy config.example.json to config.local.json and set local values."; \
+		exit 1; \
+	fi
 
 .PHONY: run-panel
-run-panel: build-panel _ensure-infra
+run-panel: check-local-config build-panel _ensure-infra
+run-panel: export CONFIG_NAME APP_ENVIRONMENT LOG_LEVEL JWT_SECRET_KEY BOOTSTRAP_PASSWORD_HASH POSTGRES_DSN REDIS_ADDRESS S3_BUCKET S3_REGION S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY
 	@-pkill -f 'bin/panel' 2>/dev/null; sleep 0.2
 	@echo "Starting panel on :$(PANEL_PORT)..."
 	@./$(PANEL_BIN)
 
 .PHONY: run-runtime
-run-runtime: build-runtime _ensure-infra
+run-runtime: check-local-config build-runtime _ensure-infra
+run-runtime: export CONFIG_NAME APP_ENVIRONMENT LOG_LEVEL JWT_SECRET_KEY BOOTSTRAP_PASSWORD_HASH POSTGRES_DSN REDIS_ADDRESS S3_BUCKET S3_REGION S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY
 	@-pkill -f 'bin/runtime' 2>/dev/null; sleep 0.2
 	@echo "Starting runtime on :$(RUNTIME_PORT)..."
 	@./$(RUNTIME_BIN)
 
 .PHONY: run-analytics
-run-analytics: build-analytics _ensure-infra
+run-analytics: check-local-config build-analytics _ensure-infra
+run-analytics: export CONFIG_NAME APP_ENVIRONMENT LOG_LEVEL JWT_SECRET_KEY BOOTSTRAP_PASSWORD_HASH POSTGRES_DSN REDIS_ADDRESS S3_BUCKET S3_REGION S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY
 	@-pkill -f 'bin/analytics' 2>/dev/null; sleep 0.2
 	@echo "Starting analytics on :$(ANALYTICS_PORT)..."
 	@./$(ANALYTICS_BIN)
-
-.PHONY: run-frontend
-run-frontend:
-	cd $(FRONTEND_DIR) && pnpm dev --host 0.0.0.0 --port $(FRONTEND_PORT)
-
-.PHONY: _start-frontend
-_start-frontend: _stop-frontend
-	@echo "Starting frontend on :$(FRONTEND_PORT)..."
-	@cd $(FRONTEND_DIR) && pnpm dev --host 0.0.0.0 --port $(FRONTEND_PORT) > /tmp/labp-frontend.log 2>&1 & echo $$! > $(FRONTEND_PID)
-
-.PHONY: _stop-frontend
-_stop-frontend:
-	@if test -f $(FRONTEND_PID); then kill $$(cat $(FRONTEND_PID)) 2>/dev/null || true; rm -f $(FRONTEND_PID); fi
-	@for pid in $$(ps -eo pid=,comm=,args= | awk '$$2 ~ /^(node|node-MainThread|pnpm)$$/ && $$0 ~ /\/frontend\// { print $$1 }'); do kill $$pid 2>/dev/null || true; done
 
 # Internal: ensure infra is running, start if not
 .PHONY: _ensure-infra
@@ -235,32 +234,27 @@ build-runtime:
 build-analytics:
 	go build -v -ldflags "$(LDFLAGS)" -o $(ANALYTICS_BIN) ./services/analytics
 
-.PHONY: build-frontend
-build-frontend:
-	cd $(FRONTEND_DIR) && pnpm build
-
-.PHONY: frontend-check
-frontend-check:
-	cd $(FRONTEND_DIR) && pnpm typecheck && pnpm lint && pnpm build
-
 .PHONY: build-all
-build-all: build-panel build-runtime build-analytics build-frontend
+build-all: build-panel build-runtime build-analytics
 
 .PHONY: vet
 vet:
 	go vet ./...
 
 .PHONY: check
-check: build-all vet frontend-check
-	@gofmt -l pkg/ services/ | grep -v '^$$' && echo "^^^ files need formatting" || echo "All clean."
+check: build-all vet
+	@files=$$(gofmt -l pkg/ services/); \
+	if [ -n "$$files" ]; then printf '%s\n' "$$files"; echo "Files need gofmt." >&2; exit 1; fi; \
+	echo "All clean."
 
 # ─── Docker Compose ──────────────────────────────────────────────────────────
 
 .PHONY: up
-up: check-engine
+up: check-engine check-config
+up: export CONFIG_FILE APP_ENVIRONMENT LOG_LEVEL JWT_SECRET_KEY BOOTSTRAP_PASSWORD_HASH POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DSN REDIS_ADDRESS S3_BUCKET S3_REGION S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY PANEL_PORT RUNTIME_PORT ANALYTICS_PORT NGINX_PORT SERVICE_VERSION
 	$(CONTAINER_ENGINE) compose up -d postgres redis s3
 	@ready=0; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do \
-		if $(CONTAINER_ENGINE) exec $(POSTGRES_NAME) pg_isready -U $(POSTGRES_USER) -d $(POSTGRES_DB) >/dev/null 2>&1; then ready=1; break; fi; \
+		if $(CONTAINER_ENGINE) compose exec -T postgres pg_isready -U $(POSTGRES_USER) -d $(POSTGRES_DB) >/dev/null 2>&1; then ready=1; break; fi; \
 		echo "  waiting for PostgreSQL... ($$i)"; \
 		sleep 2; \
 	done; \
@@ -277,7 +271,12 @@ logs: check-engine
 	$(CONTAINER_ENGINE) compose logs -f
 
 .PHONY: rebuild
-rebuild: down up
+rebuild: down
+	$(MAKE) up
+
+.PHONY: check-config
+check-config:
+	@if [ ! -f "$(CONFIG_FILE)" ]; then echo "Config not found: $(CONFIG_FILE)" >&2; exit 1; fi
 
 # ─── Check engine ────────────────────────────────────────────────────────────
 

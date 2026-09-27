@@ -15,9 +15,10 @@ import (
 )
 
 var (
-	ErrNotFound      = errors.New("flag not found")
-	ErrConflictKeys  = errors.New("flag with this key already exists")
-	ErrConflictNames = errors.New("flag with this name already exists")
+	ErrNotFound         = errors.New("flag not found")
+	ErrActiveExperiment = errors.New("flag is used by an active experiment")
+	ErrConflictKeys     = errors.New("flag with this key already exists")
+	ErrConflictNames    = errors.New("flag with this name already exists")
 )
 
 type Repository struct {
@@ -210,9 +211,16 @@ WHERE
 	return fwo, nil
 }
 
-// List returns flags matching the optional case-insensitive search over key
-// and name.
-func (r *Repository) List(ctx context.Context, limit, offset int, search *string) ([]Flag, error) {
+var validFlagSortFields = map[string]string{
+	"id":         "f.id",
+	"key":        "f.key",
+	"name":       "f.name",
+	"type":       "f.type",
+	"created_at": "f.created_at",
+	"updated_at": "f.updated_at",
+}
+
+func (r *Repository) List(ctx context.Context, limit, offset int, filter ListFilter) ([]Flag, error) {
 	q := `
 SELECT
     f.id,
@@ -231,12 +239,31 @@ FROM
 WHERE
     f.deleted_at IS NULL`
 	args := []any{}
-	if search != nil {
-		args = append(args, "%"+*search+"%")
+	if filter.Type != nil {
+		args = append(args, *filter.Type)
+		q += ` AND f.type = $` + strconv.Itoa(len(args))
+	}
+	if filter.CreatedBy != nil {
+		args = append(args, *filter.CreatedBy)
+		q += ` AND f.created_by = $` + strconv.Itoa(len(args))
+	}
+	if filter.Search != nil {
+		args = append(args, "%"+*filter.Search+"%")
 		q += ` AND (f.key ILIKE $` + strconv.Itoa(len(args)) + ` OR f.name ILIKE $` + strconv.Itoa(len(args)) + `)`
 	}
-	q += ` ORDER BY f.id LIMIT $` + strconv.Itoa(len(args)+1) + ` OFFSET $` + strconv.Itoa(len(args)+2)
-	args = append(args, limit, offset)
+	sortCol := validFlagSortFields[filter.Sort]
+	if sortCol == "" {
+		sortCol = "f.id"
+	}
+	dir := "ASC"
+	if filter.Order == "desc" {
+		dir = "DESC"
+	}
+	q += ` ORDER BY ` + sortCol + ` ` + dir + ` OFFSET $` + strconv.Itoa(len(args)+2)
+	if limit >= 0 {
+		q += ` LIMIT $` + strconv.Itoa(len(args)+1)
+	}
+	args = append(args, offset, limit)
 
 	rows, err := r.db.Query(ctx, q, args...)
 	if err != nil {
@@ -307,24 +334,38 @@ WHERE
 func (r *Repository) Delete(ctx context.Context, id string) error {
 	const q = `
 UPDATE
-    flags
+	flags AS f
 SET
     deleted_at = now()
 WHERE
-    id = $1
-    AND deleted_at IS NULL`
+	f.id = $1
+	AND f.deleted_at IS NULL
+	AND NOT EXISTS (
+		SELECT 1
+		FROM experiments e
+		WHERE e.flag_id = f.id
+			AND e.status IN ('running', 'paused')
+	)`
 
 	tag, err := r.db.Exec(ctx, q, id)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
+		var exists bool
+		const existsQuery = `SELECT EXISTS (SELECT 1 FROM flags WHERE id = $1 AND deleted_at IS NULL)`
+		if err := r.db.QueryRow(ctx, existsQuery, id).Scan(&exists); err != nil {
+			return err
+		}
+		if exists {
+			return ErrActiveExperiment
+		}
 		return ErrNotFound
 	}
 	return nil
 }
 
-func (r *Repository) Count(ctx context.Context, search *string) (int64, error) {
+func (r *Repository) Count(ctx context.Context, filter ListFilter) (int64, error) {
 	q := `
 SELECT
     count(*)
@@ -333,8 +374,16 @@ FROM
 WHERE
     deleted_at IS NULL`
 	args := []any{}
-	if search != nil {
-		args = append(args, "%"+*search+"%")
+	if filter.Type != nil {
+		args = append(args, *filter.Type)
+		q += ` AND type = $` + strconv.Itoa(len(args))
+	}
+	if filter.CreatedBy != nil {
+		args = append(args, *filter.CreatedBy)
+		q += ` AND created_by = $` + strconv.Itoa(len(args))
+	}
+	if filter.Search != nil {
+		args = append(args, "%"+*filter.Search+"%")
 		q += ` AND (key ILIKE $` + strconv.Itoa(len(args)) + ` OR name ILIKE $` + strconv.Itoa(len(args)) + `)`
 	}
 

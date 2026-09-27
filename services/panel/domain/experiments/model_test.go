@@ -1,6 +1,7 @@
 package experiments
 
 import (
+	"errors"
 	"testing"
 
 	flagsdomain "github.com/faraquic/lotty-ab-platform/services/panel/domain/flags"
@@ -8,37 +9,44 @@ import (
 )
 
 func TestValidateTransition(t *testing.T) {
-	valid := [][2]Status{
-		{StatusDraft, StatusReview},
-		{StatusReview, StatusApproved},
-		{StatusReview, StatusDraft},
-		{StatusApproved, StatusRunning},
-		{StatusRunning, StatusPaused},
-		{StatusRunning, StatusCompleted},
-		{StatusPaused, StatusRunning},
-		{StatusPaused, StatusCompleted},
-		{StatusCompleted, StatusArchived},
+	statuses := []Status{
+		StatusDraft,
+		StatusReview,
+		StatusApproved,
+		StatusRunning,
+		StatusPaused,
+		StatusCompleted,
+		StatusArchived,
+		StatusRejected,
 	}
-	for _, tc := range valid {
-		if err := ValidateTransition(tc[0], tc[1]); err != nil {
-			t.Errorf("%s -> %s: expected nil, got %v", tc[0], tc[1], err)
+	allowed := map[[2]Status]struct{}{
+		{StatusDraft, StatusReview}:       {},
+		{StatusReview, StatusApproved}:    {},
+		{StatusReview, StatusDraft}:       {},
+		{StatusReview, StatusRejected}:    {},
+		{StatusApproved, StatusRunning}:   {},
+		{StatusRunning, StatusPaused}:     {},
+		{StatusRunning, StatusCompleted}:  {},
+		{StatusPaused, StatusRunning}:     {},
+		{StatusPaused, StatusCompleted}:   {},
+		{StatusCompleted, StatusArchived}: {},
+	}
+
+	for _, from := range statuses {
+		for _, to := range statuses {
+			_, wantAllowed := allowed[[2]Status{from, to}]
+			err := ValidateTransition(from, to)
+			if wantAllowed && err != nil {
+				t.Errorf("%s -> %s: expected allowed transition, got %v", from, to, err)
+			} else if !wantAllowed && !errors.Is(err, ErrInvalidTransition) {
+				t.Errorf("%s -> %s: expected ErrInvalidTransition, got %v", from, to, err)
+			}
 		}
 	}
 
-	invalid := [][2]Status{
-		{StatusDraft, StatusRunning},
-		{StatusDraft, StatusCompleted},
-		{StatusReview, StatusRunning},
-		{StatusApproved, StatusPaused},
-		{StatusRunning, StatusDraft},
-		{StatusRunning, StatusArchived},
-		{StatusPaused, StatusDraft},
-		{StatusCompleted, StatusRunning},
-		{StatusArchived, StatusDraft},
-	}
-	for _, tc := range invalid {
-		if err := ValidateTransition(tc[0], tc[1]); err == nil {
-			t.Errorf("%s -> %s: expected error, got nil", tc[0], tc[1])
+	for _, tc := range [][2]Status{{"unknown", StatusDraft}, {StatusDraft, "unknown"}} {
+		if err := ValidateTransition(tc[0], tc[1]); !errors.Is(err, ErrInvalidTransition) {
+			t.Errorf("%s -> %s: expected ErrInvalidTransition, got %v", tc[0], tc[1], err)
 		}
 	}
 }

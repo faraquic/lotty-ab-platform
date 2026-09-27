@@ -1,38 +1,17 @@
 package health
 
-import (
-	"time"
+import "github.com/gofiber/fiber/v3"
 
-	"github.com/faraquic/lotty-ab-platform/pkg/config"
-	"github.com/faraquic/lotty-ab-platform/pkg/dto"
-	"github.com/gofiber/fiber/v3"
-	"go.uber.org/zap"
-)
+type Handler struct{}
 
-type Handler struct {
-	environment string
-	log         *zap.Logger
-}
-
-func NewHandler(environment string, log *zap.Logger) *Handler {
-	return &Handler{environment, log}
+func NewHandler() *Handler {
+	return &Handler{}
 }
 
 func (h *Handler) RegisterRoutes(r fiber.Router) {
 	r.Get("/health", h.health)
 }
 
-// health reports the aggregate service status and component readiness.
-func (h *Handler) health(c fiber.Ctx) {
-	resp := dto.ReadyResponse{
-		Service:     config.ServiceName,
-		Version:     config.ServiceVersion,
-		Environment: h.environment,
-		Timestamp:   time.Now().UTC(),
-		Components: map[string]dto.ComponentStatus{
-			"service": {Status: dto.StatusOK, Criticality: dto.CriticalityRequired},
-		},
-	}
-
-	c.JSON(resp)
+func (h *Handler) health(c fiber.Ctx) error {
+	return c.Status(fiber.StatusOK).SendString("OK")
 }

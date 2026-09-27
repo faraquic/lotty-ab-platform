@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/faraquic/lotty-ab-platform/pkg/audit"
 	"github.com/faraquic/lotty-ab-platform/pkg/database"
 	"github.com/faraquic/lotty-ab-platform/services/panel/domain/users"
 	"github.com/google/uuid"
@@ -16,6 +17,25 @@ import (
 
 type Repository struct {
 	db *pgxpool.Pool
+}
+
+type experimentAuditState struct {
+	Status          Status `json:"status"`
+	Version         int    `json:"version"`
+	GuardrailPaused bool   `json:"guardrail_paused"`
+}
+
+func appendExperimentStateAudit(ctx context.Context, tx pgx.Tx, experimentID, callerID, action, reason string, before, after experimentAuditState) error {
+	return audit.Append(ctx, tx, audit.Record{
+		ActorType:    "user",
+		ActorID:      callerID,
+		Action:       action,
+		ResourceType: "experiment",
+		ResourceID:   experimentID,
+		Reason:       reason,
+		Before:       before,
+		After:        after,
+	})
 }
 
 func NewRepository(db *pgxpool.Pool) *Repository {
@@ -80,6 +100,16 @@ INSERT INTO experiment_versions(id, experiment_id, version_num, weights_total, t
 
 	const curQ = `UPDATE experiments SET current_version_id = $1 WHERE id = $2`
 	if _, err = tx.Exec(ctx, curQ, versionID, expID); err != nil {
+		return "", "", err
+	}
+	if err := audit.Append(ctx, tx, audit.Record{
+		ActorType:    "user",
+		ActorID:      exp.CreatedBy,
+		Action:       "experiment.created",
+		ResourceType: "experiment",
+		ResourceID:   expID,
+		After:        experimentAuditState{Status: StatusDraft, Version: 1},
+	}); err != nil {
 		return "", "", err
 	}
 
@@ -361,9 +391,9 @@ func (r *Repository) CreateVersion(ctx context.Context, experimentID string, wei
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	const lockQ = `SELECT id FROM experiments WHERE id = $1 FOR UPDATE`
-	var locked string
-	if err = tx.QueryRow(ctx, lockQ, experimentID).Scan(&locked); err != nil {
+	var before experimentAuditState
+	const lockQ = `SELECT status, version, guardrail_paused FROM experiments WHERE id = $1 FOR UPDATE`
+	if err = tx.QueryRow(ctx, lockQ, experimentID).Scan(&before.Status, &before.Version, &before.GuardrailPaused); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", 0, ErrNotFound
 		}
@@ -398,6 +428,10 @@ INSERT INTO experiment_versions(id, experiment_id, version_num, weights_total, t
 	if resetToDraft {
 		const resetQ = `UPDATE experiments SET status = 'draft', completion_decision = NULL, completion_reason = NULL WHERE id = $1`
 		if _, err = tx.Exec(ctx, resetQ, experimentID); err != nil {
+			return "", 0, err
+		}
+		after := experimentAuditState{Status: StatusDraft, Version: before.Version + 1, GuardrailPaused: before.GuardrailPaused}
+		if err := appendExperimentStateAudit(ctx, tx, experimentID, callerID, "experiment.version_created_status_reset", "", before, after); err != nil {
 			return "", 0, err
 		}
 	}
@@ -445,9 +479,38 @@ INSERT INTO variants(id, version_id, name, value, weight_bp, is_control)
 }
 
 func (r *Repository) Transition(ctx context.Context, id string, from, to Status, expectedVersion int, callerID string, guardrailPaused *bool) (Experiment, error) {
-	var gp any
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return Experiment{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var before experimentAuditState
+	err = tx.QueryRow(ctx, `
+SELECT
+    status,
+    version,
+    guardrail_paused
+FROM
+    experiments
+WHERE
+    id = $1
+FOR UPDATE`, id).Scan(&before.Status, &before.Version, &before.GuardrailPaused)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Experiment{}, ErrNotFound
+	}
+	if err != nil {
+		return Experiment{}, err
+	}
+	if before.Status != from {
+		return Experiment{}, ErrInvalidTransition
+	}
+	if before.Version != expectedVersion {
+		return Experiment{}, ErrVersionConflict
+	}
+	guardrailState := before.GuardrailPaused
 	if guardrailPaused != nil {
-		gp = *guardrailPaused
+		guardrailState = *guardrailPaused
 	}
 	q := `
 UPDATE
@@ -460,22 +523,151 @@ SET
 WHERE
     e.id = $4 AND e.status = $5 AND e.version = $6
 RETURNING` + experimentColumns
-	row := r.db.QueryRow(ctx, q, string(to), gp, callerID, id, string(from), expectedVersion)
+	row := tx.QueryRow(ctx, q, string(to), guardrailPaused, callerID, id, string(from), expectedVersion)
 	exp, err := scanExperiment(row)
-	if err == nil {
-		return exp, nil
-	}
-	if !errors.Is(err, ErrNotFound) {
+	if err != nil {
 		return Experiment{}, err
 	}
-	current, getErr := r.GetState(ctx, id)
-	if getErr != nil {
-		return Experiment{}, getErr
+	after := experimentAuditState{Status: to, Version: exp.Version, GuardrailPaused: guardrailState}
+	if err := appendExperimentStateAudit(ctx, tx, id, callerID, "experiment.status_transition", "", before, after); err != nil {
+		return Experiment{}, err
 	}
-	if current.Status != from {
-		return Experiment{}, ErrInvalidTransition
+	if err := tx.Commit(ctx); err != nil {
+		return Experiment{}, err
 	}
-	return Experiment{}, ErrVersionConflict
+	return exp, nil
+}
+
+func (r *Repository) RollbackToControl(ctx context.Context, id string, expectedVersion int, callerID string) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var (
+		status            Status
+		flagID            string
+		currentVersionID  *string
+		currentVersionNum int
+		guardrailPaused   bool
+	)
+	err = tx.QueryRow(ctx, `
+SELECT
+    status,
+    flag_id::text,
+    current_version_id::text,
+	version,
+	guardrail_paused
+FROM
+    experiments
+WHERE
+    id = $1
+FOR UPDATE`, id).Scan(&status, &flagID, &currentVersionID, &currentVersionNum, &guardrailPaused)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if status != StatusRunning {
+		return ErrInvalidTransition
+	}
+	if currentVersionNum != expectedVersion {
+		return ErrVersionConflict
+	}
+	if err := setFlagDefaultToControl(ctx, tx, flagID, currentVersionID, callerID); err != nil {
+		return err
+	}
+
+	_, err = tx.Exec(ctx, `
+UPDATE
+    experiments
+SET
+    status = 'paused',
+    guardrail_paused = TRUE,
+    version = version + 1,
+    updated_by = $1
+WHERE
+    id = $2
+    AND status = 'running'
+    AND version = $3`, callerID, id, expectedVersion)
+	if err != nil {
+		return err
+	}
+	before := experimentAuditState{Status: status, Version: currentVersionNum, GuardrailPaused: guardrailPaused}
+	after := experimentAuditState{Status: StatusPaused, Version: currentVersionNum + 1, GuardrailPaused: true}
+	if err := appendExperimentStateAudit(ctx, tx, id, callerID, "experiment.guardrail_rollback", "", before, after); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+func setFlagDefaultToControl(ctx context.Context, tx pgx.Tx, flagID string, versionID *string, callerID string) error {
+	if versionID == nil {
+		return ErrInvalidVariants
+	}
+
+	var controlValue string
+	err := tx.QueryRow(ctx, `
+SELECT
+    value::text
+FROM
+    variants
+WHERE
+    version_id = $1
+    AND is_control`, *versionID).Scan(&controlValue)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrInvalidVariants
+	}
+	if err != nil {
+		return err
+	}
+
+	return updateFlagDefault(ctx, tx, flagID, controlValue, callerID)
+}
+
+func setFlagDefaultToWinner(ctx context.Context, tx pgx.Tx, flagID string, versionID *string, winnerVariantID string, callerID string) error {
+	if versionID == nil {
+		return ErrInvalidVariants
+	}
+
+	var winnerValue string
+	err := tx.QueryRow(ctx, `
+SELECT
+    value::text
+FROM
+    variants
+WHERE
+    version_id = $1
+    AND id = $2`, *versionID, winnerVariantID).Scan(&winnerValue)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrWinnerRequired
+	}
+	if err != nil {
+		return err
+	}
+
+	return updateFlagDefault(ctx, tx, flagID, winnerValue, callerID)
+}
+
+func updateFlagDefault(ctx context.Context, tx pgx.Tx, flagID, value, callerID string) error {
+	tag, err := tx.Exec(ctx, `
+UPDATE
+    flags
+SET
+    default_value = $1::jsonb,
+    updated_by = $2
+WHERE
+    id = $3`, value, callerID, flagID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrFlagNotFound
+	}
+	return nil
 }
 
 func (r *Repository) UpdateDraft(ctx context.Context, id string, name, description string, expectedVersion int, callerID string) (Experiment, error) {
@@ -515,35 +707,219 @@ RETURNING` + experimentColumns
 	return Experiment{}, ErrVersionConflict
 }
 
-func (r *Repository) Complete(ctx context.Context, id string, from Status, expectedVersion int, callerID string, decision CompletionDecision, reason string) (Experiment, error) {
-	q := `
+func (r *Repository) Complete(ctx context.Context, id string, from Status, expectedVersion int, callerID string, decision CompletionDecision, reason string, winnerVariantID *string) (Experiment, error) {
+	switch decision {
+	case DecisionRolloutWinner:
+		return r.completeRolloutWinner(ctx, id, from, expectedVersion, callerID, reason, winnerVariantID)
+	case DecisionRollback:
+		return r.completeRollbackToControl(ctx, id, from, expectedVersion, callerID, reason)
+	case DecisionNoEffect:
+		return r.completeNoEffect(ctx, id, from, expectedVersion, callerID, reason)
+	default:
+		return Experiment{}, ErrInvalidTransition
+	}
+}
+
+func (r *Repository) completeNoEffect(ctx context.Context, id string, from Status, expectedVersion int, callerID, reason string) (Experiment, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return Experiment{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var before experimentAuditState
+	err = tx.QueryRow(ctx, `
+SELECT
+    status,
+    version,
+    guardrail_paused
+FROM
+    experiments
+WHERE
+    id = $1
+FOR UPDATE`, id).Scan(&before.Status, &before.Version, &before.GuardrailPaused)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Experiment{}, ErrNotFound
+	}
+	if err != nil {
+		return Experiment{}, err
+	}
+	if before.Status != from || (from != StatusRunning && from != StatusPaused) {
+		return Experiment{}, ErrInvalidTransition
+	}
+	if before.Version != expectedVersion {
+		return Experiment{}, ErrVersionConflict
+	}
+
+	result, err := scanExperiment(tx.QueryRow(ctx, `
 UPDATE
     experiments AS e
 SET
     status = 'completed',
     version = e.version + 1,
-    completion_decision = $1,
-    completion_reason = $2,
-    updated_by = $3
+    completion_decision = 'no_effect',
+    completion_reason = $1,
+    updated_by = $2
 WHERE
-    e.id = $4 AND e.status = $5 AND e.version = $6
-RETURNING` + experimentColumns
-	row := r.db.QueryRow(ctx, q, string(decision), reason, callerID, id, string(from), expectedVersion)
-	exp, err := scanExperiment(row)
-	if err == nil {
-		return exp, nil
-	}
-	if !errors.Is(err, ErrNotFound) {
+    e.id = $3
+    AND e.status = $4
+    AND e.version = $5
+RETURNING`+experimentColumns, reason, callerID, id, string(from), expectedVersion))
+	if err != nil {
 		return Experiment{}, err
 	}
-	current, getErr := r.GetState(ctx, id)
-	if getErr != nil {
-		return Experiment{}, getErr
+	after := experimentAuditState{Status: StatusCompleted, Version: result.Version, GuardrailPaused: before.GuardrailPaused}
+	if err := appendExperimentStateAudit(ctx, tx, id, callerID, "experiment.completed.no_effect", reason, before, after); err != nil {
+		return Experiment{}, err
 	}
-	if current.Status != from {
+	if err := tx.Commit(ctx); err != nil {
+		return Experiment{}, err
+	}
+	return result, nil
+}
+
+func (r *Repository) completeRolloutWinner(ctx context.Context, id string, from Status, expectedVersion int, callerID, reason string, winnerVariantID *string) (Experiment, error) {
+	if winnerVariantID == nil || *winnerVariantID == "" {
+		return Experiment{}, ErrWinnerRequired
+	}
+
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return Experiment{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var (
+		status           Status
+		flagID           string
+		currentVersionID *string
+		version          int
+		guardrailPaused  bool
+	)
+	err = tx.QueryRow(ctx, `
+SELECT
+    status,
+    flag_id::text,
+    current_version_id::text,
+	version,
+	guardrail_paused
+FROM
+    experiments
+WHERE
+    id = $1
+FOR UPDATE`, id).Scan(&status, &flagID, &currentVersionID, &version, &guardrailPaused)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Experiment{}, ErrNotFound
+	}
+	if err != nil {
+		return Experiment{}, err
+	}
+	if status != from || (from != StatusRunning && from != StatusPaused) {
 		return Experiment{}, ErrInvalidTransition
 	}
-	return Experiment{}, ErrVersionConflict
+	if version != expectedVersion {
+		return Experiment{}, ErrVersionConflict
+	}
+	if err := setFlagDefaultToWinner(ctx, tx, flagID, currentVersionID, *winnerVariantID, callerID); err != nil {
+		return Experiment{}, err
+	}
+
+	result, err := scanExperiment(tx.QueryRow(ctx, `
+UPDATE
+    experiments AS e
+SET
+    status = 'completed',
+    version = e.version + 1,
+    completion_decision = 'rollout_winner',
+    completion_reason = $1,
+    updated_by = $2
+WHERE
+    e.id = $3
+    AND e.status = $4
+    AND e.version = $5
+RETURNING`+experimentColumns, reason, callerID, id, string(from), expectedVersion))
+	if err != nil {
+		return Experiment{}, err
+	}
+	before := experimentAuditState{Status: status, Version: version, GuardrailPaused: guardrailPaused}
+	after := experimentAuditState{Status: StatusCompleted, Version: result.Version, GuardrailPaused: guardrailPaused}
+	if err := appendExperimentStateAudit(ctx, tx, id, callerID, "experiment.completed.rollout_winner", reason, before, after); err != nil {
+		return Experiment{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Experiment{}, err
+	}
+	return result, nil
+}
+
+func (r *Repository) completeRollbackToControl(ctx context.Context, id string, from Status, expectedVersion int, callerID, reason string) (Experiment, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return Experiment{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var (
+		status           Status
+		flagID           string
+		currentVersionID *string
+		version          int
+		guardrailPaused  bool
+	)
+	err = tx.QueryRow(ctx, `
+SELECT
+    status,
+    flag_id::text,
+    current_version_id::text,
+	version,
+	guardrail_paused
+FROM
+    experiments
+WHERE
+    id = $1
+FOR UPDATE`, id).Scan(&status, &flagID, &currentVersionID, &version, &guardrailPaused)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Experiment{}, ErrNotFound
+	}
+	if err != nil {
+		return Experiment{}, err
+	}
+	if status != from || (from != StatusRunning && from != StatusPaused) {
+		return Experiment{}, ErrInvalidTransition
+	}
+	if version != expectedVersion {
+		return Experiment{}, ErrVersionConflict
+	}
+	if err := setFlagDefaultToControl(ctx, tx, flagID, currentVersionID, callerID); err != nil {
+		return Experiment{}, err
+	}
+
+	result, err := scanExperiment(tx.QueryRow(ctx, `
+UPDATE
+    experiments AS e
+SET
+    status = 'completed',
+    version = e.version + 1,
+    completion_decision = 'rollback',
+    completion_reason = $1,
+    updated_by = $2
+WHERE
+    e.id = $3
+    AND e.status = $4
+    AND e.version = $5
+RETURNING`+experimentColumns, reason, callerID, id, string(from), expectedVersion))
+	if err != nil {
+		return Experiment{}, err
+	}
+	before := experimentAuditState{Status: status, Version: version, GuardrailPaused: guardrailPaused}
+	after := experimentAuditState{Status: StatusCompleted, Version: result.Version, GuardrailPaused: guardrailPaused}
+	if err := appendExperimentStateAudit(ctx, tx, id, callerID, "experiment.completed.rollback", reason, before, after); err != nil {
+		return Experiment{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Experiment{}, err
+	}
+	return result, nil
 }
 
 func (r *Repository) ListVariants(ctx context.Context, versionID string) ([]Variant, error) {

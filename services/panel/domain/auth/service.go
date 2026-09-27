@@ -170,6 +170,54 @@ func (s *Service) SessionActive(ctx context.Context, token string, userID string
 	return exists
 }
 
+// Logout removes the token's session from Redis, revoking server-side access.
+func (s *Service) Logout(ctx context.Context, token string, userID string) error {
+	if token == "" || userID == "" {
+		return nil
+	}
+	if s.redis == nil {
+		s.log.Warn(
+			"logout failed; redis unavailable",
+			zap.String(logger.FieldUserID, userID),
+			zap.String(logger.FieldCacheOperation, "del"),
+			zap.String(logger.FieldCacheStatus, "unavailable"),
+		)
+		return errors.New("redis unavailable")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+	defer cancel()
+
+	if err := (*s.redis).Do(ctx, (*s.redis).B().Del().Key(s.sessionKey(token, userID)).Build()).Error(); err != nil {
+		if isRedisTimeout(err) {
+			s.log.Warn(
+				"logout failed; redis timeout",
+				zap.String(logger.FieldUserID, userID),
+				zap.String(logger.FieldCacheOperation, "del"),
+				zap.String(logger.FieldCacheStatus, "timeout"),
+				zap.Error(err),
+			)
+		} else {
+			s.log.Warn(
+				"logout failed; redis connection error",
+				zap.String(logger.FieldUserID, userID),
+				zap.String(logger.FieldCacheOperation, "del"),
+				zap.String(logger.FieldCacheStatus, "connection_error"),
+				zap.Error(err),
+			)
+		}
+		return err
+	}
+
+	s.log.Debug(
+		"session deleted",
+		zap.String(logger.FieldUserID, userID),
+		zap.String(logger.FieldCacheOperation, "del"),
+	)
+
+	return nil
+}
+
 func (s *Service) sessionKey(token string, userID string) string {
 	sum := sha256.Sum256([]byte(token))
 

@@ -1,17 +1,31 @@
 package middleware
 
 import (
+	"strings"
+
+	"github.com/faraquic/lotty-ab-platform/pkg/audit"
 	"github.com/faraquic/lotty-ab-platform/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
 )
 
-const RequestIDHeader = "X-Request-ID"
+const (
+	RequestIDHeader = "X-Request-ID"
+	TraceIDHeader   = "X-Trace-ID"
+)
 
 func RequestIDGin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := resolveID(c.GetHeader(RequestIDHeader))
+		traceID := strings.TrimSpace(c.GetHeader(TraceIDHeader))
+		if len(traceID) > 256 {
+			traceID = ""
+		}
+		c.Request = c.Request.WithContext(audit.WithMetadata(c.Request.Context(), audit.Metadata{
+			RequestID: id,
+			TraceID:   traceID,
+		}))
 		c.Set(logger.FieldRequestID, id)
 		c.Writer.Header().Set(RequestIDHeader, id)
 		c.Next()

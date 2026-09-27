@@ -1,3 +1,4 @@
+# Keep the build context limited to Go build inputs. Runtime config is mounted separately.
 **
 !go.mod
 !go.sum

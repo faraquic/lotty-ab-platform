@@ -20,7 +20,7 @@ tags:
   - name: auth
     description: Authentication
   - name: health
-    description: Liveness and readiness probes
+    description: Liveness probe
   - name: flags
     description: Feature flags
   - name: metrics
@@ -62,28 +62,39 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /logout:
+    post:
+      tags: [auth]
+      summary: Revoke the current JWT session
+      operationId: logout
+      responses:
+        "200":
+          description: Session revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /health:
     get:
       tags: [health]
-      summary: Aggregate health and readiness probe
-      description: >
-        Returns liveness and per-component readiness in a single payload. The
-        former /ready endpoint was removed in favor of this endpoint.
+      summary: Liveness probe
+      description: Returns `OK` while the service process is running.
       operationId: health
       security: []
       responses:
         "200":
-          description: Service is alive and ready to serve traffic
+          description: Service process is alive
           content:
-            application/json:
+            text/plain:
               schema:
-                $ref: "#/components/schemas/ReadyResponse"
-        "503":
-          description: Service is not ready (e.g. database unreachable)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ReadyResponse"
+                type: string
+                enum: [OK]
+                example: "OK"
 
   /me:
     get:
@@ -188,7 +199,7 @@ paths:
           in: query
           description: Filter by role
           schema:
-            $ref: "#/components/schemas/UserRole"
+            $ref: "#/components/schemas/Role"
       responses:
         "200":
           description: List of users
@@ -372,6 +383,32 @@ paths:
           schema:
             type: string
             maxLength: 128
+        - name: type
+          in: query
+          description: Filter by flag type
+          schema:
+            type: string
+            enum: [string, number, bool]
+        - name: created_by
+          in: query
+          description: Filter by creator user ID (UUID)
+          schema:
+            type: string
+            format: uuid
+        - name: sort
+          in: query
+          description: Sort field
+          schema:
+            type: string
+            enum: [id, key, name, type, created_at, updated_at]
+            default: id
+        - name: order
+          in: query
+          description: Sort direction
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
       responses:
         "200":
           description: List of flags
@@ -449,6 +486,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -968,7 +1007,12 @@ paths:
     post:
       tags: [experiments]
       summary: Complete a running or paused experiment
-      description: Requires a decision (rollout_winner, rollback, no_effect) and a reason. A rollout winner additionally requires the winning variant and updates the flag default.
+      description: >
+        Requires a decision (rollback or no_effect) and a reason. The rollback
+        decision restores the flag default to the control value; no_effect keeps
+        the current default. Winner rollout is available via the dedicated
+        /experiments/{id}/rollout endpoint. Flag default and experiment state
+        are updated atomically in a single transaction.
       operationId: completeExperiment
       requestBody:
         required: true
@@ -1127,7 +1171,7 @@ paths:
     post:
       tags: [experiments]
       summary: Roll back an experiment from automation
-      description: Internal control API used by the guardrail evaluator. Stops experimental assignment and marks the experiment as guardrail-paused.
+      description: Internal control API used by the guardrail evaluator. Stops experimental assignment, sets the flag default to the current control variant, and marks the experiment as guardrail-paused.
       operationId: internalRollbackExperiment
       requestBody:
         required: true
@@ -1699,6 +1743,19 @@ components:
             expires_at:
               type: string
               format: date-time
+
+    LogoutResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            message:
+              type: string
+              example: logged out
               description: Token expiration time
           required: [token, expires_at]
       required: [success, data]
@@ -1843,53 +1900,6 @@ components:
               type: string
           required: [code, message]
       required: [success, error]
-
-    ComponentStatus:
-      type: object
-      properties:
-        status:
-          type: string
-          enum: [ok, unavailable]
-        criticality:
-          type: string
-          enum: [required, optional]
-          description: Impact of this component on service readiness
-        message:
-          type: string
-          description: Human-readable detail, present when status is not ok
-      required: [status, criticality]
-
-    ReadyResponse:
-      type: object
-      properties:
-        service:
-          type: string
-          example: labp-panel
-        version:
-          type: string
-          example: 0.1.0
-        environment:
-          type: string
-          example: local
-        timestamp:
-          type: string
-          format: date-time
-        components:
-          type: object
-          additionalProperties:
-            $ref: "#/components/schemas/ComponentStatus"
-          properties:
-            service:
-              $ref: "#/components/schemas/ComponentStatus"
-            database:
-              $ref: "#/components/schemas/ComponentStatus"
-            cache:
-              $ref: "#/components/schemas/ComponentStatus"
-            snapshot:
-              $ref: "#/components/schemas/ComponentStatus"
-            storage:
-              $ref: "#/components/schemas/ComponentStatus"
-      required: [service, version, environment, timestamp, components]
 
     FlagType:
       type: string
@@ -2293,6 +2303,11 @@ components:
       type: string
       enum: [rollout_winner, rollback, no_effect]
 
+    CompletionDecisionComplete:
+      type: string
+      description: Manual completion decision; winner rollout uses the dedicated /rollout endpoint.
+      enum: [rollback, no_effect]
+
     ExperimentVariantInput:
       type: object
       properties:
@@ -2534,15 +2549,11 @@ components:
           type: integer
           minimum: 1
         decision:
-          $ref: "#/components/schemas/CompletionDecision"
+          $ref: "#/components/schemas/CompletionDecisionComplete"
         reason:
           type: string
           minLength: 1
           maxLength: 4096
-        winner_variant_id:
-          type: string
-          format: uuid
-          description: Required when decision is rollout_winner
       required: [version, decision, reason]
 
     RolloutExperimentRequest:

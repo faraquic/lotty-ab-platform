@@ -11,3 +11,7 @@ type LoginResponse struct {
 	Token     string    `json:"token"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
+
+type LogoutResponse struct {
+	Message string `json:"message"`
+}

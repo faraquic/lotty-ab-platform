@@ -14,31 +14,25 @@ tags:
   - name: decide
     description: Deterministic flag evaluation
   - name: health
-    description: Liveness and readiness probes
+    description: Liveness probe
 
 paths:
   /health:
     get:
       tags: [health]
-      summary: Aggregate health and readiness probe
-      description: >
-        Returns liveness and per-component readiness in a single payload. The
-        former /ready endpoint was removed in favor of this endpoint.
+      summary: Liveness probe
+      description: Returns `OK` while the service process is running.
       operationId: health
       security: []
       responses:
         "200":
-          description: Service is alive and ready (cache and snapshot available)
+          description: Service process is alive
           content:
-            application/json:
+            text/plain:
               schema:
-                $ref: "#/components/schemas/ReadyResponse"
-        "503":
-          description: Service is not ready
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ReadyResponse"
+                type: string
+                enum: [OK]
+                example: "OK"
 
   /decide:
     post:
@@ -210,41 +204,6 @@ components:
           format: uuid
           description: Unique per decision, used for attribution. Present for default and experiment sources.
       required: [value, source]
-
-    ComponentStatus:
-      type: object
-      properties:
-        status:
-          type: string
-          enum: [ok, unavailable]
-        criticality:
-          type: string
-          enum: [required, optional]
-          description: Impact of this component on service readiness
-        message:
-          type: string
-      required: [status, criticality]
-
-    ReadyResponse:
-      type: object
-      properties:
-        service:
-          type: string
-          example: labp-runtime
-        version:
-          type: string
-          example: 0.1.0
-        environment:
-          type: string
-          example: local
-        timestamp:
-          type: string
-          format: date-time
-        components:
-          type: object
-          additionalProperties:
-            $ref: "#/components/schemas/ComponentStatus"
-      required: [service, version, environment, timestamp, components]
 
     ErrorResponse:
       type: object

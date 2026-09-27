@@ -1,9 +1,26 @@
+x-app-environment: &app-environment
+  CONFIG_NAME: config.example.json
+  APP_ENVIRONMENT: ${APP_ENVIRONMENT:-local}
+  LOG_LEVEL: ${LOG_LEVEL:-debug}
+  JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-local-only}
+  BOOTSTRAP_PASSWORD_HASH: ${BOOTSTRAP_PASSWORD_HASH:-}
+  POSTGRES_DSN: "postgres://${POSTGRES_USER:-lotty}:${POSTGRES_PASSWORD:-lottypassword}@postgres:5432/${POSTGRES_DB:-labp}?sslmode=disable"
+  REDIS_ADDRESS: redis:6379
+  S3_BUCKET: ${S3_BUCKET:-labp}
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_ENDPOINT: http://s3:9000
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+  PANEL_HTTP_ADDRESS: 0.0.0.0:8081
+  RUNTIME_HTTP_ADDRESS: 0.0.0.0:8082
+  ANALYTICS_HTTP_ADDRESS: 0.0.0.0:8083
+
 services:
   postgres:
     image: docker.io/library/postgres:18-alpine
     container_name: labp-postgres
     ports:
-      - "5433:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     environment:
       POSTGRES_DB: labp
       POSTGRES_USER: lotty
@@ -21,7 +38,7 @@ services:
     image: docker.io/library/redis:8-alpine
     container_name: labp-redis
     ports:
-      - "6379:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - lotty-redisdata:/data
     healthcheck:
@@ -34,11 +51,11 @@ services:
     image: quay.io/minio/minio:latest
     container_name: labp-s3
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:${S3_PORT:-9000}:9000"
+      - "127.0.0.1:${S3_CONSOLE_PORT:-9001}:9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
     volumes:
       - lotty-s3data:/data
     command: server /data --console-address ":9001"
@@ -64,11 +81,10 @@ services:
       dockerfile: Dockerfile
       args:
         SERVICE: panel
-        PORT: ${PANEL_PORT:-8081}
+        PORT: 8081
         VERSION: ${SERVICE_VERSION:-dev}
-    container_name: labp-panel
     ports:
-      - "${PANEL_PORT:-8081}:${PANEL_PORT:-8081}"
+      - "127.0.0.1:${PANEL_PORT:-8081}:8081"
     depends_on:
       postgres:
         condition: service_healthy
@@ -76,10 +92,9 @@ services:
         condition: service_healthy
       s3:
         condition: service_healthy
-    environment:
-      CONFIG_NAME: ${CONFIG_NAME:-config.docker.json}
+    environment: *app-environment
     volumes:
-      - ./${CONFIG_FILE:-config.docker.json}:/labp/${CONFIG_NAME:-config.docker.json}:ro
+      - "${CONFIG_FILE:-./config.example.json}:/labp/config.example.json:ro"
     restart: unless-stopped
 
   runtime:
@@ -88,18 +103,16 @@ services:
       dockerfile: Dockerfile
       args:
         SERVICE: runtime
-        PORT: ${RUNTIME_PORT:-8082}
+        PORT: 8082
         VERSION: ${SERVICE_VERSION:-dev}
-    container_name: labp-runtime
     ports:
-      - "${RUNTIME_PORT:-8082}:${RUNTIME_PORT:-8082}"
+      - "127.0.0.1:${RUNTIME_PORT:-8082}:8082"
     depends_on:
       panel:
         condition: service_started
-    environment:
-      CONFIG_NAME: ${CONFIG_NAME:-config.docker.json}
+    environment: *app-environment
     volumes:
-      - ./${CONFIG_FILE:-config.docker.json}:/labp/${CONFIG_NAME:-config.docker.json}:ro
+      - "${CONFIG_FILE:-./config.example.json}:/labp/config.example.json:ro"
     restart: unless-stopped
 
   analytics:
@@ -108,54 +121,28 @@ services:
       dockerfile: Dockerfile
       args:
         SERVICE: analytics
-        PORT: ${ANALYTICS_PORT:-8083}
+        PORT: 8083
         VERSION: ${SERVICE_VERSION:-dev}
-    container_name: labp-analytics
     ports:
-      - "${ANALYTICS_PORT:-8083}:${ANALYTICS_PORT:-8083}"
+      - "127.0.0.1:${ANALYTICS_PORT:-8083}:8083"
     depends_on:
       panel:
         condition: service_started
-    environment:
-      CONFIG_NAME: ${CONFIG_NAME:-config.docker.json}
+    environment: *app-environment
     volumes:
-      - ./${CONFIG_FILE:-config.docker.json}:/labp/${CONFIG_NAME:-config.docker.json}:ro
-    restart: unless-stopped
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: labp-frontend
-    expose:
-      - "80"
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--quiet",
-          "--tries=1",
-          "--spider",
-          "http://127.0.0.1/health",
-        ]
-      interval: 5s
-      timeout: 3s
-      retries: 10
+      - "${CONFIG_FILE:-./config.example.json}:/labp/config.example.json:ro"
     restart: unless-stopped
 
   nginx:
     image: docker.io/library/nginx:alpine
-    container_name: labp-nginx
     ports:
-      - "${NGINX_PORT:-8080}:8080"
+      - "127.0.0.1:${NGINX_PORT:-8080}:8080"
     volumes:
       - ./deploy/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - panel
       - runtime
       - analytics
-      - frontend
     restart: unless-stopped
 
 volumes:

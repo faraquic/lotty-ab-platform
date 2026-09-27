@@ -21,7 +21,7 @@ func NewApp(fiberConfig *fiber.Config, log *zap.Logger, cfg *config.Config, redi
 
 	snapReader := snapshot.NewReader(redisClient, log)
 
-	healthdomain.NewHandler(redisClient, snapReader, cfg.Environment, log).RegisterRoutes(apiV1)
+	healthdomain.NewHandler().RegisterRoutes(apiV1)
 
 	decideRepo := decidedomain.NewRepository(snapReader, log)
 	decideSvc := decidedomain.NewService(decideRepo, cfg.Runtime.MaxStaleAge, log)

@@ -63,6 +63,20 @@ func waitForDecide(t *testing.T, subject, flag, wantSource string) decideRespons
 	return decideResponse{}
 }
 
+func waitForDecisionReason(t *testing.T, subject, flag, wantReason string) decideResponse {
+	t.Helper()
+	deadline := time.Now().Add(25 * time.Second)
+	for time.Now().Before(deadline) {
+		result := decide(t, subject, flag)
+		if result.Data.Flags[flag].Reason == wantReason {
+			return result
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	t.Fatalf("flag %q did not reach reason %q within 25s", flag, wantReason)
+	return decideResponse{}
+}
+
 func createFlag(t *testing.T, key, flagType string, defaultValue any) string {
 	t.Helper()
 	uniqueKey := fmt.Sprintf("%s-%s", key, runID)
@@ -232,6 +246,122 @@ func TestDecidePauseReturnsDefault(t *testing.T) {
 	if result.Data.Flags[flagKey].Value != "off" {
 		t.Errorf("value: got %v, want off", result.Data.Flags[flagKey].Value)
 	}
+}
+
+func TestExperimentPipelineWithAndWithoutTargeting(t *testing.T) {
+	flagKey := "rt-pipeline-dsl-" + runID
+	flagID := createFlag(t, "rt-pipeline-dsl", "string", "off")
+	flagData := panelAction(t, http.MethodGet, "/api/v1/panel/flags/"+flagID, adminToken, nil)
+	if flagData["id"] != flagID || flagData["key"] != flagKey {
+		t.Fatalf("created flag was not returned by GET: %+v", flagData)
+	}
+
+	targeting := `country == "DE"`
+	experiment := panelAction(t, http.MethodPost, "/api/v1/panel/experiments", adminToken, map[string]any{
+		"flag_id":   flagID,
+		"name":      "Pipeline DSL-" + runID,
+		"targeting": targeting,
+	})
+	experimentID := experiment["id"].(string)
+	version := int(experiment["version"].(float64))
+	variants := []any{
+		map[string]any{"name": "control", "value": "off", "weight_bp": 5000, "is_control": true},
+		map[string]any{"name": "treatment", "value": "on", "weight_bp": 5000, "is_control": false},
+	}
+	experiment = panelAction(t, http.MethodPut, fmt.Sprintf("/api/v1/panel/experiments/%s/variants", experimentID), adminToken, map[string]any{
+		"version":  version,
+		"variants": variants,
+	})
+	currentVersion := experiment["current_version"].(map[string]any)
+	if currentVersion["targeting"] != targeting {
+		t.Fatalf("targeting: got %v, want %q", currentVersion["targeting"], targeting)
+	}
+
+	experiment = panelAction(t, http.MethodPost, fmt.Sprintf("/api/v1/panel/experiments/%s/submit", experimentID), adminToken,
+		map[string]any{"version": experiment["version"]})
+	if experiment["status"] != "review" {
+		t.Fatalf("status after submit: got %v, want review", experiment["status"])
+	}
+	reviewID := currentReviewID(t, experimentID)
+	review := panelAction(t, http.MethodPost, fmt.Sprintf("/api/v1/panel/reviews/%s/approvals", reviewID), adminToken,
+		map[string]any{"decision": "request_changes", "version": experiment["version"]})
+	if review["status"] != "changes_requested" {
+		t.Fatalf("review status: got %v, want changes_requested", review["status"])
+	}
+	experiment = panelAction(t, http.MethodGet, fmt.Sprintf("/api/v1/panel/experiments/%s", experimentID), adminToken, nil)
+	if experiment["status"] != "draft" {
+		t.Fatalf("experiment status after return: got %v, want draft", experiment["status"])
+	}
+
+	experiment = panelAction(t, http.MethodPost, fmt.Sprintf("/api/v1/panel/experiments/%s/versions", experimentID), adminToken, map[string]any{
+		"version":   experiment["version"],
+		"targeting": targeting,
+		"variants":  variants,
+	})
+	versionData := experiment["current_version"].(map[string]any)
+	if versionData["version_num"] != float64(2) || versionData["targeting"] != targeting {
+		t.Fatalf("revised version did not preserve DSL: %+v", versionData)
+	}
+	experiment = panelAction(t, http.MethodPost, fmt.Sprintf("/api/v1/panel/experiments/%s/submit", experimentID), adminToken,
+		map[string]any{"version": experiment["version"]})
+	reviewID = currentReviewID(t, experimentID)
+	panelAction(t, http.MethodPost, fmt.Sprintf("/api/v1/panel/reviews/%s/approvals", reviewID), adminToken,
+		map[string]any{"decision": "approve", "version": experiment["version"]})
+	experiment = panelAction(t, http.MethodGet, fmt.Sprintf("/api/v1/panel/experiments/%s", experimentID), adminToken, nil)
+	if experiment["status"] != "approved" {
+		t.Fatalf("status after approval: got %v, want approved", experiment["status"])
+	}
+	experiment = panelAction(t, http.MethodPost, fmt.Sprintf("/api/v1/panel/experiments/%s/start", experimentID), adminToken,
+		map[string]any{"version": experiment["version"]})
+	if experiment["status"] != "running" {
+		t.Fatalf("status after start: got %v, want running", experiment["status"])
+	}
+
+	result := waitForDecisionReason(t, "pipeline-dsl-subject", flagKey, "targeting mismatch")
+	if result.Data.Flags[flagKey].Source != "default" || result.Data.Flags[flagKey].Value != "off" {
+		t.Fatalf("unmatched DSL decision: %+v", result.Data.Flags[flagKey])
+	}
+
+	plainFlagKey := "rt-pipeline-plain-" + runID
+	plainFlagID := createFlag(t, "rt-pipeline-plain", "string", "off")
+	plainFlag := panelAction(t, http.MethodGet, "/api/v1/panel/flags/"+plainFlagID, adminToken, nil)
+	if plainFlag["id"] != plainFlagID || plainFlag["key"] != plainFlagKey {
+		t.Fatalf("created flag was not returned by GET: %+v", plainFlag)
+	}
+	plainExperiment := driveExperimentToRunning(t, plainFlagID, "Pipeline Without Targeting")
+	plainExperimentID := plainExperiment["id"].(string)
+	plainVersion := panelAction(t, http.MethodGet, fmt.Sprintf("/api/v1/panel/experiments/%s", plainExperimentID), adminToken, nil)["current_version"].(map[string]any)
+	if plainVersion["targeting"] != nil {
+		t.Fatalf("untargeted experiment should have no targeting, got %v", plainVersion["targeting"])
+	}
+	plainResult := waitForDecide(t, "pipeline-plain-subject", plainFlagKey, "experiment")
+	if got := plainResult.Data.Flags[plainFlagKey].ExperimentID; got != plainExperimentID {
+		t.Fatalf("untargeted decide experiment_id: got %q, want %q", got, plainExperimentID)
+	}
+	plainExperiment = panelAction(t, http.MethodPost, fmt.Sprintf("/api/v1/panel/experiments/%s/pause", plainExperimentID), adminToken,
+		map[string]any{"version": plainExperiment["version"]})
+	if plainExperiment["status"] != "paused" {
+		t.Fatalf("status after pause: got %v, want paused", plainExperiment["status"])
+	}
+	plainResult = waitForDecide(t, "pipeline-plain-subject", plainFlagKey, "default")
+	if plainResult.Data.Flags[plainFlagKey].Value != "off" {
+		t.Fatalf("paused flag value: got %v, want off", plainResult.Data.Flags[plainFlagKey].Value)
+	}
+	plainExperiment = panelAction(t, http.MethodPost, fmt.Sprintf("/api/v1/panel/experiments/%s/resume", plainExperimentID), adminToken,
+		map[string]any{"version": plainExperiment["version"]})
+	if plainExperiment["status"] != "running" {
+		t.Fatalf("status after resume: got %v, want running", plainExperiment["status"])
+	}
+	waitForDecide(t, "pipeline-plain-subject", plainFlagKey, "experiment")
+	plainExperiment = panelAction(t, http.MethodPost, fmt.Sprintf("/api/v1/panel/experiments/%s/complete", plainExperimentID), adminToken, map[string]any{
+		"version":  plainExperiment["version"],
+		"decision": "no_effect",
+		"reason":   "pipeline e2e complete",
+	})
+	if plainExperiment["status"] != "completed" {
+		t.Fatalf("status after complete: got %v, want completed", plainExperiment["status"])
+	}
+	waitForDecide(t, "pipeline-plain-subject", plainFlagKey, "default")
 }
 
 func TestDecideEmptyTargetingMatches(t *testing.T) {

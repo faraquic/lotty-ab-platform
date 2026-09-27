@@ -17,13 +17,17 @@ RUN --mount=type=cache,id=labp-go-mod,target=/go/pkg/mod \
     -o /bin/service \
     ./services/${SERVICE}
 
-FROM alpine:3
+FROM alpine:3.22
 
 ARG PORT
-ENV PORT=${PORT}
+RUN apk add --no-cache ca-certificates \
+    && addgroup -S app \
+    && adduser -S -G app app
 
-COPY --from=build /bin/service /bin/service
+WORKDIR /app
+COPY --from=build --chown=app:app /bin/service /usr/local/bin/service
 
+USER app
 EXPOSE ${PORT}
 
-ENTRYPOINT ["/bin/service"]
+ENTRYPOINT ["/usr/local/bin/service"]

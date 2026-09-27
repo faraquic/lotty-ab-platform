@@ -263,7 +263,7 @@ func (h *Handler) complete(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.svc.Complete(c.Request.Context(), middleware.CallerIDGin(c), id, req)
+	resp, err := h.svc.Complete(c.Request.Context(), middleware.CallerIDGin(c), id, req, nil)
 	if err != nil {
 		h.respondError(c, err)
 		return

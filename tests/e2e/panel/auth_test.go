@@ -204,6 +204,110 @@ func TestAuth_Session_RevokedTokenNoUserLeakage(t *testing.T) {
 	}
 }
 
+func TestAuth_Logout_Success(t *testing.T) {
+	_, email := createUser(t, "viewer", "logout-test")
+	token := login(email, "testpass123")
+	if token == "" {
+		t.Fatal("login failed")
+	}
+
+	resp := getMe(t, token)
+	requireStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+
+	resp = doRequest(http.MethodPost, "/api/v1/panel/logout", token, nil)
+	defer resp.Body.Close()
+
+	requireStatus(t, resp, http.StatusOK)
+	requireJSONContentType(t, resp)
+
+	var result struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Message string `json:"message"`
+		} `json:"data"`
+	}
+	decodeJSON(resp, &result)
+
+	if !result.Success {
+		t.Error("expected success=true")
+	}
+	if result.Data.Message != "logged out" {
+		t.Errorf("message: got %q, want %q", result.Data.Message, "logged out")
+	}
+}
+
+func TestAuth_Logout_TokenRevokedAfterLogout(t *testing.T) {
+	_, email := createUser(t, "viewer", "logout-revoke")
+	token := login(email, "testpass123")
+	if token == "" {
+		t.Fatal("login failed")
+	}
+
+	resp := doRequest(http.MethodPost, "/api/v1/panel/logout", token, nil)
+	requireStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+
+	resp = getMe(t, token)
+	defer resp.Body.Close()
+
+	requireErrorResponse(t, resp, http.StatusUnauthorized, "UNAUTHORIZED")
+}
+
+func TestAuth_Logout_DoubleLogoutRejected(t *testing.T) {
+	_, email := createUser(t, "viewer", "logout-double")
+	token := login(email, "testpass123")
+	if token == "" {
+		t.Fatal("login failed")
+	}
+
+	resp := doRequest(http.MethodPost, "/api/v1/panel/logout", token, nil)
+	requireStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+
+	resp = doRequest(http.MethodPost, "/api/v1/panel/logout", token, nil)
+	defer resp.Body.Close()
+
+	requireErrorResponse(t, resp, http.StatusUnauthorized, "UNAUTHORIZED")
+}
+
+func TestAuth_Logout_NoToken(t *testing.T) {
+	resp := doRequest(http.MethodPost, "/api/v1/panel/logout", "", nil)
+	defer resp.Body.Close()
+
+	requireErrorResponse(t, resp, http.StatusUnauthorized, "UNAUTHORIZED")
+}
+
+func TestAuth_Logout_InvalidToken(t *testing.T) {
+	resp := doRequest(http.MethodPost, "/api/v1/panel/logout", "garbage", nil)
+	defer resp.Body.Close()
+
+	requireErrorResponse(t, resp, http.StatusUnauthorized, "UNAUTHORIZED")
+}
+
+func TestAuth_Logout_OtherUserTokenUnaffected(t *testing.T) {
+	_, email1 := createUser(t, "viewer", "logout-user1")
+	token1 := login(email1, "testpass123")
+	if token1 == "" {
+		t.Fatal("login user1 failed")
+	}
+
+	_, email2 := createUser(t, "viewer", "logout-user2")
+	token2 := login(email2, "testpass123")
+	if token2 == "" {
+		t.Fatal("login user2 failed")
+	}
+
+	resp := doRequest(http.MethodPost, "/api/v1/panel/logout", token1, nil)
+	requireStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+
+	resp = getMe(t, token2)
+	defer resp.Body.Close()
+
+	requireStatus(t, resp, http.StatusOK)
+}
+
 func TestAuth_Security_ContentTypeJSON(t *testing.T) {
 	resp := doRequest(http.MethodPost, "/api/v1/panel/login", "",
 		jsonBody(map[string]string{"email": "root@labp.net", "password": "root!@#$"}))

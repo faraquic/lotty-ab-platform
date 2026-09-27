@@ -1,0 +1,45 @@
+{
+  "environment": "{{ ENV \"APP_ENVIRONMENT\" }}",
+  "log_level": "{{ ENV \"LOG_LEVEL\" }}",
+  "auth": {
+    "jwt": {
+      "secret_key": "{{ ENV \"JWT_SECRET_KEY\" }}"
+    },
+    "bootstrap": {
+      "full_name": "Lotty Admin",
+      "email": "admin@example.invalid",
+      "password_hash": "{{ ENV \"BOOTSTRAP_PASSWORD_HASH\" }}"
+    }
+  },
+  "database": {
+    "postgres": {
+      "dsn": "{{ ENV \"POSTGRES_DSN\" }}"
+    },
+    "redis": {
+      "address": "{{ ENV \"REDIS_ADDRESS\" }}"
+    },
+    "s3": {
+      "bucket": "{{ ENV \"S3_BUCKET\" }}",
+      "region": "{{ ENV \"S3_REGION\" }}",
+      "endpoint": "{{ ENV \"S3_ENDPOINT\" }}",
+      "access_key": "{{ ENV \"S3_ACCESS_KEY\" }}",
+      "secret_key": "{{ ENV \"S3_SECRET_KEY\" }}"
+    }
+  },
+  "panel": {
+    "http": {
+      "address": "{{ ENV \"PANEL_HTTP_ADDRESS\" }}"
+    }
+  },
+  "runtime": {
+    "http": {
+      "address": "{{ ENV \"RUNTIME_HTTP_ADDRESS\" }}",
+      "max_stale_age": "5m"
+    }
+  },
+  "analytics": {
+    "http": {
+      "address": "{{ ENV \"ANALYTICS_HTTP_ADDRESS\" }}"
+    }
+  }
+}

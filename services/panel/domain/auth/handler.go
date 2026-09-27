@@ -25,6 +25,10 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/login", h.login)
 }
 
+func (h *Handler) RegisterLogoutRoute(rg *gin.RouterGroup) {
+	rg.POST("/logout", h.logout)
+}
+
 func (h *Handler) login(c *gin.Context) {
 	var req LoginRequest
 	if err := api.ValidateRequest(c.Writer, c.Request, &req); err != nil {
@@ -52,4 +56,20 @@ func (h *Handler) login(c *gin.Context) {
 	}
 
 	api.OK(c.Writer, LoginResponse{Token: token, ExpiresAt: expiry})
+}
+
+func (h *Handler) logout(c *gin.Context) {
+	userID, _ := c.Get(CtxUserIDKey)
+	uid, _ := userID.(string)
+
+	token := bearerToken(c.Request.Header.Get("Authorization"))
+
+	if err := h.svc.Logout(c.Request.Context(), token, uid); err != nil {
+		logger.SetErrorType(c, logger.ErrorTypeInternalError)
+		h.log.Error("logout failed", zap.Error(err))
+		api.InternalError(c.Writer)
+		return
+	}
+
+	api.OK(c.Writer, LogoutResponse{Message: "logged out"})
 }

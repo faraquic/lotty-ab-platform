@@ -53,14 +53,43 @@ func (h *Handler) create(c *gin.Context) {
 	api.OK(c.Writer, resp)
 }
 
+type listQuery struct {
+	api.ListQuery
+	Type      string `form:"type"`
+	CreatedBy string `form:"created_by"`
+}
+
 func (h *Handler) list(c *gin.Context) {
-	var q api.ListQuery
+	var q listQuery
 	if !api.BindListQuery(c, &q) {
 		return
 	}
 	q.Normalize()
 
-	resp, err := h.svc.List(c.Request.Context(), q.Limit, q.Offset, q.Search())
+	filter := ListFilter{
+		Search: q.Search(),
+		Sort:   q.Sort,
+		Order:  q.Order,
+	}
+
+	if q.Type != "" {
+		t := TypeFlag(q.Type)
+		if !t.Valid() {
+			api.Error(c.Writer, http.StatusBadRequest, api.BadRequest, "invalid type filter")
+			return
+		}
+		filter.Type = &t
+	}
+
+	if q.CreatedBy != "" {
+		if _, err := uuid.Parse(q.CreatedBy); err != nil {
+			api.Error(c.Writer, http.StatusBadRequest, api.BadRequest, "invalid created_by filter")
+			return
+		}
+		filter.CreatedBy = &q.CreatedBy
+	}
+
+	resp, err := h.svc.List(c.Request.Context(), q.Limit, q.Offset, filter)
 	if err != nil {
 		h.respondError(c, err)
 		return
@@ -133,7 +162,7 @@ func (h *Handler) respondError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, ErrNotFound):
 		api.Error(w, http.StatusNotFound, api.NotFound, err.Error())
-	case errors.Is(err, ErrConflictKeys):
+	case errors.Is(err, ErrActiveExperiment), errors.Is(err, ErrConflictKeys):
 		logger.SetErrorType(c, logger.ErrorTypeConflict)
 		api.Error(w, http.StatusConflict, api.Conflict, err.Error())
 	case errors.Is(err, ErrConflictNames):
@@ -143,7 +172,8 @@ func (h *Handler) respondError(c *gin.Context, err error) {
 		api.Error(w, http.StatusBadRequest, api.BadRequest, err.Error())
 	default:
 		logger.SetErrorType(c, logger.ErrorTypeInternalError)
-		h.log.Error("unexpected error",
+		h.log.Error(
+			"unexpected error",
 			zap.Error(err),
 			zap.String(logger.FieldErrorType, "internal_error"),
 		)

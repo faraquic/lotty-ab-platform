@@ -181,7 +181,7 @@ func defaultConfig() *Config {
 				CORS: CORSConfig{
 					AllowedOrigins:   []string{"*"},
 					AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
-					AllowedHeaders:   []string{"Content-Type", "Authorization", "X-Request-ID"},
+					AllowedHeaders:   []string{"Content-Type", "Authorization", "X-Request-ID", "X-Trace-ID"},
 					ExposeHeaders:    []string{"X-Request-ID"},
 					AllowCredentials: true,
 					MaxAge:           12 * time.Hour,
