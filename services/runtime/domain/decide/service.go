@@ -42,7 +42,7 @@ func (s *Service) Decide(req CreateDecisionRequest, requestID string) (*Decision
 
 	result := make(map[string]FlagDecision, len(req.Flags))
 	for _, key := range req.Flags {
-		result[key] = s.decideFlag(key, req.SubjectID)
+		result[key] = s.decideFlag(key, req.SubjectID, req.Attributes)
 	}
 
 	return &DecisionResponse{
@@ -53,7 +53,7 @@ func (s *Service) Decide(req CreateDecisionRequest, requestID string) (*Decision
 	}, nil
 }
 
-func (s *Service) decideFlag(key, subjectID string) FlagDecision {
+func (s *Service) decideFlag(key, subjectID string, attrs map[string]any) FlagDecision {
 	flag, ok := s.repo.FindFlag(key)
 	if !ok {
 		return FlagDecision{
@@ -83,7 +83,7 @@ func (s *Service) decideFlag(key, subjectID string) FlagDecision {
 		}
 	}
 
-	if !targetingMatch(exp.Targeting) {
+	if !targetingMatch(exp.Targeting, attrs, s.log) {
 		return FlagDecision{
 			Value:      snapshotRawToValue(flag.Value),
 			Source:     SourceDefault,

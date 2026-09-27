@@ -220,7 +220,7 @@ func newSnapshotSource(flags *flagsdomain.Repository, exps *experimentsdomain.Re
 }
 
 func (s snapshotSource) ListFlags(ctx context.Context) ([]snapshot.FlagInput, error) {
-	flags, err := s.flags.List(ctx, -1, 0, flagsdomain.ListFilter{})
+	flags, err := s.flags.ListAll(ctx)
 	if err != nil {
 		return nil, err
 	}

@@ -17,6 +17,7 @@ CREATE TABLE audit_records(
 
 CREATE INDEX idx_audit_records_resource_created ON audit_records(resource_type, resource_id, created_at DESC);
 
+-- +goose StatementBegin
 CREATE FUNCTION prevent_audit_record_mutation()
     RETURNS TRIGGER
     LANGUAGE plpgsql
@@ -25,6 +26,7 @@ BEGIN
     RAISE EXCEPTION 'audit_records is append-only';
 END;
 $$;
+-- +goose StatementEnd
 
 CREATE TRIGGER audit_records_no_update_delete
     BEFORE UPDATE OR DELETE ON audit_records

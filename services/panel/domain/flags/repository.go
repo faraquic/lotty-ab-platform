@@ -259,13 +259,59 @@ WHERE
 	if filter.Order == "desc" {
 		dir = "DESC"
 	}
-	q += ` ORDER BY ` + sortCol + ` ` + dir + ` OFFSET $` + strconv.Itoa(len(args)+2)
-	if limit >= 0 {
-		q += ` LIMIT $` + strconv.Itoa(len(args)+1)
-	}
-	args = append(args, offset, limit)
+	q += ` ORDER BY ` + sortCol + ` ` + dir + ` LIMIT $` + strconv.Itoa(len(args)+1) + ` OFFSET $` + strconv.Itoa(len(args)+2)
+	args = append(args, limit, offset)
 
 	rows, err := r.db.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []Flag
+	for rows.Next() {
+		var f Flag
+		if err := rows.Scan(
+			&f.ID,
+			&f.Key,
+			&f.Name,
+			&f.Type,
+			&f.DefaultValue,
+			&f.Description,
+			&f.CreatedBy,
+			&f.UpdatedBy,
+			&f.DeletedAt,
+			&f.CreatedAt,
+			&f.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		result = append(result, f)
+	}
+	return result, rows.Err()
+}
+
+func (r *Repository) ListAll(ctx context.Context) ([]Flag, error) {
+	q := `
+SELECT
+    f.id,
+    f.key,
+    f.name,
+    f.type,
+    f.default_value,
+    f.description,
+    f.created_by,
+    f.updated_by,
+    f.deleted_at,
+    f.created_at,
+    f.updated_at
+FROM
+    flags f
+WHERE
+    f.deleted_at IS NULL
+ORDER BY f.id`
+
+	rows, err := r.db.Query(ctx, q)
 	if err != nil {
 		return nil, err
 	}

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/faraquic/lotty-ab-platform/pkg/snapshot"
+	"go.uber.org/zap"
 )
 
 func TestBucketPosVectors(t *testing.T) {
@@ -98,11 +99,31 @@ func TestSelectVariantPartialAllocation(t *testing.T) {
 
 func TestTargetingMatch(t *testing.T) {
 	for _, ok := range [][]byte{nil, {}, []byte("  "), []byte("null"), []byte("{}"), []byte("  {}  ")} {
-		if !targetingMatch(ok) {
+		if !targetingMatch(ok, nil, zap.NewNop()) {
 			t.Errorf("%q: expected match", ok)
 		}
 	}
-	if targetingMatch([]byte(`{"country":"DE"}`)) {
-		t.Error("non-empty targeting should not match before the DSL milestone")
+	if targetingMatch([]byte(`{"type":"cmp","field":"country","operator":"==","value":"DE"}`), map[string]any{"country": "US"}, zap.NewNop()) {
+		t.Error("non-matching targeting should not match")
+	}
+	if !targetingMatch([]byte(`{"type":"cmp","field":"country","operator":"==","value":"DE"}`), map[string]any{"country": "DE"}, zap.NewNop()) {
+		t.Error("matching targeting should match")
+	}
+}
+
+func TestTargetingMatchIntegration(t *testing.T) {
+	ast := []byte(`{"type":"and","children":[{"type":"cmp","field":"country","operator":"==","value":"DE"},{"type":"cmp","field":"age","operator":">=","value":18}]}`)
+	cases := []struct {
+		attrs map[string]any
+		want  bool
+	}{
+		{map[string]any{"country": "DE", "age": 25}, true},
+		{map[string]any{"country": "DE", "age": 17}, false},
+		{map[string]any{"country": "US", "age": 25}, false},
+	}
+	for _, tc := range cases {
+		if got := targetingMatch(ast, tc.attrs, zap.NewNop()); got != tc.want {
+			t.Errorf("targetingMatch(%v): got %v, want %v", tc.attrs, got, tc.want)
+		}
 	}
 }

@@ -1,11 +1,12 @@
 package decide
 
 import (
-	"bytes"
 	"math/bits"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/faraquic/lotty-ab-platform/pkg/snapshot"
+	"github.com/faraquic/lotty-ab-platform/pkg/targeting"
+	"go.uber.org/zap"
 )
 
 const basisPoints = 10000
@@ -30,10 +31,11 @@ func selectVariant(exp snapshot.ExperimentSnapshot, pos int) (snapshot.VariantSn
 	return snapshot.VariantSnapshot{}, false
 }
 
-func targetingMatch(targeting []byte) bool {
-	trimmed := bytes.TrimSpace(targeting)
-	if len(trimmed) == 0 {
-		return true
+func targetingMatch(targetingExpr []byte, attrs map[string]any, log *zap.Logger) bool {
+	match, err := targeting.Evaluate(targetingExpr, attrs)
+	if err != nil {
+		log.Warn("targeting evaluation failed", zap.Error(err))
+		return false
 	}
-	return string(trimmed) == "null" || string(trimmed) == "{}"
+	return match
 }

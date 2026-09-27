@@ -63,6 +63,31 @@ func waitForDecide(t *testing.T, subject, flag, wantSource string) decideRespons
 	return decideResponse{}
 }
 
+func waitForDecideWithAttrs(t *testing.T, subject string, attrs map[string]any, flag, wantSource string) decideResponse {
+	t.Helper()
+	deadline := time.Now().Add(25 * time.Second)
+	for time.Now().Before(deadline) {
+		resp := runtimeRequest(http.MethodPost, "/api/v1/runtime/decide", jsonBody(map[string]any{
+			"subject_id": subject,
+			"attributes": attrs,
+			"flags":      []string{flag},
+		}))
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+		var result decideResponse
+		decodeJSON(resp, &result)
+		if result.Data.Flags[flag].Source == wantSource {
+			return result
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	t.Fatalf("flag %q did not reach source %q within 25s", flag, wantSource)
+	return decideResponse{}
+}
+
 func waitForDecisionReason(t *testing.T, subject, flag, wantReason string) decideResponse {
 	t.Helper()
 	deadline := time.Now().Add(25 * time.Second)
@@ -317,7 +342,8 @@ func TestExperimentPipelineWithAndWithoutTargeting(t *testing.T) {
 		t.Fatalf("status after start: got %v, want running", experiment["status"])
 	}
 
-	result := waitForDecisionReason(t, "pipeline-dsl-subject", flagKey, "targeting mismatch")
+	waitForDecideWithAttrs(t, "pipeline-dsl-wait", map[string]any{"country": "DE"}, flagKey, "experiment")
+	result := waitForDecideWithAttrs(t, "pipeline-dsl-subject", map[string]any{"country": "US"}, flagKey, "default")
 	if result.Data.Flags[flagKey].Source != "default" || result.Data.Flags[flagKey].Value != "off" {
 		t.Fatalf("unmatched DSL decision: %+v", result.Data.Flags[flagKey])
 	}
@@ -420,4 +446,117 @@ func waitForKnownFlag(t *testing.T, flag string) {
 		time.Sleep(500 * time.Millisecond)
 	}
 	t.Fatalf("flag %q did not propagate within 25s", flag)
+}
+
+func TestDecideTargetingEvaluation(t *testing.T) {
+	flagKey := "rt-targeting-eval-" + runID
+	flagID := createFlag(t, "rt-targeting-eval", "string", "off")
+	targeting := `country == "DE" AND age >= 18`
+	driveExperimentToRunningWith(t, flagID, "Targeting Eval", &targeting)
+
+	matched := waitForDecideWithAttrs(t, "rt-tg-match", map[string]any{"country": "DE", "age": 25}, flagKey, "experiment")
+	if matched.Data.Flags[flagKey].VariantID == "" {
+		t.Error("matched subject should get variant_id")
+	}
+
+	result := waitForDecideWithAttrs(t, "rt-tg-nomatch", map[string]any{"country": "US", "age": 25}, flagKey, "default")
+	if result.Data.Flags[flagKey].Reason != "targeting mismatch" {
+		t.Errorf("non-matching subject: reason=%q, want targeting mismatch", result.Data.Flags[flagKey].Reason)
+	}
+}
+
+func TestDecideTargetingInNotIn(t *testing.T) {
+	flagKey := "rt-targeting-in-" + runID
+	flagID := createFlag(t, "rt-targeting-in", "string", "off")
+	targeting := `plan IN ["free", "pro"]`
+	driveExperimentToRunningWith(t, flagID, "Targeting IN", &targeting)
+
+	matched := waitForDecideWithAttrs(t, "rt-tg-in-match", map[string]any{"plan": "free"}, flagKey, "experiment")
+	if matched.Data.Flags[flagKey].VariantID == "" {
+		t.Error("IN match should get variant_id")
+	}
+
+	result := waitForDecideWithAttrs(t, "rt-tg-in-nomatch", map[string]any{"plan": "enterprise"}, flagKey, "default")
+	if result.Data.Flags[flagKey].Source != "default" {
+		t.Errorf("IN non-match: source=%q, want default", result.Data.Flags[flagKey].Source)
+	}
+}
+
+func TestDecideTargetingNotIn(t *testing.T) {
+	flagKey := "rt-targeting-notin-" + runID
+	flagID := createFlag(t, "rt-targeting-notin", "string", "off")
+	targeting := `plan NOT IN ["free"]`
+	driveExperimentToRunningWith(t, flagID, "Targeting NOT IN", &targeting)
+
+	matched := waitForDecideWithAttrs(t, "rt-tg-notin-match", map[string]any{"plan": "pro"}, flagKey, "experiment")
+	if matched.Data.Flags[flagKey].VariantID == "" {
+		t.Error("NOT IN match should get variant_id")
+	}
+
+	result := waitForDecideWithAttrs(t, "rt-tg-notin-nomatch", map[string]any{"plan": "free"}, flagKey, "default")
+	if result.Data.Flags[flagKey].Source != "default" {
+		t.Errorf("NOT IN non-match: source=%q, want default", result.Data.Flags[flagKey].Source)
+	}
+}
+
+func TestDecideTargetingLogicalOperators(t *testing.T) {
+	flagKey := "rt-targeting-logic-" + runID
+	flagID := createFlag(t, "rt-targeting-logic", "string", "off")
+	targeting := `country == "DE" OR country == "US"`
+	driveExperimentToRunningWith(t, flagID, "Targeting Logic", &targeting)
+
+	matched := waitForDecideWithAttrs(t, "rt-tg-logic-match", map[string]any{"country": "US"}, flagKey, "experiment")
+	if matched.Data.Flags[flagKey].VariantID == "" {
+		t.Error("OR match should get variant_id")
+	}
+
+	result := waitForDecideWithAttrs(t, "rt-tg-logic-nomatch", map[string]any{"country": "FR"}, flagKey, "default")
+	if result.Data.Flags[flagKey].Source != "default" {
+		t.Errorf("OR non-match: source=%q, want default", result.Data.Flags[flagKey].Source)
+	}
+}
+
+func TestDecideTargetingNotOperator(t *testing.T) {
+	flagKey := "rt-targeting-not-" + runID
+	flagID := createFlag(t, "rt-targeting-not", "string", "off")
+	targeting := `NOT country == "DE"`
+	driveExperimentToRunningWith(t, flagID, "Targeting NOT", &targeting)
+
+	matched := waitForDecideWithAttrs(t, "rt-tg-not-match", map[string]any{"country": "US"}, flagKey, "experiment")
+	if matched.Data.Flags[flagKey].VariantID == "" {
+		t.Error("NOT match should get variant_id")
+	}
+
+	result := waitForDecideWithAttrs(t, "rt-tg-not-nomatch", map[string]any{"country": "DE"}, flagKey, "default")
+	if result.Data.Flags[flagKey].Source != "default" {
+		t.Errorf("NOT non-match: source=%q, want default", result.Data.Flags[flagKey].Source)
+	}
+}
+
+func TestDecideTargetingMissingAttribute(t *testing.T) {
+	flagKey := "rt-targeting-missing-" + runID
+	flagID := createFlag(t, "rt-targeting-missing", "string", "off")
+	targeting := `country == "DE"`
+	driveExperimentToRunningWith(t, flagID, "Targeting Missing", &targeting)
+
+	waitForDecideWithAttrs(t, "rt-tg-missing-wait", map[string]any{"country": "DE"}, flagKey, "experiment")
+	result := waitForDecideWithAttrs(t, "rt-tg-missing-attr", map[string]any{}, flagKey, "default")
+	if result.Data.Flags[flagKey].Source != "default" {
+		t.Errorf("missing attribute: source=%q, want default", result.Data.Flags[flagKey].Source)
+	}
+	if result.Data.Flags[flagKey].Reason != "targeting mismatch" {
+		t.Errorf("missing attribute: reason=%q, want targeting mismatch", result.Data.Flags[flagKey].Reason)
+	}
+}
+
+func TestDecideTargetingTypeCoercion(t *testing.T) {
+	flagKey := "rt-targeting-coerce-" + runID
+	flagID := createFlag(t, "rt-targeting-coerce", "string", "off")
+	targeting := `age >= 18`
+	driveExperimentToRunningWith(t, flagID, "Targeting Coerce", &targeting)
+
+	result := waitForDecideWithAttrs(t, "rt-tg-coerce", map[string]any{"age": "25"}, flagKey, "experiment")
+	if result.Data.Flags[flagKey].Source != "experiment" {
+		t.Errorf("type coercion: source=%q, want experiment", result.Data.Flags[flagKey].Source)
+	}
 }
