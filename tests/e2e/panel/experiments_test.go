@@ -586,7 +586,7 @@ func TestExperiment_RolloutWinnerStaleVersion(t *testing.T) {
 
 func TestExperiment_CompleteStaleVersion(t *testing.T) {
 	for _, decision := range []string{"rollback", "no_effect"} {
-		flagID, _ := createFlag(t, "exp-complete-stale", "string", "off")
+		flagID, _ := createFlag(t, "exp-complete-stale-"+decision, "string", "off")
 		exp := driveToRunning(t, adminToken, flagID, "Complete Stale "+decision)
 		stale := exp.Version
 

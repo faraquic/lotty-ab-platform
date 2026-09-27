@@ -39,13 +39,13 @@ type TransitionRequest struct {
 type CompleteRequest struct {
 	Version  int                `json:"version" binding:"required,min=1"`
 	Decision CompletionDecision `json:"decision" binding:"required,oneof=rollback no_effect"`
-	Reason   string             `json:"reason" binding:"required,min=1,max=4096"`
+	Reason   string             `json:"reason" binding:"max=4096"`
 }
 
 type RolloutRequest struct {
 	Version         int     `json:"version" binding:"required,min=1"`
 	Reason          string  `json:"reason" binding:"required,min=1,max=4096"`
-	WinnerVariantID *string `json:"winner_variant_id" binding:"required"`
+	WinnerVariantID *string `json:"winner_variant_id" binding:"required,min=1"`
 }
 
 type VariantResponse struct {
