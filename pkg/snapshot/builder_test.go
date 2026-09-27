@@ -30,8 +30,19 @@ func TestBuildSorts(t *testing.T) {
 	if snap.Experiments[1].Variants[0].Name != "a-var" {
 		t.Errorf("variants not sorted: %+v", snap.Experiments[1].Variants)
 	}
-	if snap.Revision == nil {
+	if snap.Revision == 0 {
 		t.Error("revision should be set")
+	}
+}
+
+func TestRevisionMonotonic(t *testing.T) {
+	prev := Revision(0)
+	for i := 0; i < 10; i++ {
+		snap := Build(nil, nil)
+		if snap.Revision < prev {
+			t.Fatalf("revision went backwards: %d < %d", snap.Revision, prev)
+		}
+		prev = snap.Revision
 	}
 }
 

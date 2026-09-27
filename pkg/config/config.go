@@ -55,6 +55,7 @@ type DatabaseConfig struct {
 	Postgres PostgresConfig `mapstructure:"postgres"`
 	Redis    RedisConfig    `mapstructure:"redis"`
 	S3       S3Config       `mapstructure:"s3"`
+	Kafka    KafkaConfig    `mapstructure:"kafka"`
 }
 
 type PostgresConfig struct {
@@ -78,13 +79,22 @@ type S3Config struct {
 	SecretKey string `mapstructure:"secret_key"`
 }
 
+type KafkaConfig struct {
+	Brokers string `mapstructure:"brokers"`
+}
+
 type PanelConfig struct {
 	HTTP HTTPConfig `mapstructure:"http"`
 }
 
 type RuntimeConfig struct {
-	HTTP        HTTPConfig    `mapstructure:"http"`
-	MaxStaleAge time.Duration `mapstructure:"max_stale_age"`
+	HTTP        HTTPConfig          `mapstructure:"http"`
+	MaxStaleAge time.Duration       `mapstructure:"max_stale_age"`
+	Kafka       KafkaConsumerConfig `mapstructure:"kafka"`
+}
+
+type KafkaConsumerConfig struct {
+	GroupID string `mapstructure:"group_id"`
 }
 
 type AnalyticsConfig struct {
@@ -174,6 +184,9 @@ func defaultConfig() *Config {
 				AccessKey: "minioadmin",
 				SecretKey: "minioadmin",
 			},
+			Kafka: KafkaConfig{
+				Brokers: "localhost:9092",
+			},
 		},
 		Panel: PanelConfig{
 			HTTP: HTTPConfig{
@@ -193,6 +206,9 @@ func defaultConfig() *Config {
 		},
 		Runtime: RuntimeConfig{
 			MaxStaleAge: 5 * time.Minute,
+			Kafka: KafkaConsumerConfig{
+				GroupID: "labp-runtime-snapshot",
+			},
 			HTTP: HTTPConfig{
 				Address: "0.0.0.0:8082",
 				CORS: CORSConfig{

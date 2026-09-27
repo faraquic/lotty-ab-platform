@@ -16,6 +16,7 @@ type fakeProvider struct {
 
 func (f fakeProvider) Current() *snapshot.Snapshot { return f.snap }
 func (f fakeProvider) Stale(time.Duration) bool    { return f.stale }
+func (f fakeProvider) Refresh() error              { return nil }
 func (f fakeProvider) GetFlag(key string) (snapshot.FlagSnapshot, bool) {
 	for _, fl := range f.snap.Flags {
 		if fl.Key == key {

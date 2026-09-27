@@ -1,9 +1,12 @@
 package snapshot
 
-type Revision [14]byte
+// Revision is a UnixNano timestamp of when the snapshot was built. Revisions
+// are monotonically increasing, so readers apply only newer snapshots and
+// staleness is derived from revision age.
+type Revision uint64
 
 type Snapshot struct {
-	Revision    *Revision            `json:"r"`
+	Revision    Revision             `json:"r"`
 	Flags       []FlagSnapshot       `json:"f"`
 	Experiments []ExperimentSnapshot `json:"e,omitempty"`
 }

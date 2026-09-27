@@ -43,6 +43,13 @@ S3_BUCKET       ?= labp
 S3_ACCESS_KEY   ?= minioadmin
 S3_SECRET_KEY   ?= minioadmin
 
+KAFKA_IMAGE      ?= docker.io/apache/kafka:latest
+KAFKA_NAME       ?= labp-kafka
+KAFKA_PORT       ?= 9092
+KAFKA_CLUSTER_ID ?= 12345678-1234-1234-1234-123456789012
+KAFKA_BROKERS    ?= localhost:$(KAFKA_PORT)
+KAFKA_SNAPSHOT_GROUP_ID ?= labp-runtime-snapshot
+
 CPU_LIMIT    ?= 1.0
 MEMORY_LIMIT ?= 512m
 PIDS_LIMIT   ?= 128
@@ -72,7 +79,7 @@ help:
 	@echo ""
 	@echo "Development (local binaries):"
 	@echo "  copy config.example.json to config.local.json and provide its ENV values"
-	@echo "  dev-up          start infra containers (PostgreSQL + Redis + S3)"
+	@echo "  dev-up          start infra containers (PostgreSQL + Redis + S3 + Kafka)"
 	@echo "  dev-down        stop infra containers"
 	@echo "  dev-clean       stop infra and remove volumes"
 	@echo "  dev-status      check which infra containers are running"
@@ -110,12 +117,14 @@ help:
 	@echo "Tools:"
 	@echo "  redis-cli       open redis-cli"
 	@echo "  s3-provision    create S3 bucket"
+	@echo "  kafka-topics    list Kafka topics"
+	@echo "  kafka-logs      follow Kafka logs"
 	@echo "  test-e2e        run end-to-end tests"
 
 # ─── Infrastructure ──────────────────────────────────────────────────────────
 
 .PHONY: dev-up
-dev-up: pg-up redis-up s3-up
+dev-up: pg-up redis-up s3-up kafka-up
 	@echo "Waiting for S3..."
 	@ready=0; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do \
 		if $(CONTAINER_ENGINE) exec $(S3_NAME) curl --fail --silent --show-error --max-time 2 http://127.0.0.1:9000/minio/health/ready >/dev/null 2>&1; then ready=1; break; fi; \
@@ -123,18 +132,25 @@ dev-up: pg-up redis-up s3-up
 		sleep 2; \
 	done; \
 	if [ "$$ready" != 1 ]; then echo "S3 readiness timed out. Run 'make s3-logs' for details."; exit 1; fi
+	@echo "Waiting for Kafka..."
+	@ready=0; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do \
+		if $(CONTAINER_ENGINE) exec $(KAFKA_NAME) /opt/kafka/bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list >/dev/null 2>&1; then ready=1; break; fi; \
+		echo "  waiting... ($$i)"; \
+		sleep 2; \
+	done; \
+	if [ "$$ready" != 1 ]; then echo "Kafka readiness timed out. Run 'make kafka-logs' for details."; exit 1; fi
 	$(MAKE) s3-provision
 
 .PHONY: dev-down
-dev-down: pg-down redis-down s3-down
+dev-down: pg-down redis-down s3-down kafka-down
 
 .PHONY: dev-clean
-dev-clean: pg-clean redis-clean s3-clean
+dev-clean: pg-clean redis-clean s3-clean kafka-clean
 
 .PHONY: dev-status
 dev-status:
 	@echo "=== Infrastructure containers ==="
-	@$(CONTAINER_ENGINE) ps --filter name=labp-postgres --filter name=labp-redis --filter name=labp-s3 --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || true
+	@$(CONTAINER_ENGINE) ps --filter name=labp-postgres --filter name=labp-redis --filter name=labp-s3 --filter name=labp-kafka --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || true
 	@echo ""
 	@echo "=== Service processes ==="
 	@pgrep -af 'bin/(panel|runtime|analytics)' 2>/dev/null || echo "  (none running)"
@@ -143,7 +159,7 @@ dev-status:
 
 .PHONY: run-local
 run-local: check-local-config build-panel build-runtime build-analytics _ensure-infra
-run-local: export CONFIG_NAME APP_ENVIRONMENT LOG_LEVEL JWT_SECRET_KEY BOOTSTRAP_PASSWORD_HASH POSTGRES_DSN REDIS_ADDRESS S3_BUCKET S3_REGION S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY
+run-local: export CONFIG_NAME APP_ENVIRONMENT LOG_LEVEL JWT_SECRET_KEY BOOTSTRAP_PASSWORD_HASH POSTGRES_DSN REDIS_ADDRESS KAFKA_BROKERS KAFKA_SNAPSHOT_GROUP_ID S3_BUCKET S3_REGION S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY
 	@mkdir -p "$(LOG_DIR)"
 	@echo "Stopping old services..."
 	@-pkill -f 'bin/panel' 2>/dev/null; sleep 0.2
@@ -188,21 +204,21 @@ check-local-config:
 
 .PHONY: run-panel
 run-panel: check-local-config build-panel _ensure-infra
-run-panel: export CONFIG_NAME APP_ENVIRONMENT LOG_LEVEL JWT_SECRET_KEY BOOTSTRAP_PASSWORD_HASH POSTGRES_DSN REDIS_ADDRESS S3_BUCKET S3_REGION S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY
+run-panel: export CONFIG_NAME APP_ENVIRONMENT LOG_LEVEL JWT_SECRET_KEY BOOTSTRAP_PASSWORD_HASH POSTGRES_DSN REDIS_ADDRESS KAFKA_BROKERS KAFKA_SNAPSHOT_GROUP_ID S3_BUCKET S3_REGION S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY
 	@-pkill -f 'bin/panel' 2>/dev/null; sleep 0.2
 	@echo "Starting panel on :$(PANEL_PORT)..."
 	@./$(PANEL_BIN)
 
 .PHONY: run-runtime
 run-runtime: check-local-config build-runtime _ensure-infra
-run-runtime: export CONFIG_NAME APP_ENVIRONMENT LOG_LEVEL JWT_SECRET_KEY BOOTSTRAP_PASSWORD_HASH POSTGRES_DSN REDIS_ADDRESS S3_BUCKET S3_REGION S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY
+run-runtime: export CONFIG_NAME APP_ENVIRONMENT LOG_LEVEL JWT_SECRET_KEY BOOTSTRAP_PASSWORD_HASH POSTGRES_DSN REDIS_ADDRESS KAFKA_BROKERS KAFKA_SNAPSHOT_GROUP_ID S3_BUCKET S3_REGION S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY
 	@-pkill -f 'bin/runtime' 2>/dev/null; sleep 0.2
 	@echo "Starting runtime on :$(RUNTIME_PORT)..."
 	@./$(RUNTIME_BIN)
 
 .PHONY: run-analytics
 run-analytics: check-local-config build-analytics _ensure-infra
-run-analytics: export CONFIG_NAME APP_ENVIRONMENT LOG_LEVEL JWT_SECRET_KEY BOOTSTRAP_PASSWORD_HASH POSTGRES_DSN REDIS_ADDRESS S3_BUCKET S3_REGION S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY
+run-analytics: export CONFIG_NAME APP_ENVIRONMENT LOG_LEVEL JWT_SECRET_KEY BOOTSTRAP_PASSWORD_HASH POSTGRES_DSN REDIS_ADDRESS KAFKA_BROKERS KAFKA_SNAPSHOT_GROUP_ID S3_BUCKET S3_REGION S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY
 	@-pkill -f 'bin/analytics' 2>/dev/null; sleep 0.2
 	@echo "Starting analytics on :$(ANALYTICS_PORT)..."
 	@./$(ANALYTICS_BIN)
@@ -213,12 +229,15 @@ _ensure-infra:
 	@$(CONTAINER_ENGINE) inspect $(POSTGRES_NAME) >/dev/null 2>&1 || { echo "PostgreSQL not found. Run 'make dev-up' first."; exit 1; }
 	@$(CONTAINER_ENGINE) inspect $(REDIS_NAME) >/dev/null 2>&1 || { echo "Redis not found. Run 'make dev-up' first."; exit 1; }
 	@$(CONTAINER_ENGINE) inspect $(S3_NAME) >/dev/null 2>&1 || { echo "S3 not found. Run 'make dev-up' first."; exit 1; }
+	@$(CONTAINER_ENGINE) inspect $(KAFKA_NAME) >/dev/null 2>&1 || { echo "Kafka not found. Run 'make dev-up' first."; exit 1; }
 	@STATUS=$$($(CONTAINER_ENGINE) inspect --format='{{.State.Status}}' $(POSTGRES_NAME) 2>/dev/null); \
 		if [ "$$STATUS" != "running" ]; then echo "PostgreSQL is not running. Start it: podman start $(POSTGRES_NAME)"; exit 1; fi
 	@STATUS=$$($(CONTAINER_ENGINE) inspect --format='{{.State.Status}}' $(REDIS_NAME) 2>/dev/null); \
 		if [ "$$STATUS" != "running" ]; then echo "Redis is not running. Start it: podman start $(REDIS_NAME)"; exit 1; fi
 	@STATUS=$$($(CONTAINER_ENGINE) inspect --format='{{.State.Status}}' $(S3_NAME) 2>/dev/null); \
 		if [ "$$STATUS" != "running" ]; then echo "S3 is not running. Start it: podman start $(S3_NAME)"; exit 1; fi
+	@STATUS=$$($(CONTAINER_ENGINE) inspect --format='{{.State.Status}}' $(KAFKA_NAME) 2>/dev/null); \
+		if [ "$$STATUS" != "running" ]; then echo "Kafka is not running. Start it: podman start $(KAFKA_NAME)"; exit 1; fi
 
 # ─── Build ───────────────────────────────────────────────────────────────────
 
@@ -251,7 +270,7 @@ check: build-all vet
 
 .PHONY: up
 up: check-engine check-config
-up: export CONFIG_FILE APP_ENVIRONMENT LOG_LEVEL JWT_SECRET_KEY BOOTSTRAP_PASSWORD_HASH POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DSN REDIS_ADDRESS S3_BUCKET S3_REGION S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY PANEL_PORT RUNTIME_PORT ANALYTICS_PORT NGINX_PORT SERVICE_VERSION
+up: export CONFIG_FILE APP_ENVIRONMENT LOG_LEVEL JWT_SECRET_KEY BOOTSTRAP_PASSWORD_HASH POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DSN REDIS_ADDRESS KAFKA_BROKERS KAFKA_SNAPSHOT_GROUP_ID S3_BUCKET S3_REGION S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY PANEL_PORT RUNTIME_PORT ANALYTICS_PORT NGINX_PORT SERVICE_VERSION
 	$(CONTAINER_ENGINE) compose up -d postgres redis s3
 	@ready=0; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do \
 		if $(CONTAINER_ENGINE) compose exec -T postgres pg_isready -U $(POSTGRES_USER) -d $(POSTGRES_DB) >/dev/null 2>&1; then ready=1; break; fi; \
@@ -398,6 +417,54 @@ s3-provision:
 .PHONY: s3-provision-e2e
 s3-provision-e2e:
 	go run ./tools/s3-provision -endpoint http://localhost:$(S3_PORT) -bucket $(S3_BUCKET)-e2e -region us-east-1 -access-key $(S3_ACCESS_KEY) -secret-key $(S3_SECRET_KEY)
+
+# ─── Kafka ───────────────────────────────────────────────────────────────────
+
+.PHONY: kafka-up
+kafka-up: check-engine
+	$(CONTAINER_ENGINE) run -d \
+		--replace \
+		--name $(KAFKA_NAME) \
+		-p $(KAFKA_PORT):9092 \
+		-e KAFKA_NODE_ID=1 \
+		-e KAFKA_PROCESS_ROLES=broker,controller \
+		-e KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093 \
+		-e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092 \
+		-e KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT \
+		-e KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:9093 \
+		-e KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER \
+		-e KAFKA_LOG_DIRS=/var/lib/kafka/data \
+		-e KAFKA_AUTO_CREATE_TOPICS_ENABLE=true \
+		-e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
+		-e KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1 \
+		-e KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1 \
+		-e CLUSTER_ID=$(KAFKA_CLUSTER_ID) \
+		-v lotty-kafkadata:/var/lib/kafka/data$(VOL_OPTS) \
+		--memory=$(MEMORY_LIMIT) \
+		--cpus=$(CPU_LIMIT) \
+		--pids-limit=$(PIDS_LIMIT) \
+		--health-cmd="/opt/kafka/bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list" \
+		--health-interval=10s \
+		--health-timeout=10s \
+		--health-retries=5 \
+		--health-start-period=30s \
+		$(KAFKA_IMAGE)
+
+.PHONY: kafka-down
+kafka-down: check-engine
+	-$(CONTAINER_ENGINE) rm -f $(KAFKA_NAME)
+
+.PHONY: kafka-logs
+kafka-logs: check-engine
+	$(CONTAINER_ENGINE) logs -f $(KAFKA_NAME)
+
+.PHONY: kafka-topics
+kafka-topics: check-engine
+	$(CONTAINER_ENGINE) exec $(KAFKA_NAME) /opt/kafka/bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list
+
+.PHONY: kafka-clean
+kafka-clean: kafka-down
+	-$(CONTAINER_ENGINE) volume rm lotty-kafkadata
 
 # ─── Migrations ──────────────────────────────────────────────────────────────
 

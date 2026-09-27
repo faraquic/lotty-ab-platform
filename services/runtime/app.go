@@ -2,6 +2,8 @@ package main
 
 import (
 	"github.com/faraquic/lotty-ab-platform/pkg/config"
+	"github.com/faraquic/lotty-ab-platform/pkg/database"
+	"github.com/faraquic/lotty-ab-platform/pkg/logger"
 	"github.com/faraquic/lotty-ab-platform/pkg/middleware"
 	"github.com/faraquic/lotty-ab-platform/pkg/snapshot"
 	decidedomain "github.com/faraquic/lotty-ab-platform/services/runtime/domain/decide"
@@ -9,6 +11,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/redis/rueidis"
+	"github.com/segmentio/kafka-go"
 	"go.uber.org/zap"
 )
 
@@ -19,7 +22,7 @@ func NewApp(fiberConfig *fiber.Config, log *zap.Logger, cfg *config.Config, redi
 
 	apiV1 := app.Group("/api/v1/runtime")
 
-	snapReader := snapshot.NewReader(redisClient, log)
+	snapReader := snapshot.NewReader(newSnapshotConsumer(cfg, log), redisClient, log)
 
 	healthdomain.NewHandler().RegisterRoutes(apiV1)
 
@@ -29,6 +32,32 @@ func NewApp(fiberConfig *fiber.Config, log *zap.Logger, cfg *config.Config, redi
 	decideHandler.RegisterRoutes(apiV1)
 
 	return app, snapReader
+}
+
+// newSnapshotConsumer builds the snapshot topic consumer without pinging the
+// brokers: runtime must start even when Kafka is down, serving the Redis
+// bootstrap until the subscription catches up.
+func newSnapshotConsumer(cfg *config.Config, log *zap.Logger) *kafka.Reader {
+	groupID := cfg.Runtime.Kafka.GroupID
+	if groupID == "" {
+		groupID = "labp-runtime-snapshot"
+	}
+
+	k := kafka.NewReader(kafka.ReaderConfig{
+		Brokers:     database.ParseBrokers(cfg.Database.Kafka.Brokers),
+		Topic:       database.TopicSnapshot,
+		GroupID:     groupID,
+		MinBytes:    1,
+		MaxBytes:    10e6,
+		StartOffset: kafka.LastOffset,
+	})
+
+	log.Info("snapshot kafka consumer configured",
+		zap.String(logger.FieldKafkaGroupID, groupID),
+		zap.String(logger.FieldKafkaTopic, database.TopicSnapshot),
+	)
+
+	return k
 }
 
 func addMiddleware(app *fiber.App, cfg *config.Config, log *zap.Logger) {

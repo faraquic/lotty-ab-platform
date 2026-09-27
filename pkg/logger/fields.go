@@ -99,6 +99,18 @@ const (
 	FieldSnapshotExperimentCount = "snapshot.experiment_count"
 	FieldSnapshotStatus          = "snapshot.status"
 	FieldSnapshotMsg             = "snapshot.message"
+	FieldSnapshotRevision        = "snapshot.revision"
 	FieldQueueLen                = "queue.len"
 	FieldQueueCap                = "queue.cap"
+)
+
+const (
+	FieldKafkaBrokers = "kafka.brokers"
+	FieldKafkaTopic   = "kafka.topic"
+	FieldKafkaGroupID = "kafka.group_id"
+)
+
+const (
+	FieldOutboxID       = "outbox.id"
+	FieldOutboxAttempts = "outbox.attempts"
 )

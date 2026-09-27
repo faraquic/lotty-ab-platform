@@ -1,7 +1,7 @@
 package decide
 
 import (
-	"encoding/hex"
+	"strconv"
 	"time"
 
 	"github.com/goccy/go-json"
@@ -34,10 +34,7 @@ func (s *Service) Decide(req CreateDecisionRequest, requestID string) (*Decision
 		}
 	}
 
-	rev := ""
-	if snap.Revision != nil {
-		rev = hex.EncodeToString(snap.Revision[:])
-	}
+	rev := strconv.FormatUint(uint64(snap.Revision), 10)
 	degraded := s.repo.Stale(s.maxStale)
 
 	result := make(map[string]FlagDecision, len(req.Flags))

@@ -9,6 +9,7 @@ import (
 
 	"github.com/faraquic/lotty-ab-platform/pkg/audit"
 	"github.com/faraquic/lotty-ab-platform/pkg/database"
+	"github.com/faraquic/lotty-ab-platform/pkg/outbox"
 	"github.com/faraquic/lotty-ab-platform/services/panel/domain/users"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -109,6 +110,19 @@ INSERT INTO experiment_versions(id, experiment_id, version_num, weights_total, t
 		ResourceType: "experiment",
 		ResourceID:   expID,
 		After:        experimentAuditState{Status: StatusDraft, Version: 1},
+	}); err != nil {
+		return "", "", err
+	}
+
+	if err := outbox.CreateMessage(ctx, tx, outbox.Message{
+		Topic: "experiment.events",
+		Key:   expID,
+		Type:  "experiment.created",
+		Payload: ExperimentCreatedPayload{
+			ExperimentID: expID,
+			FlagID:       exp.FlagID,
+			Name:         exp.Name,
+		},
 	}); err != nil {
 		return "", "", err
 	}

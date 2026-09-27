@@ -2,71 +2,83 @@ package snapshot
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/faraquic/lotty-ab-platform/pkg/database"
 	"github.com/faraquic/lotty-ab-platform/pkg/logger"
 	"github.com/goccy/go-json"
 	"github.com/redis/rueidis"
+	"github.com/segmentio/kafka-go"
 	"go.uber.org/zap"
 )
 
-const watchInterval = 30 * time.Second
-
-type Reader struct {
-	r      *rueidis.Client
-	flags  atomic.Pointer[map[string]FlagSnapshot]
-	exps   atomic.Pointer[map[string]ExperimentSnapshot]
-	rev    atomic.Pointer[Revision]
-	loaded atomic.Int64
-	log    *zap.Logger
-	done   chan struct{}
-	notify chan struct{}
+// Provider is the read surface used by decide paths.
+type Provider interface {
+	Current() *Snapshot
+	GetFlag(key string) (FlagSnapshot, bool)
+	GetExperiment(flagKey string) (ExperimentSnapshot, bool)
+	Refresh() error
+	Stale(maxAge time.Duration) bool
+	Age() time.Duration
+	Stop()
 }
 
-type SnapshotManager = Reader
-type Provider = Reader
+// Reader keeps the latest snapshot in memory. It bootstraps from Redis and,
+// when a kafka reader is provided, applies newer revisions consumed from the
+// snapshot topic. A nil kafka reader disables the subscription: the state
+// then reflects the last Redis bootstrap only.
+type Reader struct {
+	k      *kafka.Reader
+	r      *rueidis.Client
+	log    *zap.Logger
+	flags  atomic.Pointer[map[string]FlagSnapshot]
+	exps   atomic.Pointer[map[string]ExperimentSnapshot]
+	rev    atomic.Uint64
+	loaded atomic.Int64
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
+}
 
-func NewReader(r *rueidis.Client, log *zap.Logger) *Reader {
+func NewReader(k *kafka.Reader, r *rueidis.Client, log *zap.Logger) *Reader {
+	ctx, cancel := context.WithCancel(context.Background())
+
 	rr := &Reader{
+		k:      k,
 		r:      r,
 		log:    log.Named("snapshot_reader"),
-		done:   make(chan struct{}),
-		notify: make(chan struct{}, 1),
+		ctx:    ctx,
+		cancel: cancel,
 	}
-	if s, err := rr.get(); err == nil {
+
+	if s, err := rr.loadFromRedis(ctx); err != nil {
+		rr.log.Warn("snapshot redis bootstrap failed; waiting for kafka", zap.Error(err))
+	} else {
 		rr.store(s)
 	}
-	go rr.subscribe()
-	go rr.watch()
+
+	if k != nil {
+		rr.wg.Add(1)
+		go rr.subscribe()
+	}
+
 	return rr
 }
 
-func NewSnapshotManager(r *rueidis.Client, log *zap.Logger) (*SnapshotManager, error) {
-	rr := NewReader(r, log)
-	if rr.Current() == nil {
-		if s, err := rr.get(); err != nil {
-			return nil, err
-		} else {
-			rr.store(s)
-		}
-	}
-	return rr, nil
-}
-
-func NewProvider(r *rueidis.Client, log *zap.Logger) *Provider { return NewReader(r, log) }
-
+// Current rebuilds the latest snapshot, or nil when nothing was loaded yet.
 func (rr *Reader) Current() *Snapshot {
 	m := rr.flags.Load()
-	rev := rr.rev.Load()
 	if m == nil {
 		return nil
 	}
+
 	flags := make([]FlagSnapshot, 0, len(*m))
 	for _, v := range *m {
 		flags = append(flags, v)
 	}
+
 	var exps []ExperimentSnapshot
 	if em := rr.exps.Load(); em != nil {
 		exps = make([]ExperimentSnapshot, 0, len(*em))
@@ -74,16 +86,44 @@ func (rr *Reader) Current() *Snapshot {
 			exps = append(exps, v)
 		}
 	}
-	return &Snapshot{Revision: rev, Flags: flags, Experiments: exps}
+
+	return &Snapshot{Revision: Revision(rr.rev.Load()), Flags: flags, Experiments: exps}
 }
 
 func (rr *Reader) store(s *Snapshot) {
 	rr.flags.Store(snapshotToMap(s))
 	rr.exps.Store(experimentsToMap(s))
-	rr.rev.Store(s.Revision)
+	rr.rev.Store(uint64(s.Revision))
 	rr.loaded.Store(time.Now().UnixNano())
 }
 
+// Refresh reloads the snapshot from Redis when it holds a newer revision.
+// It is the read-through path for memory misses: Redis is the source of
+// truth, Kafka is the notification channel.
+func (rr *Reader) Refresh() error {
+	ctx, cancel := context.WithTimeout(context.Background(), OpTimeout)
+	defer cancel()
+
+	s, err := rr.loadFromRedis(ctx)
+	if err != nil {
+		return err
+	}
+
+	if uint64(s.Revision) <= rr.rev.Load() {
+		return nil
+	}
+
+	rr.store(s)
+	rr.log.Debug(
+		"snapshot refreshed from redis",
+		zap.Uint64(logger.FieldSnapshotRevision, uint64(s.Revision)),
+	)
+
+	return nil
+}
+
+// Age reports how long ago the current snapshot was loaded, or -1 when
+// nothing was loaded yet.
 func (rr *Reader) Age() time.Duration {
 	ts := rr.loaded.Load()
 	if ts == 0 {
@@ -92,6 +132,8 @@ func (rr *Reader) Age() time.Duration {
 	return time.Since(time.Unix(0, ts))
 }
 
+// Stale reports whether the loaded snapshot is older than maxAge, or no
+// snapshot was loaded at all.
 func (rr *Reader) Stale(maxAge time.Duration) bool {
 	age := rr.Age()
 	return age < 0 || age > maxAge
@@ -123,104 +165,69 @@ func (rr *Reader) GetExperiment(flagKey string) (ExperimentSnapshot, bool) {
 	return v, ok
 }
 
+// Exists reports whether a snapshot is stored in Redis.
+func (rr *Reader) Exists(ctx context.Context) (bool, error) {
+	return (*rr.r).Do(ctx, (*rr.r).B().Exists().Key(keySnapshot).Build()).AsBool()
+}
+
+// Stop cancels the subscription, waits for it and closes the kafka reader.
 func (rr *Reader) Stop() {
-	select {
-	case <-rr.done:
-	default:
-		close(rr.done)
+	rr.cancel()
+	rr.wg.Wait()
+
+	if rr.k != nil {
+		_ = rr.k.Close()
 	}
 }
 
-func (rr *Reader) subscribe() {
-	for {
-		select {
-		case <-rr.done:
-			return
-		default:
-		}
-		ctx, cancel := context.WithCancel(context.Background())
-		go func() { <-rr.done; cancel() }()
-		err := (*rr.r).Receive(ctx, (*rr.r).B().Subscribe().Channel(database.ChannelUpdateSnapshot).Build(), func(m rueidis.PubSubMessage) {
-			select {
-			case rr.notify <- struct{}{}:
-			default:
-			}
-		})
-		cancel()
-		if err != nil {
-			select {
-			case <-rr.done:
-				return
-			default:
-				rr.log.Warn("pubsub retry", zap.Error(err))
-				time.Sleep(time.Second)
-			}
-		}
-	}
-}
-
-func (rr *Reader) watch() {
-	t := time.NewTicker(watchInterval)
-	defer t.Stop()
-	for {
-		select {
-		case <-t.C:
-			_ = rr.checkUpdate()
-		case <-rr.notify:
-			_ = rr.checkUpdate()
-		case <-rr.done:
-			return
-		}
-	}
-}
-
-func (rr *Reader) checkUpdate() error {
-	rev, err := rr.getRevision()
-	if err != nil {
-		return err
-	}
-	if cached := rr.rev.Load(); cached == nil || *cached != *rev {
-		s, err := rr.get()
-		if err != nil {
-			return err
-		}
-		rr.store(s)
-		rr.log.Info("snapshot updated", zap.String(logger.FieldCacheKeyNS, keySnapshot))
-	}
-	return nil
-}
-
-func (rr *Reader) Get() (*Snapshot, error)         { return rr.get() }
-func (rr *Reader) GetRevision() (*Revision, error) { return rr.getRevision() }
-
-func (rr *Reader) get() (*Snapshot, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), redisOpTimeout)
+func (rr *Reader) loadFromRedis(ctx context.Context) (*Snapshot, error) {
+	ctx, cancel := context.WithTimeout(ctx, OpTimeout)
 	defer cancel()
-	b, err := (*rr.r).Do(ctx, (*rr.r).B().Get().Key(keySnapshot).Build()).AsBytes()
+
+	raw, err := (*rr.r).Do(ctx, (*rr.r).B().Get().Key(keySnapshot).Build()).ToString()
 	if err != nil {
 		return nil, err
 	}
+
 	var s Snapshot
-	if err := json.Unmarshal(b, &s); err != nil {
+	if err := json.Unmarshal([]byte(raw), &s); err != nil {
 		return nil, err
 	}
+
 	return &s, nil
 }
 
-func (rr *Reader) getRevision() (*Revision, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), redisOpTimeout)
-	defer cancel()
-	b, err := (*rr.r).Do(ctx, (*rr.r).B().Get().Key(keySnapshotRev).Build()).AsBytes()
-	if err != nil {
-		return nil, err
-	}
-	var rev Revision
-	copy(rev[:], b)
-	return &rev, nil
-}
+func (rr *Reader) subscribe() {
+	defer rr.wg.Done()
 
-func (rr *Reader) Exists(ctx context.Context) (bool, error) {
-	return (*rr.r).Do(ctx, (*rr.r).B().Exists().Key(keySnapshot).Build()).AsBool()
+	for {
+		msg, err := rr.k.ReadMessage(rr.ctx)
+		if err != nil {
+			if errors.Is(err, context.Canceled) || rr.ctx.Err() != nil {
+				return
+			}
+			rr.log.Warn("snapshot kafka read failed", zap.Error(err))
+			continue
+		}
+
+		var s Snapshot
+		if err := json.Unmarshal(msg.Value, &s); err != nil {
+			rr.log.Warn("snapshot parse failed", zap.Error(err))
+			continue
+		}
+
+		if uint64(s.Revision) <= rr.rev.Load() {
+			continue
+		}
+
+		rr.store(&s)
+		rr.log.Debug(
+			"snapshot applied",
+			zap.Uint64(logger.FieldSnapshotRevision, uint64(s.Revision)),
+			zap.Int(logger.FieldSnapshotFlagCount, len(s.Flags)),
+			zap.Int(logger.FieldSnapshotExperimentCount, len(s.Experiments)),
+		)
+	}
 }
 
 func snapshotToMap(s *Snapshot) *map[string]FlagSnapshot {

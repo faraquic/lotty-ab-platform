@@ -11,10 +11,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/rueidis"
+	"github.com/segmentio/kafka-go"
 	"go.uber.org/zap"
 
 	libauth "github.com/faraquic/lotty-ab-platform/pkg/auth"
 	"github.com/faraquic/lotty-ab-platform/pkg/config"
+	"github.com/faraquic/lotty-ab-platform/pkg/database"
 	"github.com/faraquic/lotty-ab-platform/pkg/middleware"
 	"github.com/faraquic/lotty-ab-platform/pkg/snapshot"
 	authdomain "github.com/faraquic/lotty-ab-platform/services/panel/domain/auth"
@@ -27,7 +29,7 @@ import (
 	panelsnapshot "github.com/faraquic/lotty-ab-platform/services/panel/snapshot"
 )
 
-func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisClient *rueidis.Client, s3Client *s3.Client) (*gin.Engine, panelsnapshot.Refresher, *snapshot.Reader) {
+func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisClient *rueidis.Client, s3Client *s3.Client, kafkaWriter *kafka.Writer) (*gin.Engine, panelsnapshot.Refresher, *snapshot.Reader) {
 	r := gin.New()
 	r.HandleMethodNotAllowed = true
 
@@ -35,8 +37,8 @@ func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisCli
 
 	apiV1 := r.Group("/api/v1/panel")
 
-	snapWriter := snapshot.NewWriter(redisClient, log)
-	snapReader := snapshot.NewReader(redisClient, log)
+	snapWriter := snapshot.NewWriter(redisClient, database.ParseBrokers(cfg.Database.Kafka.Brokers), kafkaWriter, log)
+	snapReader := snapshot.NewReader(nil, redisClient, log)
 	healthdomain.NewHandler().RegisterRoutes(apiV1)
 
 	tokenizer := libauth.NewJWTManager(cfg.Auth.JWT.SecretKey, cfg.Auth.JWT.TTL)

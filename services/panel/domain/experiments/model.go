@@ -299,3 +299,11 @@ type ExperimentDetail struct {
 	CreatedBy      *users.User
 	UpdatedBy      *users.User
 }
+
+// ExperimentCreatedPayload is the outbox event emitted when an experiment is
+// created. Consumers can deduplicate on the envelope id.
+type ExperimentCreatedPayload struct {
+	ExperimentID string `json:"experiment_id"`
+	FlagID       string `json:"flag_id"`
+	Name         string `json:"name"`
+}

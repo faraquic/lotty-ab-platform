@@ -15,6 +15,7 @@ type snapshotProvider interface {
 	Current() *snapshot.Snapshot
 	GetFlag(key string) (snapshot.FlagSnapshot, bool)
 	GetExperiment(flagKey string) (snapshot.ExperimentSnapshot, bool)
+	Refresh() error
 	Stale(maxAge time.Duration) bool
 }
 
@@ -30,12 +31,25 @@ func NewRepository(reader *snapshot.Reader, log *zap.Logger) *Repository {
 func (r *Repository) GetSnapshot() (*snapshot.Snapshot, error) {
 	snap := r.reader.Current()
 	if snap == nil {
+		if err := r.reader.Refresh(); err != nil {
+			r.log.Warn("snapshot refresh failed", zap.Error(err))
+		}
+		snap = r.reader.Current()
+	}
+	if snap == nil {
 		return nil, ErrSnapshotUnavailable
 	}
 	return snap, nil
 }
 
 func (r *Repository) FindFlag(key string) (*snapshot.FlagSnapshot, bool) {
+	if f, ok := r.reader.GetFlag(key); ok {
+		return &f, true
+	}
+	if err := r.reader.Refresh(); err != nil {
+		r.log.Warn("snapshot refresh failed", zap.Error(err))
+		return nil, false
+	}
 	f, ok := r.reader.GetFlag(key)
 	if !ok {
 		return nil, false
@@ -44,6 +58,13 @@ func (r *Repository) FindFlag(key string) (*snapshot.FlagSnapshot, bool) {
 }
 
 func (r *Repository) FindExperiment(flagKey string) (*snapshot.ExperimentSnapshot, bool) {
+	if e, ok := r.reader.GetExperiment(flagKey); ok {
+		return &e, true
+	}
+	if err := r.reader.Refresh(); err != nil {
+		r.log.Warn("snapshot refresh failed", zap.Error(err))
+		return nil, false
+	}
 	e, ok := r.reader.GetExperiment(flagKey)
 	if !ok {
 		return nil, false

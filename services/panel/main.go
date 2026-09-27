@@ -12,7 +12,10 @@ import (
 	"github.com/faraquic/lotty-ab-platform/pkg/config"
 	"github.com/faraquic/lotty-ab-platform/pkg/database"
 	"github.com/faraquic/lotty-ab-platform/pkg/logger"
+	"github.com/faraquic/lotty-ab-platform/pkg/outbox"
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/segmentio/kafka-go"
 	"go.uber.org/zap"
 )
 
@@ -80,8 +83,15 @@ func main() {
 		)
 	}
 
+	outboxStop := startOutboxPublisher(connectCtx, cfg, postgres, log)
+
+	snapKafkaWriter := startSnapshotWriter(connectCtx, cfg, log)
+	if snapKafkaWriter != nil {
+		defer snapKafkaWriter.Close()
+	}
+
 	setGinMode(cfg.Environment, log)
-	r, refresher, snapReader := newRouter(log, cfg, postgres, redis, s3)
+	r, refresher, snapReader := newRouter(log, cfg, postgres, redis, s3, snapKafkaWriter)
 
 	log.Info("server listening",
 		zap.String(logger.FieldServerAddress, cfg.Panel.HTTP.Address),
@@ -125,6 +135,7 @@ func main() {
 
 	refresher.Stop()
 	snapReader.Stop()
+	outboxStop()
 
 	log.Info("graceful shutdown completed",
 		zap.String(logger.FieldServerAddress, cfg.Panel.HTTP.Address),
@@ -133,6 +144,64 @@ func main() {
 
 func connectContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), 5*time.Second)
+}
+
+// startSnapshotWriter connects the snapshot Kafka publisher. When Kafka is
+// unreachable it returns nil and the snapshot writer persists to Redis only.
+func startSnapshotWriter(ctx context.Context, cfg *config.Config, log *zap.Logger) *kafka.Writer {
+	brokers := database.ParseBrokers(cfg.Database.Kafka.Brokers)
+	if len(brokers) == 0 {
+		log.Warn("kafka brokers are empty; snapshots published to redis only")
+		return nil
+	}
+
+	writer, err := database.NewBroadcastWriter(ctx, brokers, log)
+	if err != nil {
+		log.Warn("kafka unavailable; snapshots published to redis only",
+			zap.Strings(logger.FieldKafkaBrokers, brokers),
+			zap.Error(err),
+		)
+		return nil
+	}
+
+	return writer
+}
+
+// startOutboxPublisher connects to Kafka and runs the outbox relay in the
+// background. When Kafka is unreachable it logs a warning and returns a
+// no-op stop: pending rows accumulate in the outbox table and are published
+// once Kafka is available and the service restarts.
+func startOutboxPublisher(ctx context.Context, cfg *config.Config, postgres *pgxpool.Pool, log *zap.Logger) func() {
+	noop := func() {}
+
+	brokers := database.ParseBrokers(cfg.Database.Kafka.Brokers)
+	if len(brokers) == 0 {
+		log.Warn("kafka brokers are empty; outbox relay disabled")
+		return noop
+	}
+
+	writer, err := database.NewBroadcastWriter(ctx, brokers, log)
+	if err != nil {
+		log.Warn("kafka unavailable; continuing without outbox relay",
+			zap.Strings(logger.FieldKafkaBrokers, brokers),
+			zap.Error(err),
+		)
+		return noop
+	}
+
+	publisher := outbox.NewPublisher(postgres, brokers, writer, log)
+
+	publisherCtx, stop := context.WithCancel(context.Background())
+
+	go func() {
+		defer writer.Close()
+
+		if err := publisher.Run(publisherCtx); err != nil {
+			log.Error("outbox relay stopped", zap.Error(err))
+		}
+	}()
+
+	return stop
 }
 
 func setGinMode(environment string, log *zap.Logger) {

@@ -1,6 +1,9 @@
 package snapshot
 
-import "sort"
+import (
+	"sort"
+	"time"
+)
 
 type FlagInput struct {
 	Key   string
@@ -67,4 +70,8 @@ func Build(flags []FlagInput, experiments []ExperimentInput) *Snapshot {
 		Flags:       flagSnapshots,
 		Experiments: expSnapshots,
 	}
+}
+
+func generateRevision() Revision {
+	return Revision(time.Now().UnixNano())
 }
