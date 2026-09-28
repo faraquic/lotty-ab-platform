@@ -10,9 +10,10 @@ import (
 )
 
 type Service struct {
-	repo     *Repository
-	maxStale time.Duration
-	log      *zap.Logger
+	repo      *Repository
+	publisher *DecisionPublisher
+	maxStale  time.Duration
+	log       *zap.Logger
 }
 
 func NewService(repo *Repository, maxStale time.Duration, log *zap.Logger) *Service {
@@ -20,6 +21,13 @@ func NewService(repo *Repository, maxStale time.Duration, log *zap.Logger) *Serv
 		maxStale = 5 * time.Minute
 	}
 	return &Service{repo: repo, maxStale: maxStale, log: log.Named("decide")}
+}
+
+func NewServiceWithPublisher(repo *Repository, publisher *DecisionPublisher, maxStale time.Duration, log *zap.Logger) *Service {
+	if maxStale <= 0 {
+		maxStale = 5 * time.Minute
+	}
+	return &Service{repo: repo, publisher: publisher, maxStale: maxStale, log: log.Named("decide")}
 }
 
 func (s *Service) Decide(req CreateDecisionRequest, requestID string) (*DecisionResponse, error) {
@@ -40,6 +48,10 @@ func (s *Service) Decide(req CreateDecisionRequest, requestID string) (*Decision
 	result := make(map[string]FlagDecision, len(req.Flags))
 	for _, key := range req.Flags {
 		result[key] = s.decideFlag(key, req.SubjectID, req.Attributes)
+	}
+
+	if s.publisher != nil {
+		s.publishDecisions(requestID, req.SubjectID, rev, result)
 	}
 
 	return &DecisionResponse{
@@ -106,6 +118,34 @@ func (s *Service) decideFlag(key, subjectID string, attrs map[string]any) FlagDe
 		ExperimentVersion: exp.VersionNum,
 		VariantID:         variant.ID,
 		DecisionID:        id,
+	}
+}
+
+func (s *Service) publishDecisions(requestID, subjectID, rev string, decisions map[string]FlagDecision) {
+	now := time.Now()
+
+	for key, d := range decisions {
+		if d.DecisionID == "" {
+			continue
+		}
+
+		rec := DecisionRecord{
+			DecisionID:     d.DecisionID,
+			RequestID:      requestID,
+			SubjectID:      subjectID,
+			FlagKey:        key,
+			ResultSource:   d.Source,
+			ConfigRevision: rev,
+			CreatedAt:      now,
+		}
+
+		if d.Source == SourceExperiment {
+			rec.ExperimentID = d.ExperimentID
+			rec.ExperimentVersionID = d.ExperimentID
+			rec.VariantID = d.VariantID
+		}
+
+		s.publisher.Publish(rec)
 	}
 }
 

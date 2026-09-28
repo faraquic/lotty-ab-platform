@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/faraquic/lotty-ab-platform/pkg/metrics"
 	"github.com/faraquic/lotty-ab-platform/services/panel/domain/users"
 	"github.com/goccy/go-json"
 )
@@ -215,12 +216,60 @@ type Metric struct {
 	MetricType  MetricType
 	Aggregation Aggregation
 	Attribution Attribution
+	Formula     *Formula
 	IsBuiltin   bool
 	Status      MetricStatus
 	CreatedBy   string
 	UpdatedBy   string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+}
+
+type Formula struct {
+	Expression string
+	AST        metrics.Node
+}
+
+func (f *Formula) Value() (driver.Value, error) {
+	if f == nil {
+		return nil, nil
+	}
+	raw, err := json.Marshal(f.AST)
+	if err != nil {
+		return nil, err
+	}
+	return string(raw), nil
+}
+
+func (f *Formula) Scan(src any) error {
+	if src == nil {
+		return nil
+	}
+	var raw []byte
+	switch v := src.(type) {
+	case []byte:
+		raw = v
+	case string:
+		raw = []byte(v)
+	default:
+		return fmt.Errorf("formula scan: unsupported type %T", src)
+	}
+	return json.Unmarshal(raw, &f.AST)
+}
+
+func (f *Formula) Validate() error {
+	if f == nil || f.Expression == "" {
+		return nil
+	}
+	ast, err := metrics.Parse(f.Expression)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidMetricConfig, err)
+	}
+	if err := metrics.Validate(ast); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidMetricConfig, err)
+	}
+	f.AST = ast
+	return nil
 }
 
 type MetricWithCreatorAndUpdater struct {

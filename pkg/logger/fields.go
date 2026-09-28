@@ -114,3 +114,11 @@ const (
 	FieldOutboxID       = "outbox.id"
 	FieldOutboxAttempts = "outbox.attempts"
 )
+
+const (
+	FieldEventID     = "event.id"
+	FieldEventType   = "event.type"
+	FieldDecisionID  = "decision.id"
+	FieldSaltVersion = "pii.salt_version"
+	FieldBatchSize   = "batch.size"
+)

@@ -34,8 +34,8 @@ func (r *Repository) Create(ctx context.Context, m Metric) (string, error) {
 	}
 	id := uid.String()
 	const q = `
-INSERT INTO metrics(id, key, name, description, metric_type, aggregation, attribution, is_builtin, status, created_by, updated_by)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+INSERT INTO metrics(id, key, name, description, metric_type, aggregation, attribution, formula, is_builtin, status, created_by, updated_by)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 RETURNING
     id`
 
@@ -43,7 +43,7 @@ RETURNING
 	err = r.db.QueryRow(
 		ctx, q,
 		id, m.Key, m.Name, m.Description, string(m.MetricType),
-		m.Aggregation, m.Attribution, m.IsBuiltin, string(m.Status),
+		m.Aggregation, m.Attribution, m.Formula, m.IsBuiltin, string(m.Status),
 		m.CreatedBy, m.UpdatedBy,
 	).Scan(&outID)
 	if err != nil {
@@ -70,6 +70,7 @@ SELECT
     m.metric_type,
     m.aggregation,
     m.attribution,
+    m.formula,
     m.is_builtin,
     m.status,
     m.created_by,
@@ -103,6 +104,7 @@ type metricWithCreatorAndUpdaterRow struct {
 	MetricType      string
 	Aggregation     Aggregation
 	Attribution     Attribution
+	Formula         *Formula
 	IsBuiltin       bool
 	Status          string
 	CreatedByID     string
@@ -135,6 +137,7 @@ func (r metricWithCreatorAndUpdaterRow) toMetricWithCreatorAndUpdater() MetricWi
 			MetricType:  MetricType(r.MetricType),
 			Aggregation: r.Aggregation,
 			Attribution: r.Attribution,
+			Formula:     r.Formula,
 			IsBuiltin:   r.IsBuiltin,
 			Status:      MetricStatus(r.Status),
 			CreatedBy:   r.CreatedByID,
@@ -179,6 +182,7 @@ WHERE
 		&row.MetricType,
 		&row.Aggregation,
 		&row.Attribution,
+		&row.Formula,
 		&row.IsBuiltin,
 		&row.Status,
 		&row.CreatedByID,
@@ -220,6 +224,7 @@ SELECT
     m.metric_type,
     m.aggregation,
     m.attribution,
+    m.formula,
     m.is_builtin,
     m.status,
     m.created_by,
@@ -255,6 +260,7 @@ LIMIT $1 OFFSET $2`
 			&m.MetricType,
 			&m.Aggregation,
 			&m.Attribution,
+			&m.Formula,
 			&m.IsBuiltin,
 			&m.Status,
 			&m.CreatedBy,
@@ -269,7 +275,7 @@ LIMIT $1 OFFSET $2`
 	return result, rows.Err()
 }
 
-func (r *Repository) Update(ctx context.Context, id string, key, name, description string, aggregation *Aggregation, attribution *Attribution, status MetricStatus, updatedBy string) (MetricWithCreatorAndUpdater, error) {
+func (r *Repository) Update(ctx context.Context, id string, key, name, description string, aggregation *Aggregation, attribution *Attribution, formula *Formula, status MetricStatus, updatedBy string) (MetricWithCreatorAndUpdater, error) {
 	var agg any
 	if aggregation != nil {
 		agg = *aggregation
@@ -277,6 +283,10 @@ func (r *Repository) Update(ctx context.Context, id string, key, name, descripti
 	var attr any
 	if attribution != nil {
 		attr = *attribution
+	}
+	var fml any
+	if formula != nil {
+		fml = *formula
 	}
 	var stat any
 	if status != "" {
@@ -292,12 +302,13 @@ SET
     description = COALESCE(NULLIF($4, ''), description),
     aggregation = COALESCE($5, aggregation),
     attribution = COALESCE($6, attribution),
-    status = COALESCE($7, status),
-    updated_by = $8
+    formula = COALESCE($7, formula),
+    status = COALESCE($8, status),
+    updated_by = $9
 WHERE
     id = $1`
 
-	tag, err := r.db.Exec(ctx, q, id, key, name, description, agg, attr, stat, updatedBy)
+	tag, err := r.db.Exec(ctx, q, id, key, name, description, agg, attr, fml, stat, updatedBy)
 	if err != nil {
 		if database.IsUniqueViolation(err) {
 			if strings.Contains(err.Error(), "metrics_key_key") {

@@ -49,6 +49,30 @@ KAFKA_PORT       ?= 9092
 KAFKA_CLUSTER_ID ?= 12345678-1234-1234-1234-123456789012
 KAFKA_BROKERS    ?= localhost:$(KAFKA_PORT)
 KAFKA_SNAPSHOT_GROUP_ID ?= labp-runtime-snapshot
+KAFKA_MEMORY     ?= 1g
+
+CLICKHOUSE_IMAGE       ?= docker.io/clickhouse/clickhouse-server:24.8
+CLICKHOUSE_NAME        ?= labp-clickhouse
+CLICKHOUSE_HTTP_PORT   ?= 8123
+CLICKHOUSE_NATIVE_PORT ?= 9009
+CLICKHOUSE_DB          ?= labp
+CLICKHOUSE_USER        ?= labp
+CLICKHOUSE_PASSWORD    ?= labppassword
+CLICKHOUSE_MEMORY      ?= 1g
+
+PROMETHEUS_IMAGE  ?= docker.io/prom/prometheus:latest
+PROMETHEUS_NAME   ?= labp-prometheus
+PROMETHEUS_PORT   ?= 9090
+
+LOKI_IMAGE  ?= docker.io/grafana/loki:latest
+LOKI_NAME   ?= labp-loki
+LOKI_PORT   ?= 3100
+
+GRAFANA_IMAGE  ?= docker.io/grafana/grafana:latest
+GRAFANA_NAME   ?= labp-grafana
+GRAFANA_PORT   ?= 3000
+GRAFANA_ADMIN_USER     ?= admin
+GRAFANA_ADMIN_PASSWORD ?= admin
 
 CPU_LIMIT    ?= 1.0
 MEMORY_LIMIT ?= 512m
@@ -119,12 +143,18 @@ help:
 	@echo "  s3-provision    create S3 bucket"
 	@echo "  kafka-topics    list Kafka topics"
 	@echo "  kafka-logs      follow Kafka logs"
+	@echo "  clickhouse-query query ClickHouse (q=\"SELECT 1\")"
+	@echo "  clickhouse-tables apply ClickHouse tables"
+	@echo "  clickhouse-logs   follow ClickHouse logs"
+	@echo "  prometheus-up/down/logs/clean  Prometheus lifecycle"
+	@echo "  loki-up/down/logs/clean         Loki lifecycle"
+	@echo "  grafana-up/down/logs/dashboards Grafana lifecycle"
 	@echo "  test-e2e        run end-to-end tests"
 
 # ─── Infrastructure ──────────────────────────────────────────────────────────
 
 .PHONY: dev-up
-dev-up: pg-up redis-up s3-up kafka-up
+dev-up: pg-up redis-up s3-up kafka-up clickhouse-up prometheus-up loki-up grafana-up
 	@echo "Waiting for S3..."
 	@ready=0; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do \
 		if $(CONTAINER_ENGINE) exec $(S3_NAME) curl --fail --silent --show-error --max-time 2 http://127.0.0.1:9000/minio/health/ready >/dev/null 2>&1; then ready=1; break; fi; \
@@ -139,18 +169,26 @@ dev-up: pg-up redis-up s3-up kafka-up
 		sleep 2; \
 	done; \
 	if [ "$$ready" != 1 ]; then echo "Kafka readiness timed out. Run 'make kafka-logs' for details."; exit 1; fi
+	@echo "Waiting for ClickHouse..."
+	@ready=0; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do \
+		if curl --fail --silent --show-error --max-time 2 http://localhost:$(CLICKHOUSE_HTTP_PORT)/ping >/dev/null 2>&1; then ready=1; break; fi; \
+		echo "  waiting... ($$i)"; \
+		sleep 2; \
+	done; \
+	if [ "$$ready" != 1 ]; then echo "ClickHouse readiness timed out. Run 'make clickhouse-logs' for details."; exit 1; fi
 	$(MAKE) s3-provision
+	$(MAKE) clickhouse-tables
 
 .PHONY: dev-down
-dev-down: pg-down redis-down s3-down kafka-down
+dev-down: pg-down redis-down s3-down kafka-down clickhouse-down prometheus-down loki-down grafana-down
 
 .PHONY: dev-clean
-dev-clean: pg-clean redis-clean s3-clean kafka-clean
+dev-clean: pg-clean redis-clean s3-clean kafka-clean clickhouse-clean prometheus-clean loki-clean grafana-clean
 
 .PHONY: dev-status
 dev-status:
 	@echo "=== Infrastructure containers ==="
-	@$(CONTAINER_ENGINE) ps --filter name=labp-postgres --filter name=labp-redis --filter name=labp-s3 --filter name=labp-kafka --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || true
+	@$(CONTAINER_ENGINE) ps --filter name=labp-postgres --filter name=labp-redis --filter name=labp-s3 --filter name=labp-kafka --filter name=labp-clickhouse --filter name=labp-prometheus --filter name=labp-loki --filter name=labp-grafana --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || true
 	@echo ""
 	@echo "=== Service processes ==="
 	@pgrep -af 'bin/(panel|runtime|analytics)' 2>/dev/null || echo "  (none running)"
@@ -159,7 +197,7 @@ dev-status:
 
 .PHONY: run-local
 run-local: check-local-config build-panel build-runtime build-analytics _ensure-infra
-run-local: export CONFIG_NAME APP_ENVIRONMENT LOG_LEVEL JWT_SECRET_KEY BOOTSTRAP_PASSWORD_HASH POSTGRES_DSN REDIS_ADDRESS KAFKA_BROKERS KAFKA_SNAPSHOT_GROUP_ID S3_BUCKET S3_REGION S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY
+	@export CONFIG_NAME APP_ENVIRONMENT LOG_LEVEL JWT_SECRET_KEY BOOTSTRAP_PASSWORD_HASH POSTGRES_DSN REDIS_ADDRESS KAFKA_BROKERS KAFKA_SNAPSHOT_GROUP_ID S3_BUCKET S3_REGION S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY
 	@mkdir -p "$(LOG_DIR)"
 	@echo "Stopping old services..."
 	@-pkill -f 'bin/panel' 2>/dev/null; sleep 0.2
@@ -440,9 +478,9 @@ kafka-up: check-engine
 		-e KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1 \
 		-e CLUSTER_ID=$(KAFKA_CLUSTER_ID) \
 		-v lotty-kafkadata:/var/lib/kafka/data$(VOL_OPTS) \
-		--memory=$(MEMORY_LIMIT) \
+		--memory=$(KAFKA_MEMORY) \
 		--cpus=$(CPU_LIMIT) \
-		--pids-limit=$(PIDS_LIMIT) \
+		--pids-limit=2048 \
 		--health-cmd="/opt/kafka/bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list" \
 		--health-interval=10s \
 		--health-timeout=10s \
@@ -466,6 +504,153 @@ kafka-topics: check-engine
 kafka-clean: kafka-down
 	-$(CONTAINER_ENGINE) volume rm lotty-kafkadata
 
+# ─── ClickHouse ──────────────────────────────────────────────────────────────
+
+.PHONY: clickhouse-up
+clickhouse-up: check-engine
+	$(CONTAINER_ENGINE) run -d \
+		--replace \
+		--name $(CLICKHOUSE_NAME) \
+		-p 127.0.0.1:$(CLICKHOUSE_HTTP_PORT):8123 \
+		-p 127.0.0.1:$(CLICKHOUSE_NATIVE_PORT):9000 \
+		-e CLICKHOUSE_DB=$(CLICKHOUSE_DB) \
+		-e CLICKHOUSE_USER=$(CLICKHOUSE_USER) \
+		-e CLICKHOUSE_PASSWORD=$(CLICKHOUSE_PASSWORD) \
+		-v lotty-clickhousedata:/var/lib/clickhouse$(VOL_OPTS) \
+		--memory=$(CLICKHOUSE_MEMORY) \
+		--cpus=$(CPU_LIMIT) \
+		--pids-limit=2048 \
+		--health-cmd="clickhouse-client --query 'SELECT 1'" \
+		--health-interval=5s \
+		--health-timeout=3s \
+		--health-retries=10 \
+		$(CLICKHOUSE_IMAGE)
+
+.PHONY: clickhouse-down
+clickhouse-down: check-engine
+	-$(CONTAINER_ENGINE) rm -f $(CLICKHOUSE_NAME)
+
+.PHONY: clickhouse-logs
+clickhouse-logs: check-engine
+	$(CONTAINER_ENGINE) logs -f $(CLICKHOUSE_NAME)
+
+.PHONY: clickhouse-query
+ifndef q
+	$(error usage: make clickhouse-query q="SELECT 1")
+endif
+clickhouse-query: check-engine
+	$(CONTAINER_ENGINE) exec $(CLICKHOUSE_NAME) clickhouse-client --database $(CLICKHOUSE_DB) --query "$(q)"
+
+.PHONY: clickhouse-tables
+clickhouse-tables: check-engine
+	$(CONTAINER_ENGINE) exec -i $(CLICKHOUSE_NAME) clickhouse-client -n < deploy/clickhouse/tables.sql
+
+.PHONY: clickhouse-clean
+clickhouse-clean: clickhouse-down
+	-$(CONTAINER_ENGINE) volume rm lotty-clickhousedata
+
+# ─── Prometheus ───────────────────────────────────────────────────────────────
+
+.PHONY: prometheus-up
+prometheus-up: check-engine
+	$(CONTAINER_ENGINE) run -d \
+		--replace \
+		--name $(PROMETHEUS_NAME) \
+		--network host \
+		-v lotty-promdata:/prometheus$(VOL_OPTS) \
+		-v ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro \
+		--health-cmd="wget -q --spider http://localhost:9090/-/healthy" \
+		--health-interval=5s \
+		--health-timeout=3s \
+		--health-retries=10 \
+		$(PROMETHEUS_IMAGE) \
+		--config.file=/etc/prometheus/prometheus.yml \
+		--storage.tsdb.path=/prometheus \
+		--storage.tsdb.retention.time=15d \
+		--web.enable-lifecycle
+
+.PHONY: prometheus-down
+prometheus-down: check-engine
+	-$(CONTAINER_ENGINE) rm -f $(PROMETHEUS_NAME)
+
+.PHONY: prometheus-logs
+prometheus-logs: check-engine
+	$(CONTAINER_ENGINE) logs -f $(PROMETHEUS_NAME)
+
+.PHONY: prometheus-clean
+prometheus-clean: prometheus-down
+	-$(CONTAINER_ENGINE) volume rm lotty-promdata
+
+# ─── Loki ─────────────────────────────────────────────────────────────────────
+
+.PHONY: loki-up
+loki-up: check-engine
+	$(CONTAINER_ENGINE) run -d \
+		--replace \
+		--name $(LOKI_NAME) \
+		--network host \
+		-v lotty-lokidata:/loki$(VOL_OPTS) \
+		-v ./deploy/loki/loki-config.yml:/etc/loki/local-config.yaml:ro \
+		--health-cmd="wget -q --spider http://localhost:3100/ready" \
+		--health-interval=5s \
+		--health-timeout=3s \
+		--health-retries=10 \
+		$(LOKI_IMAGE) \
+		-config.file=/etc/loki/local-config.yaml
+
+.PHONY: loki-down
+loki-down: check-engine
+	-$(CONTAINER_ENGINE) rm -f $(LOKI_NAME)
+
+.PHONY: loki-logs
+loki-logs: check-engine
+	$(CONTAINER_ENGINE) logs -f $(LOKI_NAME)
+
+.PHONY: loki-clean
+loki-clean: loki-down
+	-$(CONTAINER_ENGINE) volume rm lotty-lokidata
+
+# ─── Grafana ──────────────────────────────────────────────────────────────────
+
+.PHONY: grafana-up
+grafana-up: check-engine
+	$(CONTAINER_ENGINE) run -d \
+		--replace \
+		--name $(GRAFANA_NAME) \
+		--network host \
+		-e GF_SECURITY_ADMIN_USER=$(GRAFANA_ADMIN_USER) \
+		-e GF_SECURITY_ADMIN_PASSWORD=$(GRAFANA_ADMIN_PASSWORD) \
+		-v lotty-grafanadata:/var/lib/grafana$(VOL_OPTS) \
+		-v ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro \
+		-v ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro \
+		--health-cmd="wget -q --spider http://localhost:3000/api/health" \
+		--health-interval=5s \
+		--health-timeout=3s \
+		--health-retries=10 \
+		$(GRAFANA_IMAGE)
+
+.PHONY: grafana-down
+grafana-down: check-engine
+	-$(CONTAINER_ENGINE) rm -f $(GRAFANA_NAME)
+
+.PHONY: grafana-logs
+grafana-logs: check-engine
+	$(CONTAINER_ENGINE) logs -f $(GRAFANA_NAME)
+
+.PHONY: grafana-dashboards
+grafana-dashboards: check-engine
+	@echo "Grafana dashboards available at http://localhost:$(GRAFANA_PORT)"
+	@echo "Default login: $(GRAFANA_ADMIN_USER) / $(GRAFANA_ADMIN_PASSWORD)"
+	@echo ""
+	@echo "Dashboards:"
+	@echo "  Runtime    - http://localhost:$(GRAFANA_PORT)/d/runtime-dashboard"
+	@echo "  Queues     - http://localhost:$(GRAFANA_PORT)/d/queues-dashboard"
+	@echo "  Analytics  - http://localhost:$(GRAFANA_PORT)/d/analytics-dashboard"
+
+.PHONY: grafana-clean
+grafana-clean: grafana-down
+	-$(CONTAINER_ENGINE) volume rm lotty-grafanadata
+
 # ─── Migrations ──────────────────────────────────────────────────────────────
 
 .PHONY: pg-migrate-up
@@ -480,12 +665,13 @@ pg-migrate-down:
 pg-migrate-status:
 	go tool goose -dir $(MIGRATIONS_DIR) postgres "$(POSTGRES_DSN)" status
 
-.PHONY: pg-migrate-new
+pg-migrate-new:
 ifndef name
 	$(error usage: make pg-migrate-new name=migration_name)
 endif
-pg-migrate-new:
 	go tool goose -dir $(MIGRATIONS_DIR) create $(name) sql
+
+.PHONY: pg-migrate-new
 
 # ─── Tests ───────────────────────────────────────────────────────────────────
 

@@ -13,6 +13,8 @@ servers:
 tags:
   - name: health
     description: Liveness probe
+  - name: events
+    description: Event and exposure batch ingestion
 
 paths:
   /health:
@@ -32,6 +34,115 @@ paths:
                 enum: [OK]
                 example: "OK"
 
+  /events/batch:
+    post:
+      tags: [events]
+      summary: Ingest a batch of events
+      description: >
+        Validates each event independently, deduplicates on `event_id`
+        (same id + same body replays the acceptance, same id + different
+        body is rejected as a conflict), then publishes accepted events
+        to Kafka. Returns `202` when every item is accepted or a replay,
+        `207` on a mixed batch, `400` when every item is rejected,
+        `503` when the broker is unavailable.
+      operationId: ingestEventsBatch
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventBatchRequest"
+      responses:
+        "202":
+          description: All items accepted or replayed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchResponse"
+        "207":
+          description: Mixed batch, see per-item results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchResponse"
+        "400":
+          description: Malformed batch or every item rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Event broker unavailable, retry the batch later
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /exposures/batch:
+    post:
+      tags: [events]
+      summary: Ingest a batch of exposures
+      description: >
+        Same acceptance semantics as `/events/batch`, keyed on
+        `experiment_id` for partitioning.
+      operationId: ingestExposuresBatch
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExposureBatchRequest"
+      responses:
+        "202":
+          description: All items accepted or replayed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchResponse"
+        "207":
+          description: Mixed batch, see per-item results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchResponse"
+        "400":
+          description: Malformed batch or every item rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Event broker unavailable, retry the batch later
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /event-types:
+    get:
+      tags: [events]
+      summary: List active event types
+      description: Returns the event catalog accepted by `/events/batch`.
+      operationId: listEventTypes
+      security: []
+      responses:
+        "200":
+          description: Active event types
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/EventType"
+
 components:
   schemas:
     ErrorResponse:
@@ -45,8 +156,139 @@ components:
           properties:
             code:
               type: string
-              enum: [BAD_REQUEST, PAYLOAD_TOO_LARGE, INTERNAL_SERVER_ERROR]
+              enum: [BAD_REQUEST, PAYLOAD_TOO_LARGE, INTERNAL_SERVER_ERROR, SERVICE_UNAVAILABLE]
             message:
               type: string
           required: [code, message]
       required: [success, error]
+
+    EventItem:
+      type: object
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+          example: purchase
+        subject_id:
+          type: string
+          maxLength: 128
+        occurred_at:
+          type: string
+          format: date-time
+        decision_id:
+          type: string
+          format: uuid
+        schema_version:
+          type: integer
+          minimum: 1
+        payload:
+          type: object
+      required: [event_id, event_type, subject_id, occurred_at, payload]
+
+    EventBatchRequest:
+      type: object
+      properties:
+        events:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            $ref: "#/components/schemas/EventItem"
+      required: [events]
+
+    ExposureItem:
+      type: object
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        decision_id:
+          type: string
+          format: uuid
+        subject_id:
+          type: string
+          maxLength: 128
+        experiment_id:
+          type: string
+          format: uuid
+        experiment_version_id:
+          type: string
+          format: uuid
+        variant_id:
+          type: string
+          format: uuid
+        flag_id:
+          type: string
+          format: uuid
+        occurred_at:
+          type: string
+          format: date-time
+      required: [event_id, decision_id, subject_id, experiment_id, experiment_version_id, variant_id, flag_id, occurred_at]
+
+    ExposureBatchRequest:
+      type: object
+      properties:
+        exposures:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            $ref: "#/components/schemas/ExposureItem"
+      required: [exposures]
+
+    ItemResult:
+      type: object
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [accepted, duplicate, rejected]
+        error:
+          type: string
+      required: [event_id, status]
+
+    BatchResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            results:
+              type: array
+              items:
+                $ref: "#/components/schemas/ItemResult"
+            accepted:
+              type: integer
+            duplicates:
+              type: integer
+            rejected:
+              type: integer
+          required: [results, accepted, duplicates, rejected]
+      required: [success, data]
+
+    EventType:
+      type: object
+      properties:
+        key:
+          type: string
+          example: purchase
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        schema_version:
+          type: integer
+        require_exposure:
+          type: boolean
+        status:
+          type: string
+          enum: [active, archived]
+      required: [key, name, schema_version, require_exposure, status]

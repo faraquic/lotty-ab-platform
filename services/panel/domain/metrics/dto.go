@@ -12,6 +12,7 @@ type CreateMetricRequest struct {
 	MetricType  string      `json:"metric_type" binding:"required,oneof=count sum unique_count ratio percentile average"`
 	Aggregation Aggregation `json:"aggregation" binding:"required"`
 	Attribution Attribution `json:"attribution" binding:"required"`
+	Formula     string      `json:"formula" binding:"omitempty,max=4096"`
 }
 
 type UpdateMetricRequest struct {
@@ -20,6 +21,7 @@ type UpdateMetricRequest struct {
 	Description string       `json:"description"`
 	Aggregation *Aggregation `json:"aggregation"`
 	Attribution *Attribution `json:"attribution"`
+	Formula     string       `json:"formula" binding:"omitempty,max=4096"`
 	Status      string       `json:"status" binding:"omitempty,oneof=active archived"`
 }
 
@@ -31,6 +33,7 @@ type MetricResponse struct {
 	MetricType  string              `json:"metric_type"`
 	Aggregation Aggregation         `json:"aggregation"`
 	Attribution Attribution         `json:"attribution"`
+	Formula     *string             `json:"formula,omitempty"`
 	IsBuiltin   bool                `json:"is_builtin"`
 	Status      string              `json:"status"`
 	CreatedBy   *users.UserResponse `json:"created_by"`
@@ -53,6 +56,13 @@ func ToResponse(m MetricWithCreatorAndUpdater) MetricResponse {
 		resp := users.ToResponse(*m.UpdatedBy)
 		updatedBy = &resp
 	}
+
+	var formulaExpr *string
+	if m.Metric.Formula != nil {
+		expr := m.Metric.Formula.Expression
+		formulaExpr = &expr
+	}
+
 	return MetricResponse{
 		ID:          m.Metric.ID,
 		CreatedAt:   m.Metric.CreatedAt,
@@ -63,6 +73,7 @@ func ToResponse(m MetricWithCreatorAndUpdater) MetricResponse {
 		MetricType:  string(m.Metric.MetricType),
 		Aggregation: m.Metric.Aggregation,
 		Attribution: m.Metric.Attribution,
+		Formula:     formulaExpr,
 		IsBuiltin:   m.Metric.IsBuiltin,
 		Status:      string(m.Metric.Status),
 		CreatedBy:   createdBy,

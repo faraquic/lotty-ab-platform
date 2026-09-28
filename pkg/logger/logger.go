@@ -40,7 +40,7 @@ func SetupLogger(env string, level string) *zap.Logger {
 			EncodeCaller:   zapcore.ShortCallerEncoder,
 		}
 		cfg.OutputPaths = []string{"stdout"}
-		applyLevel(&cfg.Level, level)
+		applyLevel(&cfg.Level, "error")
 		log = mustBuild(cfg)
 	case EnvDev:
 		cfg := zap.NewProductionConfig()

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -17,6 +18,7 @@ import (
 	libauth "github.com/faraquic/lotty-ab-platform/pkg/auth"
 	"github.com/faraquic/lotty-ab-platform/pkg/config"
 	"github.com/faraquic/lotty-ab-platform/pkg/database"
+	prommetrics "github.com/faraquic/lotty-ab-platform/pkg/metrics"
 	"github.com/faraquic/lotty-ab-platform/pkg/middleware"
 	"github.com/faraquic/lotty-ab-platform/pkg/snapshot"
 	authdomain "github.com/faraquic/lotty-ab-platform/services/panel/domain/auth"
@@ -24,18 +26,22 @@ import (
 	flagsdomain "github.com/faraquic/lotty-ab-platform/services/panel/domain/flags"
 	healthdomain "github.com/faraquic/lotty-ab-platform/services/panel/domain/health"
 	metricsdomain "github.com/faraquic/lotty-ab-platform/services/panel/domain/metrics"
+	reportsdomain "github.com/faraquic/lotty-ab-platform/services/panel/domain/reports"
 	reviewsdomain "github.com/faraquic/lotty-ab-platform/services/panel/domain/reviews"
 	usersdomain "github.com/faraquic/lotty-ab-platform/services/panel/domain/users"
 	panelsnapshot "github.com/faraquic/lotty-ab-platform/services/panel/snapshot"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisClient *rueidis.Client, s3Client *s3.Client, kafkaWriter *kafka.Writer) (*gin.Engine, panelsnapshot.Refresher, *snapshot.Reader) {
+func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisClient *rueidis.Client, s3Client *s3.Client, kafkaWriter *kafka.Writer, chConn clickhouse.Conn) (*gin.Engine, panelsnapshot.Refresher, *snapshot.Reader) {
 	r := gin.New()
 	r.HandleMethodNotAllowed = true
 
 	addMiddleware(r, cfg, log)
 
 	apiV1 := r.Group("/api/v1/panel")
+
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	snapWriter := snapshot.NewWriter(redisClient, database.ParseBrokers(cfg.Database.Kafka.Brokers), kafkaWriter, log)
 	snapReader := snapshot.NewReader(nil, redisClient, log)
@@ -109,19 +115,26 @@ func newRouter(log *zap.Logger, cfg *config.Config, pool *pgxpool.Pool, redisCli
 		log.Fatal("auth middleware init failed", zap.Error(err))
 	}
 
-	anyAuthGroup := apiV1.Group("", authMW.Handler(nil))
+	anyAuthGroup := apiV1.Group("", authMW.Handler(nil), middleware.IdempotencyGin(redisClient, log))
 	authHandler.RegisterLogoutRoute(anyAuthGroup)
 	usersHandler.RegisterMeRoute(anyAuthGroup)
 
-	adminGroup := apiV1.Group("", authMW.Handler([]usersdomain.Role{usersdomain.RoleAdmin}))
+	adminGroup := apiV1.Group("", authMW.Handler([]usersdomain.Role{usersdomain.RoleAdmin}), middleware.IdempotencyGin(redisClient, log))
 	usersHandler.RegisterRoutes(adminGroup)
 
-	experimenterGroup := apiV1.Group("", authMW.Handler([]usersdomain.Role{usersdomain.RoleAdmin, usersdomain.RoleExperimenter}))
+	experimenterGroup := apiV1.Group("", authMW.Handler([]usersdomain.Role{usersdomain.RoleAdmin, usersdomain.RoleExperimenter}), middleware.IdempotencyGin(redisClient, log))
 
 	flagsHandler.RegisterRoutes(anyAuthGroup)
 	flagsHandler.RegisterWriteRoutes(adminGroup)
 
 	metricsHandler.RegisterRoutes(anyAuthGroup)
+
+	if chConn != nil {
+		reportsRepo := reportsdomain.NewRepository(chConn)
+		reportsSvc := reportsdomain.NewService(reportsRepo, experimentsSvc, log)
+		reportsHandler := reportsdomain.NewHandler(reportsSvc, log)
+		reportsHandler.RegisterRoutes(anyAuthGroup)
+	}
 
 	experimentsHandler.RegisterRoutes(anyAuthGroup)
 	experimentsHandler.RegisterWriteRoutes(experimenterGroup)
@@ -289,6 +302,7 @@ func addMiddleware(r *gin.Engine, cfg *config.Config, log *zap.Logger) {
 	r.Use(middleware.RecoveryGin(log))
 	r.Use(middleware.RequestIDGin())
 	r.Use(middleware.LoggerGin(log))
+	r.Use(prommetrics.Middleware("panel"))
 	r.Use(corsMiddleware(cfg.Panel.HTTP.CORS))
 }
 

@@ -25,6 +25,8 @@ tags:
     description: Feature flags
   - name: metrics
     description: Metrics configuration for A/B test analytics
+  - name: reports
+    description: Experiment reports and data quality
 
 paths:
   /login:
@@ -618,6 +620,110 @@ paths:
           $ref: "#/components/responses/Conflict"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /reports/{experiment_id}:
+    get:
+      tags: [reports]
+      summary: Get experiment report
+      description: Returns time series, variant breakdown, sample size, and allocation skew for an experiment.
+      operationId: getExperimentReport
+      parameters:
+        - name: experiment_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: start
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: end
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: interval
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [hour, day, week, month]
+            default: day
+        - name: metrics
+          in: query
+          required: true
+          schema:
+            type: array
+            items:
+              type: string
+            minItems: 1
+            maxItems: 20
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [json, csv]
+            default: json
+      responses:
+        "200":
+          description: Experiment report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportResponse"
+            text/csv:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /reports/{experiment_id}/data-quality:
+    get:
+      tags: [reports]
+      summary: Get data quality metrics
+      description: Returns rejected rate, duplicate rate, pending attribution, and attribution lag for an experiment.
+      operationId: getDataQuality
+      parameters:
+        - name: experiment_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: start
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: end
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Data quality metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataQualityResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -2284,6 +2390,113 @@ components:
           created_at,
           updated_at,
         ]
+
+    ReportResponse:
+      type: object
+      properties:
+        experiment_id:
+          type: string
+          format: uuid
+        experiment_name:
+          type: string
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        interval:
+          type: string
+          enum: [hour, day, week, month]
+        metrics:
+          type: array
+          items:
+            $ref: "#/components/schemas/MetricReport"
+        sample_size:
+          type: array
+          items:
+            $ref: "#/components/schemas/VariantSample"
+        allocation_skew:
+          $ref: "#/components/schemas/AllocationSkew"
+
+    MetricReport:
+      type: object
+      properties:
+        key:
+          type: string
+        type:
+          type: string
+        time_series:
+          type: array
+          items:
+            $ref: "#/components/schemas/TimeSeriesPoint"
+        by_variant:
+          type: array
+          items:
+            $ref: "#/components/schemas/VariantMetric"
+
+    TimeSeriesPoint:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        value:
+          type: number
+          format: double
+
+    VariantMetric:
+      type: object
+      properties:
+        variant_id:
+          type: string
+          format: uuid
+        variant_name:
+          type: string
+        value:
+          type: number
+          format: double
+
+    VariantSample:
+      type: object
+      properties:
+        variant_id:
+          type: string
+          format: uuid
+        variant_name:
+          type: string
+        count:
+          type: integer
+          format: int64
+
+    AllocationSkew:
+      type: object
+      properties:
+        expected:
+          type: number
+          format: double
+        actual:
+          type: number
+          format: double
+        skew:
+          type: number
+          format: double
+
+    DataQualityResponse:
+      type: object
+      properties:
+        rejected_rate:
+          type: number
+          format: double
+        duplicate_rate:
+          type: number
+          format: double
+        pending_attribution:
+          type: integer
+          format: int64
+        attribution_lag_seconds:
+          type: number
+          format: double
 
     ExperimentStatus:
       type: string

@@ -65,6 +65,16 @@ func main() {
 	}
 	defer (*redis).Close()
 
+	chConn, err := database.NewClickHouse(connectCtx, cfg.Database.ClickHouse.DSN, log)
+	if err != nil {
+		log.Warn("clickhouse unavailable; reports disabled",
+			zap.String(logger.FieldDBSystem, "clickhouse"),
+			zap.Error(err),
+		)
+	} else {
+		defer chConn.Close()
+	}
+
 	s3, err := database.NewS3(
 		connectCtx,
 		database.S3Config{
@@ -91,7 +101,7 @@ func main() {
 	}
 
 	setGinMode(cfg.Environment, log)
-	r, refresher, snapReader := newRouter(log, cfg, postgres, redis, s3, snapKafkaWriter)
+	r, refresher, snapReader := newRouter(log, cfg, postgres, redis, s3, snapKafkaWriter, chConn)
 
 	log.Info("server listening",
 		zap.String(logger.FieldServerAddress, cfg.Panel.HTTP.Address),

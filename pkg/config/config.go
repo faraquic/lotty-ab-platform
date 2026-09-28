@@ -52,10 +52,11 @@ type BootstrapConfig struct {
 }
 
 type DatabaseConfig struct {
-	Postgres PostgresConfig `mapstructure:"postgres"`
-	Redis    RedisConfig    `mapstructure:"redis"`
-	S3       S3Config       `mapstructure:"s3"`
-	Kafka    KafkaConfig    `mapstructure:"kafka"`
+	Postgres   PostgresConfig   `mapstructure:"postgres"`
+	Redis      RedisConfig      `mapstructure:"redis"`
+	S3         S3Config         `mapstructure:"s3"`
+	Kafka      KafkaConfig      `mapstructure:"kafka"`
+	ClickHouse ClickHouseConfig `mapstructure:"clickhouse"`
 }
 
 type PostgresConfig struct {
@@ -83,6 +84,10 @@ type KafkaConfig struct {
 	Brokers string `mapstructure:"brokers"`
 }
 
+type ClickHouseConfig struct {
+	DSN string `mapstructure:"dsn"`
+}
+
 type PanelConfig struct {
 	HTTP HTTPConfig `mapstructure:"http"`
 }
@@ -94,11 +99,45 @@ type RuntimeConfig struct {
 }
 
 type KafkaConsumerConfig struct {
-	GroupID string `mapstructure:"group_id"`
+	GroupID        string `mapstructure:"group_id"`
+	DecisionsTopic string `mapstructure:"decisions_topic"`
 }
 
 type AnalyticsConfig struct {
-	HTTP HTTPConfig `mapstructure:"http"`
+	HTTP        HTTPConfig                `mapstructure:"http"`
+	Kafka       AnalyticsKafkaConfig      `mapstructure:"kafka"`
+	PII         PIIConfig                 `mapstructure:"pii"`
+	ClickHouse  AnalyticsClickHouseConfig `mapstructure:"clickhouse"`
+	Attribution AttributionConfig         `mapstructure:"attribution"`
+}
+
+type AnalyticsKafkaConfig struct {
+	GroupID              string `mapstructure:"group_id"`
+	PipelineGroupID      string `mapstructure:"pipeline_group_id"`
+	IngestGroupID        string `mapstructure:"ingest_group_id"`
+	AttributionGroupID   string `mapstructure:"attribution_group_id"`
+	EventsTopic          string `mapstructure:"events_topic"`
+	ExposuresTopic       string `mapstructure:"exposures_topic"`
+	DecisionsTopic       string `mapstructure:"decisions_topic"`
+	EventsValidatedTopic string `mapstructure:"events_validated_topic"`
+	EventsDedupedTopic   string `mapstructure:"events_deduped_topic"`
+	DLQTopic             string `mapstructure:"dlq_topic"`
+}
+
+type AnalyticsClickHouseConfig struct {
+	BatchSize     int           `mapstructure:"batch_size"`
+	FlushInterval time.Duration `mapstructure:"flush_interval"`
+}
+
+type AttributionConfig struct {
+	WindowDays          int `mapstructure:"window_days"`
+	LateEventGraceHours int `mapstructure:"late_event_grace_hours"`
+}
+
+type PIIConfig struct {
+	HashSubjectID      bool              `mapstructure:"hash_subject_id"`
+	Salts              map[string]string `mapstructure:"salts"`
+	CurrentSaltVersion string            `mapstructure:"current_salt_version"`
 }
 
 type HTTPConfig struct {
@@ -187,6 +226,9 @@ func defaultConfig() *Config {
 			Kafka: KafkaConfig{
 				Brokers: "localhost:9092",
 			},
+			ClickHouse: ClickHouseConfig{
+				DSN: "clickhouse://labp:labppassword@localhost:9009/labp",
+			},
 		},
 		Panel: PanelConfig{
 			HTTP: HTTPConfig{
@@ -194,8 +236,8 @@ func defaultConfig() *Config {
 				CORS: CORSConfig{
 					AllowedOrigins:   []string{"*"},
 					AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
-					AllowedHeaders:   []string{"Content-Type", "Authorization", "X-Request-ID", "X-Trace-ID"},
-					ExposeHeaders:    []string{"X-Request-ID"},
+					AllowedHeaders:   []string{"Content-Type", "Authorization", "X-Request-ID", "X-Trace-ID", "Idempotency-Key"},
+					ExposeHeaders:    []string{"X-Request-ID", "Idempotent-Replayed"},
 					AllowCredentials: true,
 					MaxAge:           12 * time.Hour,
 				},
@@ -207,7 +249,8 @@ func defaultConfig() *Config {
 		Runtime: RuntimeConfig{
 			MaxStaleAge: 5 * time.Minute,
 			Kafka: KafkaConsumerConfig{
-				GroupID: "labp-runtime-snapshot",
+				GroupID:        "labp-runtime-snapshot",
+				DecisionsTopic: "analytics.decisions.raw",
 			},
 			HTTP: HTTPConfig{
 				Address: "0.0.0.0:8082",
@@ -238,6 +281,31 @@ func defaultConfig() *Config {
 				Timeout:         10 * time.Second,
 				IdleTimeout:     60 * time.Second,
 				ShutdownTimeout: 30 * time.Second,
+			},
+			Kafka: AnalyticsKafkaConfig{
+				GroupID:              "labp-analytics",
+				PipelineGroupID:      "labp-analytics-pipeline",
+				IngestGroupID:        "labp-analytics-ingest",
+				AttributionGroupID:   "labp-analytics-attribution",
+				EventsTopic:          "analytics.events.raw",
+				ExposuresTopic:       "analytics.exposures.raw",
+				DecisionsTopic:       "analytics.decisions.raw",
+				EventsValidatedTopic: "analytics.events.validated",
+				EventsDedupedTopic:   "analytics.events.deduped",
+				DLQTopic:             "analytics.dlq",
+			},
+			PII: PIIConfig{
+				HashSubjectID:      true,
+				Salts:              map[string]string{"v1": "change-me-analytics-salt-v1"},
+				CurrentSaltVersion: "v1",
+			},
+			ClickHouse: AnalyticsClickHouseConfig{
+				BatchSize:     1000,
+				FlushInterval: time.Second,
+			},
+			Attribution: AttributionConfig{
+				WindowDays:          7,
+				LateEventGraceHours: 1,
 			},
 		},
 	}
@@ -316,6 +384,16 @@ func ValidateSecurity(cfg *Config, log *zap.Logger) {
 
 	if insecureSecret(secret) {
 		log.Warn("insecure JWT secret in use; acceptable only for local development")
+	}
+
+	if salt, ok := cfg.Analytics.PII.Salts[cfg.Analytics.PII.CurrentSaltVersion]; cfg.Analytics.PII.HashSubjectID && (!ok || insecureSecret(salt)) {
+		if cfg.Environment == "prod" {
+			log.Error(
+				"insecure analytics PII salt: set analytics.pii.salts for the current salt version before running in prod",
+			)
+			os.Exit(1)
+		}
+		log.Warn("insecure analytics PII salt in use; acceptable only for local development")
 	}
 
 	if slices.Contains(cfg.Panel.HTTP.CORS.AllowedOrigins, "*") {

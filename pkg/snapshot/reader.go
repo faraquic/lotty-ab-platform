@@ -3,11 +3,13 @@ package snapshot
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/faraquic/lotty-ab-platform/pkg/logger"
+	"github.com/faraquic/lotty-ab-platform/pkg/outbox"
 	"github.com/goccy/go-json"
 	"github.com/redis/rueidis"
 	"github.com/segmentio/kafka-go"
@@ -33,6 +35,7 @@ type Reader struct {
 	k      *kafka.Reader
 	r      *rueidis.Client
 	log    *zap.Logger
+	seen   *outbox.Deduper
 	flags  atomic.Pointer[map[string]FlagSnapshot]
 	exps   atomic.Pointer[map[string]ExperimentSnapshot]
 	rev    atomic.Uint64
@@ -49,6 +52,7 @@ func NewReader(k *kafka.Reader, r *rueidis.Client, log *zap.Logger) *Reader {
 		k:      k,
 		r:      r,
 		log:    log.Named("snapshot_reader"),
+		seen:   outbox.NewDeduper(0),
 		ctx:    ctx,
 		cancel: cancel,
 	}
@@ -210,24 +214,66 @@ func (rr *Reader) subscribe() {
 			continue
 		}
 
-		var s Snapshot
-		if err := json.Unmarshal(msg.Value, &s); err != nil {
-			rr.log.Warn("snapshot parse failed", zap.Error(err))
-			continue
-		}
-
-		if uint64(s.Revision) <= rr.rev.Load() {
-			continue
-		}
-
-		rr.store(&s)
-		rr.log.Debug(
-			"snapshot applied",
-			zap.Uint64(logger.FieldSnapshotRevision, uint64(s.Revision)),
-			zap.Int(logger.FieldSnapshotFlagCount, len(s.Flags)),
-			zap.Int(logger.FieldSnapshotExperimentCount, len(s.Experiments)),
-		)
+		rr.applyRecord(msg.Value)
 	}
+}
+
+func (rr *Reader) applyRecord(value []byte) bool {
+	s, envelopeID, err := decodeSnapshotValue(value)
+	if err != nil {
+		rr.log.Warn("snapshot parse failed", zap.Error(err))
+		return false
+	}
+
+	if envelopeID != "" && rr.seen.SeenOrMark(envelopeID) {
+		rr.log.Debug(
+			"snapshot duplicate skipped",
+			zap.String(logger.FieldOutboxID, envelopeID),
+			zap.Uint64(logger.FieldSnapshotRevision, uint64(s.Revision)),
+		)
+
+		return false
+	}
+
+	if uint64(s.Revision) <= rr.rev.Load() {
+		return false
+	}
+
+	rr.store(s)
+	rr.log.Debug(
+		"snapshot applied",
+		zap.Uint64(logger.FieldSnapshotRevision, uint64(s.Revision)),
+		zap.Int(logger.FieldSnapshotFlagCount, len(s.Flags)),
+		zap.Int(logger.FieldSnapshotExperimentCount, len(s.Experiments)),
+	)
+
+	return true
+}
+
+func decodeSnapshotValue(value []byte) (*Snapshot, string, error) {
+	var env outbox.Envelope
+
+	if err := json.Unmarshal(value, &env); err == nil && strings.TrimSpace(env.ID) != "" {
+		if len(env.Data) == 0 || string(env.Data) == "null" {
+			return nil, "", errors.New("snapshot envelope data is empty")
+		}
+
+		var s Snapshot
+
+		if err := json.Unmarshal(env.Data, &s); err != nil {
+			return nil, "", err
+		}
+
+		return &s, env.ID, nil
+	}
+
+	var s Snapshot
+
+	if err := json.Unmarshal(value, &s); err != nil {
+		return nil, "", err
+	}
+
+	return &s, "", nil
 }
 
 func snapshotToMap(s *Snapshot) *map[string]FlagSnapshot {

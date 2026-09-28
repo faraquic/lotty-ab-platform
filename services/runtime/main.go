@@ -12,6 +12,7 @@ import (
 	"github.com/faraquic/lotty-ab-platform/pkg/logger"
 	"github.com/goccy/go-json"
 	"github.com/gofiber/fiber/v3"
+	"github.com/segmentio/kafka-go"
 	"go.uber.org/zap"
 )
 
@@ -47,13 +48,36 @@ func main() {
 	}
 	defer (*redis).Close()
 
-	app, snapReader := NewApp(&fiber.Config{
+	brokers := database.ParseBrokers(cfg.Database.Kafka.Brokers)
+	var decisionsWriter *kafka.Writer
+	if len(brokers) > 0 && cfg.Runtime.Kafka.DecisionsTopic != "" {
+		w, err := database.NewWriter(connectCtx, brokers, cfg.Runtime.Kafka.DecisionsTopic, log)
+		if err != nil {
+			log.Warn("decision kafka writer unavailable; decision publishing disabled",
+				zap.String(logger.FieldKafkaTopic, cfg.Runtime.Kafka.DecisionsTopic),
+				zap.Error(err),
+			)
+		} else {
+			decisionsWriter = w
+			defer w.Close()
+
+			if err := database.EnsureTopic(connectCtx, brokers, cfg.Runtime.Kafka.DecisionsTopic, 6, 1); err != nil {
+				log.Warn("decision topic ensure failed",
+					zap.String(logger.FieldKafkaTopic, cfg.Runtime.Kafka.DecisionsTopic),
+					zap.Error(err),
+				)
+			}
+		}
+	}
+
+	app, snapReader, decisionsStop := NewApp(&fiber.Config{
 		ReadTimeout:  cfg.Runtime.HTTP.Timeout,
 		WriteTimeout: cfg.Runtime.HTTP.Timeout,
 		IdleTimeout:  cfg.Runtime.HTTP.IdleTimeout,
 		JSONEncoder:  json.Marshal,
 		JSONDecoder:  json.Unmarshal,
-	}, log, cfg, redis)
+	}, log, cfg, redis, decisionsWriter)
+	defer decisionsStop()
 
 	log.Info(
 		"server listening",

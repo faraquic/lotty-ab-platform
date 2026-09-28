@@ -11,8 +11,6 @@ import (
 	"go.uber.org/zap"
 )
 
-const ChannelUpdateSnapshot = "update_snapshot"
-
 func NewRedis(ctx context.Context, url string, log *zap.Logger) (*rueidis.Client, error) {
 	if url == "" {
 		return nil, errors.New("redis url is empty")

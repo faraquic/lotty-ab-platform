@@ -17,7 +17,7 @@ type MetricRepo interface {
 	Create(ctx context.Context, m Metric) (string, error)
 	GetByID(ctx context.Context, id string, includeArchived bool) (MetricWithCreatorAndUpdater, error)
 	List(ctx context.Context, limit, offset int, includeArchived bool) ([]Metric, error)
-	Update(ctx context.Context, id string, key, name, description string, aggregation *Aggregation, attribution *Attribution, status MetricStatus, updatedBy string) (MetricWithCreatorAndUpdater, error)
+	Update(ctx context.Context, id string, key, name, description string, aggregation *Aggregation, attribution *Attribution, formula *Formula, status MetricStatus, updatedBy string) (MetricWithCreatorAndUpdater, error)
 	Count(ctx context.Context, includeArchived bool) (int64, error)
 }
 
@@ -46,6 +46,14 @@ func (s *Service) Create(ctx context.Context, callerID string, req CreateMetricR
 		return MetricResponse{}, err
 	}
 
+	var formula *Formula
+	if req.Formula != "" {
+		formula = &Formula{Expression: req.Formula}
+		if err := formula.Validate(); err != nil {
+			return MetricResponse{}, err
+		}
+	}
+
 	var desc *string
 	if req.Description != "" {
 		desc = &req.Description
@@ -58,6 +66,7 @@ func (s *Service) Create(ctx context.Context, callerID string, req CreateMetricR
 		MetricType:  metricType,
 		Aggregation: aggregation,
 		Attribution: attribution,
+		Formula:     formula,
 		IsBuiltin:   false,
 		Status:      MetricStatusActive,
 		CreatedBy:   callerID,
@@ -156,8 +165,16 @@ func (s *Service) Update(ctx context.Context, callerID, id string, req UpdateMet
 		}
 	}
 
+	var formula *Formula
+	if req.Formula != "" {
+		formula = &Formula{Expression: req.Formula}
+		if err := formula.Validate(); err != nil {
+			return MetricResponse{}, err
+		}
+	}
+
 	fwo, err := s.repo.Update(ctx, id, req.Key, req.Name, req.Description,
-		req.Aggregation, req.Attribution, MetricStatus(req.Status), callerID)
+		req.Aggregation, req.Attribution, formula, MetricStatus(req.Status), callerID)
 	if err != nil {
 		return MetricResponse{}, err
 	}

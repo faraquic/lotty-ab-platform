@@ -14,6 +14,7 @@ x-app-environment: &app-environment
   PANEL_HTTP_ADDRESS: 0.0.0.0:8081
   RUNTIME_HTTP_ADDRESS: 0.0.0.0:8082
   ANALYTICS_HTTP_ADDRESS: 0.0.0.0:8083
+  CLICKHOUSE_DSN: "clickhouse://${CLICKHOUSE_USER:-labp}:${CLICKHOUSE_PASSWORD:-labppassword}@clickhouse:9000/${CLICKHOUSE_DB:-labp}"
 
 services:
   postgres:
@@ -128,10 +129,31 @@ services:
     depends_on:
       panel:
         condition: service_started
+      clickhouse:
+        condition: service_healthy
     environment: *app-environment
     volumes:
       - "${CONFIG_FILE:-./config.example.json}:/labp/config.example.json:ro"
     restart: unless-stopped
+
+  clickhouse:
+    image: docker.io/clickhouse/clickhouse-server:24.8
+    container_name: labp-clickhouse
+    ports:
+      - "127.0.0.1:${CLICKHOUSE_HTTP_PORT:-8123}:8123"
+      - "127.0.0.1:${CLICKHOUSE_NATIVE_PORT:-9009}:9000"
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-labp}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-labp}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-labppassword}
+    volumes:
+      - lotty-clickhousedata:/var/lib/clickhouse
+      - ./deploy/clickhouse/tables.sql:/docker-entrypoint-initdb.d/001_tables.sql:ro
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   nginx:
     image: docker.io/library/nginx:alpine
@@ -145,7 +167,56 @@ services:
       - analytics
     restart: unless-stopped
 
+  prometheus:
+    image: docker.io/prom/prometheus:latest
+    container_name: labp-prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - lotty-promdata:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+
+  loki:
+    image: docker.io/grafana/loki:latest
+    container_name: labp-loki
+    ports:
+      - "127.0.0.1:${LOKI_PORT:-3100}:3100"
+    volumes:
+      - ./deploy/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - lotty-lokidata:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
+
+  grafana:
+    image: docker.io/grafana/grafana:latest
+    container_name: labp-grafana
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - lotty-grafanadata:/var/lib/grafana
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+      - loki
+    restart: unless-stopped
+
 volumes:
   lotty-pgdata:
   lotty-redisdata:
   lotty-s3data:
+  lotty-clickhousedata:
+  lotty-promdata:
+  lotty-lokidata:
+  lotty-grafanadata:

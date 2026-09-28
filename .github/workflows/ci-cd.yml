@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: build, vet, gofmt, unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: make check
+        run: make check
+
+      - name: Unit tests
+        run: go test ./pkg/... ./services/... -short -count=1
+
+  compose:
+    name: docker compose config and build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Validate compose file
+        run: docker compose config --quiet
+
+      - name: Build service images
+        run: docker compose build panel runtime analytics
+
+  e2e:
+    name: end-to-end and load tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Start infrastructure
+        run: make dev-up
+
+      - name: End-to-end tests
+        run: make test-e2e
+
+      - name: Dump infrastructure state
+        if: always()
+        run: |
+          make dev-status
+          docker ps -a
