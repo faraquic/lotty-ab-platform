@@ -44,7 +44,7 @@
     },
     "kafka": {
       "group_id": "{{ ENV \"KAFKA_SNAPSHOT_GROUP_ID\" }}",
-      "decisions_topic": "{{ ENV "RUNTIME_KAFKA_DECISIONS_TOPIC" }}"
+      "decisions_topic": "{{ ENV \"RUNTIME_KAFKA_DECISIONS_TOPIC\" }}"
     }
   },
   "analytics": {
@@ -52,16 +52,16 @@
       "address": "{{ ENV \"ANALYTICS_HTTP_ADDRESS\" }}"
     },
     "kafka": {
-      "group_id": "{{ ENV "ANALYTICS_KAFKA_GROUP_ID" }},
-      "pipeline_group_id": "{{ ENV "ANALYTICS_KAFKA_PIPELINE_GROUP_ID" }},
-      "ingest_group_id": "{{ ENV "ANALYTICS_KAFKA_INGEST_GROUP_ID" }}",
-      "attribution_group_id": "{{ ENV "ANALYTICS_KAFKA_ATTRIBUTION_GROUP_ID" }}",
-      "events_topic": "{{ ENV "ANALYTICS_EVENTS_TOPIC" }}",
-      "exposures_topic": "{{ ENV "ANALYTICS_EXPOSURES_TOPIC" }}",
-      "decisions_topic": "{{ ENV "ANALYTICS_DECISIONS_TOPIC" }}",
-      "events_validated_topic": "{{ ENV "ANALYTICS_EVENTS_VALIDATED_TOPIC" }}",
-      "events_deduped_topic": "{{ ENV "ANALYTICS_EVENTS_DEDUPED_TOPIC" }}",
-      "dlq_topic": "{{ ENV "ANALYTICS_DLQ_TOPIC" }}"
+      "group_id": "{{ ENV \"ANALYTICS_KAFKA_GROUP_ID\" }}",
+      "pipeline_group_id": "{{ ENV \"ANALYTICS_KAFKA_PIPELINE_GROUP_ID\" }}",
+      "ingest_group_id": "{{ ENV \"ANALYTICS_KAFKA_INGEST_GROUP_ID\" }}",
+      "attribution_group_id": "{{ ENV \"ANALYTICS_KAFKA_ATTRIBUTION_GROUP_ID\" }}",
+      "events_topic": "{{ ENV \"ANALYTICS_EVENTS_TOPIC\" }}",
+      "exposures_topic": "{{ ENV \"ANALYTICS_EXPOSURES_TOPIC\" }}",
+      "decisions_topic": "{{ ENV \"ANALYTICS_DECISIONS_TOPIC\" }}",
+      "events_validated_topic": "{{ ENV \"ANALYTICS_EVENTS_VALIDATED_TOPIC\" }}",
+      "events_deduped_topic": "{{ ENV \"ANALYTICS_EVENTS_DEDUPED_TOPIC\" }}",
+      "dlq_topic": "{{ ENV \"ANALYTICS_DLQ_TOPIC\" }}"
     },
     "clickhouse": {
       "batch_size": 1000,
