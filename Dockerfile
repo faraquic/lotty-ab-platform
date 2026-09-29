@@ -6,8 +6,8 @@ RUN --mount=type=cache,id=labp-go-mod,target=/go/pkg/mod \
     go mod download
 
 COPY pkg/ ./pkg/
+COPY services/ ./services/
 ARG SERVICE
-COPY services/${SERVICE}/ ./services/${SERVICE}/
 ARG VERSION=dev
 
 RUN --mount=type=cache,id=labp-go-mod,target=/go/pkg/mod \

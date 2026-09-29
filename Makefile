@@ -35,13 +35,13 @@ REDIS_IMAGE ?= docker.io/library/redis:8-alpine
 REDIS_NAME  ?= labp-redis
 REDIS_PORT  ?= 6379
 
-S3_IMAGE        ?= quay.io/minio/minio:latest
+S3_IMAGE        ?= docker.io/localstack/localstack:3.5.0
 S3_NAME         ?= labp-s3
-S3_PORT         ?= 9000
-S3_CONSOLE_PORT ?= 9001
+S3_PORT         ?= 4566
+S3_CONSOLE_PORT ?= 4566
 S3_BUCKET       ?= labp
-S3_ACCESS_KEY   ?= minioadmin
-S3_SECRET_KEY   ?= minioadmin
+S3_ACCESS_KEY   ?= test
+S3_SECRET_KEY   ?= test
 
 KAFKA_IMAGE      ?= docker.io/apache/kafka:latest
 KAFKA_NAME       ?= labp-kafka
@@ -157,7 +157,7 @@ help:
 dev-up: pg-up redis-up s3-up kafka-up clickhouse-up prometheus-up loki-up grafana-up
 	@echo "Waiting for S3..."
 	@ready=0; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do \
-		if $(CONTAINER_ENGINE) exec $(S3_NAME) curl --fail --silent --show-error --max-time 2 http://127.0.0.1:9000/minio/health/ready >/dev/null 2>&1; then ready=1; break; fi; \
+		if $(CONTAINER_ENGINE) exec $(S3_NAME) curl --fail --silent --show-error --max-time 2 http://127.0.0.1:4566/_localstack/health 2>/dev/null | grep -q '"s3": "available"'; then ready=1; break; fi; \
 		echo "  waiting... ($$i)"; \
 		sleep 2; \
 	done; \
@@ -421,20 +421,18 @@ s3-up: check-engine
 	$(CONTAINER_ENGINE) run -d \
 		--replace \
 		--name $(S3_NAME) \
-		-p $(S3_PORT):9000 \
-		-p $(S3_CONSOLE_PORT):9001 \
-		-e MINIO_ROOT_USER=$(S3_ACCESS_KEY) \
-		-e MINIO_ROOT_PASSWORD=$(S3_SECRET_KEY) \
-		-v lotty-s3data:/data$(VOL_OPTS) \
+		-p $(S3_PORT):4566 \
+		-e SERVICES=s3 \
+		-e DEBUG=1 \
+		-v lotty-s3data:/var/lib/localstack$(VOL_OPTS) \
 		--memory=$(MEMORY_LIMIT) \
 		--cpus=$(CPU_LIMIT) \
 		--pids-limit=$(PIDS_LIMIT) \
-		--health-cmd="curl --fail --silent --show-error --max-time 2 http://127.0.0.1:9000/minio/health/ready" \
+		--health-cmd="curl --fail --silent --show-error --max-time 2 http://127.0.0.1:4566/_localstack/health" \
 		--health-interval=5s \
 		--health-timeout=3s \
 		--health-retries=10 \
-		$(S3_IMAGE) \
-	server /data --console-address ":9001"
+		$(S3_IMAGE)
 
 .PHONY: s3-down
 s3-down: check-engine
