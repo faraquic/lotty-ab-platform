@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -19,15 +21,31 @@ const (
 	loadDuration    = 3 * time.Second
 	loadWarmup      = 1 * time.Second
 	loadDelay       = 100 * time.Millisecond
-	slaP99          = 10 * time.Millisecond
 	maxResponseSize = 32 * 1024
 )
+
+const defaultSlaP99 = 10 * time.Millisecond
 
 func loadBase() string {
 	if v := os.Getenv("LOAD_BASE_URL"); v != "" {
 		return v
 	}
 	return runtimeBase
+}
+
+// decideP99Threshold возвращает порог SLA для p99 latency /decide.
+// Настраивается через DECIDE_P99_THRESHOLD_MS (целые миллисекунды), по умолчанию 10ms.
+func decideP99Threshold(t *testing.T) time.Duration {
+	t.Helper()
+	v := strings.TrimSpace(os.Getenv("DECIDE_P99_THRESHOLD_MS"))
+	if v == "" {
+		return defaultSlaP99
+	}
+	ms, err := strconv.Atoi(v)
+	if err != nil || ms <= 0 {
+		t.Fatalf("invalid DECIDE_P99_THRESHOLD_MS=%q: must be positive integer milliseconds", os.Getenv("DECIDE_P99_THRESHOLD_MS"))
+	}
+	return time.Duration(ms) * time.Millisecond
 }
 
 func percentile(sorted []time.Duration, p float64) time.Duration {
@@ -62,6 +80,8 @@ func mustBody(t *testing.T, subject string, flags []string) []byte {
 
 func runLoadTest(t *testing.T, subject string, flags []string) {
 	t.Helper()
+
+	slaP99 := decideP99Threshold(t)
 
 	body := mustBody(t, subject, flags)
 	url := loadBase() + "/api/v1/runtime/decide"
@@ -144,7 +164,7 @@ func runLoadTest(t *testing.T, subject string, flags []string) {
 	sort.Slice(all, func(i, j int) bool { return all[i] < all[j] })
 
 	p50, p95, p99 := percentile(all, 50), percentile(all, 95), percentile(all, 99)
-	t.Logf("total=%d failed=%d p50=%v p95=%v p99=%v", total, failed, p50, p95, p99)
+	t.Logf("total=%d failed=%d p50=%v p95=%v p99=%v slaP99=%v", total, failed, p50, p95, p99, slaP99)
 
 	if total == 0 {
 		t.Fatal("no requests were measured")

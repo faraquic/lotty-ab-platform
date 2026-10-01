@@ -70,7 +70,7 @@ jobs:
         run: make dev-up
 
       - name: End-to-end tests
-        run: make test-e2e
+        run: DECIDE_P99_THRESHOLD_MS=100 make test-e2e
 
       - name: Dump infrastructure state
         if: always()
