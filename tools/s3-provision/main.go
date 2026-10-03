@@ -15,11 +15,11 @@ import (
 )
 
 func main() {
-	endpoint := flag.String("endpoint", "http://localhost:9000", "S3-compatible endpoint")
+	endpoint := flag.String("endpoint", "http://localhost:4566", "S3-compatible endpoint")
 	bucket := flag.String("bucket", "", "bucket name (required)")
 	region := flag.String("region", "us-east-1", "S3 region")
-	accessKey := flag.String("access-key", "minioadmin", "S3 access key")
-	secretKey := flag.String("secret-key", "minioadmin", "S3 secret key")
+	accessKey := flag.String("access-key", "test", "S3 access key")
+	secretKey := flag.String("secret-key", "test", "S3 secret key")
 	flag.Parse()
 
 	if *bucket == "" {

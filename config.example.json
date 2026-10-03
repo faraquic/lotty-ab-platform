@@ -39,9 +39,10 @@
   },
   "runtime": {
     "http": {
-      "address": "{{ ENV \"RUNTIME_HTTP_ADDRESS\" }}",
-      "max_stale_age": "5m"
+      "address": "{{ ENV \"RUNTIME_HTTP_ADDRESS\" }}"
     },
+    "max_stale_age": "5m",
+    "revalidate_interval": "5s",
     "kafka": {
       "group_id": "{{ ENV \"KAFKA_SNAPSHOT_GROUP_ID\" }}",
       "decisions_topic": "{{ ENV \"RUNTIME_KAFKA_DECISIONS_TOPIC\" }}"

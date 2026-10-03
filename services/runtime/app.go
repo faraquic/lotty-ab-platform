@@ -27,7 +27,9 @@ func NewApp(fiberConfig *fiber.Config, log *zap.Logger, cfg *config.Config, redi
 
 	app.Get("/metrics", adaptor.HTTPHandler(promhttp.Handler()))
 
-	snapReader := snapshot.NewReader(newSnapshotConsumer(cfg, log), redisClient, log)
+	snapReader := snapshot.NewReader(newSnapshotConsumer(cfg, log), redisClient, log,
+		snapshot.WithRevalidation(cfg.Runtime.RevalidateInterval),
+	)
 
 	healthdomain.NewHandler().RegisterRoutes(apiV1)
 
@@ -57,15 +59,24 @@ func NewApp(fiberConfig *fiber.Config, log *zap.Logger, cfg *config.Config, redi
 
 // newSnapshotConsumer builds the snapshot topic consumer without pinging the
 // brokers: runtime must start even when Kafka is down, serving the Redis
-// bootstrap until the subscription catches up.
+// bootstrap until the subscription catches up. It returns nil when no brokers
+// are configured, which disables the subscription entirely — kafka.NewReader
+// panics on an empty broker list, and Kafka is optional in this project.
 func newSnapshotConsumer(cfg *config.Config, log *zap.Logger) *kafka.Reader {
+	brokers := database.ParseBrokers(cfg.Database.Kafka.Brokers)
+	if len(brokers) == 0 {
+		log.Info("snapshot kafka consumer disabled; redis revalidation only")
+
+		return nil
+	}
+
 	groupID := cfg.Runtime.Kafka.GroupID
 	if groupID == "" {
 		groupID = "labp-runtime-snapshot"
 	}
 
 	k := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:     database.ParseBrokers(cfg.Database.Kafka.Brokers),
+		Brokers:     brokers,
 		Topic:       database.TopicSnapshot,
 		GroupID:     groupID,
 		MinBytes:    1,
@@ -76,6 +87,7 @@ func newSnapshotConsumer(cfg *config.Config, log *zap.Logger) *kafka.Reader {
 	log.Info("snapshot kafka consumer configured",
 		zap.String(logger.FieldKafkaGroupID, groupID),
 		zap.String(logger.FieldKafkaTopic, database.TopicSnapshot),
+		zap.Strings(logger.FieldKafkaBrokers, brokers),
 	)
 
 	return k

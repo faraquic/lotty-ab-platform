@@ -96,6 +96,11 @@ type RuntimeConfig struct {
 	HTTP        HTTPConfig          `mapstructure:"http"`
 	MaxStaleAge time.Duration       `mapstructure:"max_stale_age"`
 	Kafka       KafkaConsumerConfig `mapstructure:"kafka"`
+	// RevalidateInterval is how often the reader compares the Redis revision
+	// key with the loaded revision. It closes the window where a snapshot
+	// published before the kafka consumer group is assigned is never seen.
+	// Zero disables the poll.
+	RevalidateInterval time.Duration `mapstructure:"revalidate_interval"`
 }
 
 type KafkaConsumerConfig struct {
@@ -219,9 +224,9 @@ func defaultConfig() *Config {
 			S3: S3Config{
 				Bucket:    "labp",
 				Region:    "us-east-1",
-				Endpoint:  "http://localhost:9000",
-				AccessKey: "minioadmin",
-				SecretKey: "minioadmin",
+				Endpoint:  "http://localhost:4566",
+				AccessKey: "test",
+				SecretKey: "test",
 			},
 			Kafka: KafkaConfig{
 				Brokers: "localhost:9092",
@@ -247,7 +252,8 @@ func defaultConfig() *Config {
 			},
 		},
 		Runtime: RuntimeConfig{
-			MaxStaleAge: 5 * time.Minute,
+			MaxStaleAge:        5 * time.Minute,
+			RevalidateInterval: 5 * time.Second,
 			Kafka: KafkaConsumerConfig{
 				GroupID:        "labp-runtime-snapshot",
 				DecisionsTopic: "analytics.decisions.raw",

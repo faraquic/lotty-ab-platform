@@ -37,8 +37,28 @@ const (
 	e2ePostgresDSN = "postgres://lotty:lottypassword@localhost:5433/labp_e2e?sslmode=disable"
 	e2eRedisURL    = "redis://localhost:6379/14"
 	e2eS3Bucket    = "labp-e2e"
-	e2eS3Endpoint  = "http://localhost:9000"
 )
+
+// S3 coordinates default to the LocalStack container started by `make dev-up`
+// and are overridable so the Makefile stays the single source of truth.
+// 127.0.0.1 rather than localhost: rootless container engines publish IPv4
+// only and reset connections that resolve to [::1].
+var (
+	e2eS3Endpoint  = envOr("E2E_S3_ENDPOINT", "http://127.0.0.1:4566")
+	e2eS3AccessKey = envOr("E2E_S3_ACCESS_KEY", "test")
+	e2eS3SecretKey = envOr("E2E_S3_SECRET_KEY", "test")
+	// log_level lives in the config file, so LOG_LEVEL from the environment
+	// only reaches the spawned service when it is written into that config.
+	// Without this the CI knob is ignored and `local` logs everything at debug.
+	e2eLogLevel = envOr("LOG_LEVEL", "debug")
+)
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
 
 func TestMain(m *testing.M) {
 	os.Exit(runSuite(m))
@@ -80,6 +100,7 @@ func runSuite(m *testing.M) int {
 	panelCfg := filepath.Join(tmpDir, "panel.config.json")
 	if err := os.WriteFile(panelCfg, fmt.Appendf(nil, `{
 		"environment": "local",
+		"log_level": %q,
 		"auth": {
 			"jwt": {"secret_key": "e2e-test-secret-not-for-prod", "ttl": "1h"},
 			"bootstrap": {"full_name": "root", "email": "root@labp.net", "password_hash": "$argon2id$v=19$m=65536,t=1,p=4$6lGItC3BN+vvxDF42RRw2g$svLMZu6udCWh8/bjOlpP1S3syNanEwiQO17cbUaDvck"}
@@ -87,10 +108,10 @@ func runSuite(m *testing.M) int {
 		"database": {
 			"postgres": {"dsn": %q},
 			"redis":    {"address": %q},
-			"s3":       {"bucket": %q, "region": "us-east-1", "endpoint": %q, "access_key": "minioadmin", "secret_key": "minioadmin"}
+			"s3":       {"bucket": %q, "region": "us-east-1", "endpoint": %q, "access_key": %q, "secret_key": %q}
 		},
 		"panel": {"http": {"address": "0.0.0.0:%s"}}
-	}`, e2ePostgresDSN, e2eRedisURL, e2eS3Bucket, e2eS3Endpoint, panelPort), 0o644); err != nil {
+	}`, e2eLogLevel, e2ePostgresDSN, e2eRedisURL, e2eS3Bucket, e2eS3Endpoint, e2eS3AccessKey, e2eS3SecretKey, panelPort), 0o644); err != nil {
 		fmt.Printf("failed to write panel config: %v\n", err)
 		os.RemoveAll(tmpDir)
 		return 1
@@ -99,11 +120,12 @@ func runSuite(m *testing.M) int {
 	runtimeCfg := filepath.Join(tmpDir, "runtime.config.json")
 	if err := os.WriteFile(runtimeCfg, fmt.Appendf(nil, `{
 		"environment": "local",
+		"log_level": %q,
 		"database": {
 			"redis": {"address": %q}
 		},
-		"runtime": {"http": {"address": "0.0.0.0:%s"}, "max_stale_age": "1s"}
-	}`, e2eRedisURL, runtimePort), 0o644); err != nil {
+		"runtime": {"http": {"address": "0.0.0.0:%s"}, "max_stale_age": "1s", "revalidate_interval": "500ms"}
+	}`, e2eLogLevel, e2eRedisURL, runtimePort), 0o644); err != nil {
 		fmt.Printf("failed to write runtime config: %v\n", err)
 		os.RemoveAll(tmpDir)
 		return 1

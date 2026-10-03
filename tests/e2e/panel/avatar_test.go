@@ -244,7 +244,18 @@ func TestAvatar_UploadNoSecretsInResponse(t *testing.T) {
 	resp := uploadAvatar(t, token, "avatar.png", smallPNG)
 	defer resp.Body.Close()
 
-	requireNoSensitiveFields(t, resp, "minioadmin", "secret_key", "access_key", "password_hash")
+	sensitive := []string{"secret_key", "access_key", "password_hash", "X-Amz-Security-Token"}
+
+	// The LocalStack defaults are the single word "test": matching it as a
+	// substring would be meaningless at best and match unrelated words at
+	// worst. Only distinctive credentials are worth searching for.
+	for _, credential := range []string{e2eS3AccessKey, e2eS3SecretKey} {
+		if len(credential) >= 8 {
+			sensitive = append(sensitive, credential)
+		}
+	}
+
+	requireNoSensitiveFields(t, resp, sensitive...)
 }
 
 func TestAvatar_ResponseContentTypeJSON(t *testing.T) {
@@ -394,7 +405,7 @@ func s3ObjectExists(t *testing.T, key string) bool {
 
 	cfg, err := awsconfig.LoadDefaultConfig(ctx,
 		awsconfig.WithRegion("us-east-1"),
-		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("minioadmin", "minioadmin", "")),
+		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(e2eS3AccessKey, e2eS3SecretKey, "")),
 	)
 	if err != nil {
 		t.Logf("s3 config: %v", err)

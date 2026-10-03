@@ -448,11 +448,11 @@ s3-clean: s3-down
 
 .PHONY: s3-provision
 s3-provision:
-	go run ./tools/s3-provision -endpoint http://localhost:$(S3_PORT) -bucket $(S3_BUCKET) -region us-east-1 -access-key $(S3_ACCESS_KEY) -secret-key $(S3_SECRET_KEY)
+	go run ./tools/s3-provision -endpoint http://127.0.0.1:$(S3_PORT) -bucket $(S3_BUCKET) -region us-east-1 -access-key $(S3_ACCESS_KEY) -secret-key $(S3_SECRET_KEY)
 
 .PHONY: s3-provision-e2e
 s3-provision-e2e:
-	go run ./tools/s3-provision -endpoint http://localhost:$(S3_PORT) -bucket $(S3_BUCKET)-e2e -region us-east-1 -access-key $(S3_ACCESS_KEY) -secret-key $(S3_SECRET_KEY)
+	go run ./tools/s3-provision -endpoint http://127.0.0.1:$(S3_PORT) -bucket $(S3_BUCKET)-e2e -region us-east-1 -access-key $(S3_ACCESS_KEY) -secret-key $(S3_SECRET_KEY)
 
 # ─── Kafka ───────────────────────────────────────────────────────────────────
 
@@ -679,4 +679,9 @@ test-e2e: s3-provision-e2e
 		$(CONTAINER_ENGINE) exec $(POSTGRES_NAME) psql -U $(POSTGRES_USER) -d postgres -c "CREATE DATABASE $(POSTGRES_DB)_e2e"
 	go tool goose -dir $(MIGRATIONS_DIR) postgres "postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:$(POSTGRES_PORT)/$(POSTGRES_DB)_e2e?sslmode=disable" up
 	# -p 1: suites share labp_e2e and fixed ports; parallel packages would collide.
-	E2E_TEST=1 go test -p 1 ./tests/e2e/... -v -count=1
+	# S3 coordinates are passed in so the suites never hardcode an endpoint.
+	E2E_TEST=1 \
+	E2E_S3_ENDPOINT=http://127.0.0.1:$(S3_PORT) \
+	E2E_S3_ACCESS_KEY=$(S3_ACCESS_KEY) \
+	E2E_S3_SECRET_KEY=$(S3_SECRET_KEY) \
+	go test -p 1 ./tests/e2e/... -v -count=1

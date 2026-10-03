@@ -89,7 +89,7 @@ Panel публикует snapshot конфигурации в Redis и Kafka, а
 | `REDIS_ADDRESS`                                                                                               | да                      | `localhost:6379`                                       | Redis: сессии, snapshot, атрибуция, идемпотентность                                    |
 | `KAFKA_BROKERS`                                                                                               | для полного стека       | пусто в compose                                        | Без брокеров outbox и конвейер аналитики отключены                                     |
 | `CLICKHOUSE_DSN`                                                                                              | для аналитики и отчётов | задаётся compose                                       | Подключение к ClickHouse                                                               |
-| `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`                                     | да                      | `labp`, `us-east-1`, MinIO, `minioadmin`               | Хранилище аватаров                                                                     |
+| `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`                                     | да                      | `labp`, `us-east-1`, LocalStack, `test`                | Хранилище аватаров                                                                     |
 | `PANEL_HTTP_ADDRESS`, `RUNTIME_HTTP_ADDRESS`, `ANALYTICS_HTTP_ADDRESS`                                        | нет                     | `0.0.0.0:8081/8082/8083`                               | Адреса сервисов                                                                        |
 | `ANALYTICS_PII_SALT_V1`                                                                                       | да, для `prod`          | `change-me-analytics-salt-v1`                          | Соль хэширования `subject_id`                                                          |
 | `ANALYTICS_*_TOPIC`, `ANALYTICS_KAFKA_*_GROUP_ID`, `KAFKA_SNAPSHOT_GROUP_ID`, `RUNTIME_KAFKA_DECISIONS_TOPIC` | для полного стека       | см. `pkg/config/config.go`                             | Топики и группы потребителей Kafka                                                     |
@@ -105,7 +105,7 @@ Panel публикует snapshot конфигурации в Redis и Kafka, а
 | Redis 8                   | Сессии, публикация snapshot, атрибуция, ключи идемпотентности |
 | Kafka                     | Snapshot, решения, события аналитики, DLQ                     |
 | ClickHouse 24             | Хранение событий, показов, решений и атрибутированных событий |
-| MinIO (S3)                | Аватары пользователей                                         |
+| LocalStack (S3)           | Аватары пользователей                                         |
 | goose                     | Миграции (`migrations/`)                                      |
 | Prometheus, Loki, Grafana | Метрики, логи, дашборды                                       |
 
@@ -125,7 +125,7 @@ make run-local       # сборка и запуск panel, runtime, analytics
 make stop-local && make dev-down
 ```
 
-Локальные порты инфраструктуры: PostgreSQL `5433`, Redis `6379`, MinIO `9000`/`9001`, Kafka `9092`, ClickHouse `8123`/`9009`, Prometheus `9090`, Loki `3100`, Grafana `3000`. Полный сброс данных: `make dev-clean`. Прочие цели смотрите в `make help`.
+Локальные порты инфраструктуры: PostgreSQL `5433`, Redis `6379`, LocalStack (S3) `4566`, Kafka `9092`, ClickHouse `8123`/`9009`, Prometheus `9090`, Loki `3100`, Grafana `3000`. Полный сброс данных: `make dev-clean`. Прочие цели смотрите в `make help`.
 
 Проверки и тесты, те же, что в CI:
 

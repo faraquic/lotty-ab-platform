@@ -63,10 +63,10 @@ func TestPanelStartupFailsWhenRedisUnavailable(t *testing.T) {
 		"database": {
 			"postgres": {"dsn": %q},
 			"redis":    {"address": "localhost:19999"},
-			"s3":       {"bucket": %q, "region": "us-east-1", "endpoint": %q, "access_key": "minioadmin", "secret_key": "minioadmin"}
+			"s3":       {"bucket": %q, "region": "us-east-1", "endpoint": %q, "access_key": %q, "secret_key": %q}
 		},
 		"panel": {"http": {"address": "0.0.0.0:18082"}}
-	}`, e2ePostgresDSN, e2eS3Bucket, e2eS3Endpoint)
+	}`, e2ePostgresDSN, e2eS3Bucket, e2eS3Endpoint, e2eS3AccessKey, e2eS3SecretKey)
 
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0o644); err != nil {
 		t.Fatal(err)
@@ -124,10 +124,10 @@ func TestPanelStartupFailsWhenPostgresUnavailable(t *testing.T) {
 		"database": {
 			"postgres": {"dsn": "postgres://lotty:lottypassword@localhost:19997/labp_e2e?sslmode=disable"},
 			"redis":    {"address": "localhost:6379/15"},
-			"s3":       {"bucket": "labp-e2e", "region": "us-east-1", "endpoint": %q, "access_key": "minioadmin", "secret_key": "minioadmin"}
+			"s3":       {"bucket": "labp-e2e", "region": "us-east-1", "endpoint": %q, "access_key": %q, "secret_key": %q}
 		},
 		"panel": {"http": {"address": "0.0.0.0:18082"}}
-	}`, e2eS3Endpoint)
+	}`, e2eS3Endpoint, e2eS3AccessKey, e2eS3SecretKey)
 
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0o644); err != nil {
 		t.Fatal(err)
@@ -184,10 +184,10 @@ func startIsolatedPanel(t *testing.T, label string, overrides map[string]string)
 		"database": {
 			"postgres": {"dsn": %q},
 			"redis":    {"address": %q},
-			"s3":       {"bucket": %q, "region": "us-east-1", "endpoint": %q, "access_key": "minioadmin", "secret_key": "minioadmin"}
+			"s3":       {"bucket": %q, "region": "us-east-1", "endpoint": %q, "access_key": %q, "secret_key": %q}
 		},
 		"panel": {"http": {"address": "0.0.0.0:%s"}}
-	}`, e2ePostgresDSN, redisAddr, e2eS3Bucket, s3Endpoint, port)
+	}`, e2ePostgresDSN, redisAddr, e2eS3Bucket, s3Endpoint, e2eS3AccessKey, e2eS3SecretKey, port)
 
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0o644); err != nil {
 		t.Fatal(err)

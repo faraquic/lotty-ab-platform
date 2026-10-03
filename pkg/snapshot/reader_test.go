@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -222,5 +223,78 @@ func TestApplyRecordMalformedSkipped(t *testing.T) {
 
 	if got := Revision(rr.rev.Load()); got != 10 {
 		t.Errorf("rev = %d, want 10", got)
+	}
+}
+
+func TestNewerRevision(t *testing.T) {
+	tests := []struct {
+		name    string
+		current uint64
+		remote  uint64
+		want    bool
+	}{
+		{name: "newer applies", current: 10, remote: 11, want: true},
+		{name: "same is no-op", current: 10, remote: 10, want: false},
+		{name: "older never rewinds", current: 10, remote: 9, want: false},
+		{name: "nothing loaded yet", current: 0, remote: 1, want: true},
+		{name: "empty redis keeps state", current: 7, remote: 0, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := newerRevision(tt.current, tt.remote); got != tt.want {
+				t.Errorf("newerRevision(%d, %d) = %v, want %v", tt.current, tt.remote, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWithRevalidationInterval(t *testing.T) {
+	rr := &Reader{log: zap.NewNop()}
+	if rr.revalidate != 0 {
+		t.Fatalf("revalidate = %v, want 0 by default", rr.revalidate)
+	}
+
+	WithRevalidation(3 * time.Second)(rr)
+	if rr.revalidate != 3*time.Second {
+		t.Errorf("revalidate = %v, want 3s", rr.revalidate)
+	}
+
+	WithRevalidation(0)(rr)
+	if rr.revalidate != 3*time.Second {
+		t.Errorf("revalidate = %v, want zero interval to be ignored", rr.revalidate)
+	}
+
+	WithRevalidation(-time.Second)(rr)
+	if rr.revalidate != 3*time.Second {
+		t.Errorf("revalidate = %v, want negative interval to be ignored", rr.revalidate)
+	}
+}
+
+func TestPollRevalidateStopsWithContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	rr := &Reader{
+		log:        zap.NewNop(),
+		seen:       outbox.NewDeduper(0),
+		revalidate: time.Hour,
+		ctx:        ctx,
+		cancel:     cancel,
+	}
+
+	rr.wg.Add(1)
+	go rr.pollRevalidate()
+	cancel()
+
+	done := make(chan struct{})
+	go func() {
+		rr.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("pollRevalidate did not return after context cancellation")
 	}
 }

@@ -36,8 +36,28 @@ const (
 	e2ePostgresDSN = "postgres://lotty:lottypassword@localhost:5433/labp_e2e?sslmode=disable"
 	e2eRedisURL    = "redis://localhost:6379/15"
 	e2eS3Bucket    = "labp-e2e"
-	e2eS3Endpoint  = "http://localhost:9000"
 )
+
+// S3 coordinates default to the LocalStack container started by `make dev-up`
+// and are overridable so the Makefile stays the single source of truth.
+// 127.0.0.1 rather than localhost: rootless container engines publish IPv4
+// only and reset connections that resolve to [::1].
+var (
+	e2eS3Endpoint  = envOr("E2E_S3_ENDPOINT", "http://127.0.0.1:4566")
+	e2eS3AccessKey = envOr("E2E_S3_ACCESS_KEY", "test")
+	e2eS3SecretKey = envOr("E2E_S3_SECRET_KEY", "test")
+	// log_level lives in the config file, so LOG_LEVEL from the environment
+	// only reaches the spawned service when it is written into that config.
+	// Without this the CI knob is ignored and `local` logs everything at debug.
+	e2eLogLevel = envOr("LOG_LEVEL", "debug")
+)
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
 
 type errorResponse struct {
 	Success bool `json:"success"`
@@ -160,6 +180,7 @@ func runSuite(m *testing.M) int {
 	cfgPath := filepath.Join(tmpDir, "config.local.json")
 	if err := os.WriteFile(cfgPath, fmt.Appendf(nil, `{
 		"environment": "local",
+		"log_level": %q,
 		"auth": {
 			"jwt": {"secret_key": "e2e-test-secret-not-for-prod", "ttl": "1h"},
 			"bootstrap": {"full_name": "root", "email": "root@labp.net", "password_hash": "$argon2id$v=19$m=65536,t=1,p=4$6lGItC3BN+vvxDF42RRw2g$svLMZu6udCWh8/bjOlpP1S3syNanEwiQO17cbUaDvck"}
@@ -167,10 +188,10 @@ func runSuite(m *testing.M) int {
 		"database": {
 			"postgres": {"dsn": %q},
 			"redis":    {"address": %q},
-			"s3":       {"bucket": %q, "region": "us-east-1", "endpoint": %q, "access_key": "minioadmin", "secret_key": "minioadmin"}
+			"s3":       {"bucket": %q, "region": "us-east-1", "endpoint": %q, "access_key": %q, "secret_key": %q}
 		},
 		"panel": {"http": {"address": "0.0.0.0:%s"}}
-	}`, e2ePostgresDSN, e2eRedisURL, e2eS3Bucket, e2eS3Endpoint, testPort), 0o644); err != nil {
+	}`, e2eLogLevel, e2ePostgresDSN, e2eRedisURL, e2eS3Bucket, e2eS3Endpoint, e2eS3AccessKey, e2eS3SecretKey, testPort), 0o644); err != nil {
 		fmt.Printf("failed to write config: %v\n", err)
 		os.RemoveAll(tmpDir)
 		return 1
